@@ -318,7 +318,7 @@ static void do_access_list(const User *u, const ChannelInfo *ci,
 static void do_access_listlevel(const User *u, const ChannelInfo *ci,
                                 const char *startstr, const char *levels)
 {
-    int low, high, dir;
+    int low, high;
     int count = 0, sent_header = 0, skip = 0, i;
     long v, v2;
     char *s;
@@ -348,11 +348,9 @@ static void do_access_listlevel(const User *u, const ChannelInfo *ci,
     if (v2 < v) {
         low = v2;
         high = v;
-        dir = -1;
     } else {
         low = v;
         high = v2;
-        dir = 1;
     }
 
     if (ci->access_count == 0) {

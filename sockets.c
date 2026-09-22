@@ -132,8 +132,8 @@ struct socket_ {
 
 /* Used when calling do_disconn() due to SF_DISCONNECT */
 #define DISCONN_RESUME_FLAG     0x100
-#define DISCONN_LOCAL_RESUME    (void *)((int)DISCONN_LOCAL|DISCONN_RESUME_FLAG)
-#define DISCONN_REMOTE_RESUME   (void *)((int)DISCONN_REMOTE|DISCONN_RESUME_FLAG)
+#define DISCONN_LOCAL_RESUME    (void *)(intptr_t)(1 | DISCONN_RESUME_FLAG)
+#define DISCONN_REMOTE_RESUME   (void *)(intptr_t)(2 | DISCONN_RESUME_FLAG)
 
 /* Size of read/write buffers */
 #define read_buffer_size(s)  ((s)->rtop - (s)->rbuf)
@@ -2089,7 +2089,8 @@ static int do_disconn(Socket *s, void *code)
         errno = EINVAL;
         RETURN_WITH(-1);
     }
-    if ((s->flags & SF_DISCONNECTING) && !((int)code & DISCONN_RESUME_FLAG))
+    if ((s->flags & SF_DISCONNECTING)
+     && !((intptr_t)code & DISCONN_RESUME_FLAG))
         RETURN_WITH(0);
     if ((s->flags & SF_DISCONN_REQ) && code == DISCONN_LOCAL)
         RETURN_WITH(0);
@@ -2124,7 +2125,7 @@ static int do_disconn(Socket *s, void *code)
         /* The disconnect callback doesn't need to check for disconnection,
          * so we just call it directly */
         errno = errno_save;
-        s->cb_disconn(s, (void *)((int)code & ~DISCONN_RESUME_FLAG));
+        s->cb_disconn(s, (void *)((intptr_t)code & ~DISCONN_RESUME_FLAG));
     }
     s->flags &= ~SF_DISCONNECTING;
     if (s->fd >= 0) {

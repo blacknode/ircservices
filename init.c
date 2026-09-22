@@ -900,7 +900,6 @@ static int write_pidfile(void)
 int init(int ac, char **av)
 {
     int i;
-    int openlog_failed = 0, openlog_errno = 0;
     int started_from_term = isatty(0) && isatty(1) && isatty(2);
 
 
@@ -931,12 +930,9 @@ int init(int ac, char **av)
     /* Open logfile, and complain if we couldn't. */
     set_logfile(LogFilename);
     if (!open_log()) {
-        openlog_errno = errno;
         if (started_from_term) {
             fprintf(stderr, "Warning: unable to open log file %s: %s\n",
                     LogFilename, strerror(errno));
-        } else {
-            openlog_failed = 1;
         }
     }
 

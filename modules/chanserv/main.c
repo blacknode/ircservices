@@ -887,8 +887,7 @@ static int do_stats_all(User *user, const char *s_OperServ)
             mem += strlen(ci->last_topic)+1;
         if (ci->suspend_reason)
             mem += strlen(ci->suspend_reason)+1;
-        if (ci->levels)
-            mem += sizeof(*ci->levels) * CA_SIZE;
+        mem += sizeof(ci->levels);
         mem += ci->access_count * sizeof(*ci->access);
         mem += ci->akick_count * sizeof(*ci->akick);
         ARRAY_FOREACH (i, ci->akick) {

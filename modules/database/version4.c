@@ -90,30 +90,6 @@
  */
 
 
-/* Default channel entries in version 4.5: */
-#define CA_SIZE_4_5             18
-#define ACCLEV_INVALID_4_5      -10000
-static int def_levels_4_5[CA_SIZE_4_5] = {
-    /* CA_INVITE */         5,
-    /* CA_AKICK */         10,
-    /* CA_SET */ ACCLEV_INVALID_4_5,
-    /* CA_UNBAN */          5,
-    /* CA_AUTOOP */         5,
-    /* CA_AUTODEOP */      -1,
-    /* CA_AUTOVOICE */      3,
-    /* CA_OPDEOP */         5,
-    /* CA_ACCESS_LIST */    0,
-    /* CA_CLEAR */ ACCLEV_INVALID_4_5,
-    /* CA_NOJOIN */        -2,
-    /* CA_ACCESS_CHANGE */ 10,
-    /* CA_MEMO */          10,
-    /* CA_VOICE */          3,
-    /* CA_AUTOHALFOP */     4,
-    /* CA_HALFOP */         4,
-    /* CA_AUTOPROTECT */   10,
-    /* CA_PROTECT */       10,
-};
-
 /* For handling servadmins/servopers in 4.5.x databases: */
 #define MAX_SERVOPERS   256
 #define MAX_SERVADMINS  256
@@ -1623,10 +1599,8 @@ static int load_chan_table(DBTable *table)
          * databases may have them set to non-default levels, and version 5
          * doesn't allow them to be changed) */
         for (ci = table->first(); ci; ci = table->next()) {
-            if (ci->levels) {
-                ci->levels[CA_AUTODEOP] = -1;
-                ci->levels[CA_NOJOIN] = -100;
-            }
+            ci->levels[CA_AUTODEOP] = -1;
+            ci->levels[CA_NOJOIN] = -100;
         }
     }
     /* Clean out all empty (mask==NULL) autokick entries */
@@ -1707,19 +1681,9 @@ static int save_chan_table(DBTable *table)
             SAFE(write_int32(ci->suspend_expires, f));
         }
 
-        if (ci->levels) {
-            SAFE(write_int16(CA_SIZE, f));
-            for (i = 0; i < CA_SIZE; i++)
-                SAFE(write_int16(convert_new_level(ci->levels[i]), f));
-        } else {
-            SAFE(write_int16(CA_SIZE_4_5, f));
-            for (i = 0; i < CA_SIZE_4_5; i++) {
-                if (i == CA_NOJOIN && (ci->flags & CF_RESTRICTED))
-                    SAFE(write_int16(0, f));
-                else
-                    SAFE(write_int16(def_levels_4_5[i], f));
-            }
-        }
+        SAFE(write_int16(CA_SIZE, f));
+        for (i = 0; i < CA_SIZE; i++)
+            SAFE(write_int16(convert_new_level(ci->levels[i]), f));
 
         SAFE(write_int16(ci->access_count, f));
         ARRAY_FOREACH (i, ci->access) {
@@ -1779,13 +1743,9 @@ static int save_chan_table(DBTable *table)
         SAFE(write_int32(ci->mlock.joindelay, f));
         SAFE(write_int32(ci->mlock.joinrate1, f));
         SAFE(write_int32(ci->mlock.joinrate2, f));
-        if (ci->levels) {
-            SAFE(write_int16(CA_SIZE, f));
-            for (i = 0; i < CA_SIZE; i++)
-                SAFE(write_int16(ci->levels[i], f));
-        } else {
-            SAFE(write_int16(0, f));
-        }
+        SAFE(write_int16(CA_SIZE, f));
+        for (i = 0; i < CA_SIZE; i++)
+            SAFE(write_int16(ci->levels[i], f));
         SAFE(write_int16(ci->access_count, f));
         ARRAY_FOREACH (i, ci->access)
             SAFE(write_int16(ci->access[i].level, f));

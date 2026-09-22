@@ -22,7 +22,7 @@ struct dbFILE_ {
     char mode;                  /* 'r' for reading, 'w' for writing */
     FILE *fp;                   /* The file pointer itself */
     char filename[PATH_MAX+1];  /* Name of the database file */
-    char tempname[PATH_MAX+1];  /* Name of the temporary file (for writing) */
+    char tempname[PATH_MAX+5];  /* Name of the temporary file (for writing) */
 };
 
 /*************************************************************************/

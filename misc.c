@@ -219,7 +219,7 @@ char *strnrepl(char *s, int32 size, const char *old, const char *new)
             break;
         if (diff != 0)
             memmove(ptr+oldlen+diff, ptr+oldlen, left+1);
-        strncpy(ptr, new, newlen);
+        memmove(ptr, new, newlen);
         ptr += newlen;
         left -= oldlen;
     }

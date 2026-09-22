@@ -185,7 +185,7 @@ void chan_deluser(User *user, Channel *c)
  */
 static int find_ban(const Channel *chan, const char *ban)
 {
-    char *s, *t;
+    const char *s, *t;
     int i;
 
     t = strchr(ban, '!');

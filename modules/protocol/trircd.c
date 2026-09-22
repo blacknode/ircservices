@@ -277,7 +277,7 @@ static void m_nick(char *source, int ac, char **av)
     newav[10] = av[6];  /* User area (fake hostname) */
 
     /* Actually add the nick */
-    do_nick(source, ac, av);
+    do_nick(source, ac, newav);
 }
 
 /*************************************************************************/

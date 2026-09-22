@@ -491,9 +491,6 @@ static void parse_data(Client *c, char *buf)
 {
     char *start;
     int found_equals = 0;
-    char hexbuf[3];
-
-    hexbuf[2] = 0;
     free(c->variables);
     c->variables = NULL;
     c->variables_count = 0;

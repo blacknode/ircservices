@@ -221,8 +221,8 @@ int lang_init(void)
                 *((uint32 *)origtexts[DEF_LANGUAGE][0]) = oldsize + newsize;
                 origtexts[DEF_LANGUAGE][i+1] =
                     origtexts[DEF_LANGUAGE][0] + 4 + oldsize;
-                strcpy(origtexts[DEF_LANGUAGE][i+1],
-                       origtexts[LANG_EN_US][i+1]);
+                memmove(origtexts[DEF_LANGUAGE][i+1],
+                        origtexts[LANG_EN_US][i+1], newsize);
             } else {
                 log("String %s missing from default language", langstrs[i]);
                 return 0;
@@ -371,7 +371,8 @@ int load_ext_lang(const char *filename)
                 /* Point to location of string in data buffer; we add 1
                  * to the offset to differentiate the value from 0 (not
                  * present) */
-                newtexts[curlang][curstr+1] = (char *)newsizes[curlang] + 1;
+                newtexts[curlang][curstr+1] =
+                    (char *)(intptr_t)(newsizes[curlang] + 1);
                 /* Set first-line flag (signals whether to insert a
                  * newline) */
                 firstline = 1;
@@ -415,7 +416,7 @@ int load_ext_lang(const char *filename)
             newtexts[curlang][0] = newbuf;
             for (i = 0; i < num_strings; i++) {
                 if (newtexts[curlang][i+1]) {
-                    int ofs = (int)newtexts[curlang][i+1] - 1;
+                    int ofs = (int)(intptr_t)newtexts[curlang][i+1] - 1;
                     newtexts[curlang][i+1] = newbuf+4 + oldlen + ofs;
                 } else if (langtexts[curlang][i+1]) {
                     int ofs = langtexts[curlang][i+1]

@@ -111,8 +111,8 @@ static dbFILE *open_db_write(const char *filename, int32 filever)
     filename = f->filename;
     f->mode = 'w';
 
-    snprintf(f->tempname, sizeof(f->tempname) + 3, "%s.%s", filename, "new");
-    if (!*f->tempname || strcmp(f->tempname, filename) == 0) {
+    if (snprintf(f->tempname, sizeof(f->tempname), "%s.new", filename)
+            >= sizeof(f->tempname)) {
 #ifndef CONVERT_DB
         module_log("Opening database file %s for write: Filename too long",
                    filename);
