@@ -1,0 +1,259 @@
+*.title {
+	font-size: 200%;
+	font-weight: bold;
+	text-align: center;
+}
+
+*.section-title {
+	font-size: 150%;
+	font-weight: bold;
+	text-align: center;
+}
+
+*.subsection-title {
+	font-size: 120%;
+	font-weight: bold;
+	text-align: center;
+}
+
+*.subsubsection-title {
+	font-size: 100%;
+	font-weight: bold;
+	text-align: left;
+}
+
+*.subsubsubsection-title {
+	font-size: 100%;
+	font-weight: bold;
+	text-align: left;
+}
+
+*.toc {
+	font-size: 120%;
+	font-weight: bold;
+}
+
+*.section-toc {
+	font-size: 100%;
+	font-weight: bold;
+}
+
+*.backlink {
+	font-size: 80%;
+	text-align: right;
+}
+@media print {
+	*.backlink { display: none; }
+}
+
+
+hr {
+	text-align: center;
+	margin-top: 1.5ex;
+	margin-bottom: 1.5ex;
+}
+
+li.spaced {
+	margin-top: 1.5ex;
+}
+
+dt {
+	margin-top: 1ex;
+	margin-left: 1em;
+}
+
+dt.cygnus {
+	font-family: monospace;
+	margin-left: 3ex;
+	text-indent: -3ex;
+}
+
+div.code {
+	margin-top: 1ex;
+	margin-bottom: 1ex;
+	margin-left: 3em;
+	margin-right: 3em;
+	font-family: monospace;
+	white-space: pre;
+}
+
+
+*.remotehost {
+	font-family: monospace;
+	font-size: 80%;
+}
+
+*.configure-test-name {
+	font-family: monospace;
+	font-weight: bold;
+}
+
+
+table.source-tree {
+	display: table;
+	border-collapse: collapse;
+	border: 4px ridge gray;
+	border-spacing: 0;
+}
+
+tr.source-tree-header {
+	display: table-row;
+	background: #E0E8FF;
+	border: 4px ridge gray;
+}
+
+tr.source-tree-directory {
+	display: table-row;
+	background: #E0FFE0;
+}
+
+tr.source-tree {
+	display: table-row;
+	background: #FFF8E0;
+}
+
+th.source-tree-file {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	font-weight: bold;
+	text-align: center;
+}
+
+th.source-tree-description {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	font-weight: bold;
+	text-align: center;
+}
+
+th.source-tree-referenced {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	font-weight: bold;
+	text-align: center;
+}
+
+td.source-tree-file {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	font-family: monospace;
+	text-align: left;
+	white-space: pre;
+}
+
+td.source-tree-description {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	text-align: left;
+}
+
+td.source-tree-referenced {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	text-align: center;
+}
+
+
+table.function-index {
+	display: table;
+	border-collapse: collapse;
+	border: 4px ridge gray;
+	border-spacing: 0;
+}
+
+tr.function-index-header {
+	display: table-row;
+	background: #E0E8FF;
+	border: 4px ridge gray;
+}
+
+tr.function-index-letter {
+	display: table-row;
+	background: #E0FFE0;
+}
+
+tr.function-index {
+	display: table-row;
+	background: #FFF8E0;
+}
+
+th.function-index-name {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	font-weight: bold;
+	text-align: center;
+	white-space: nowrap;
+}
+
+th.function-index-params {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	font-weight: bold;
+	text-align: center;
+	white-space: nowrap;
+}
+
+th.function-index-return {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	font-weight: bold;
+	text-align: center;
+	white-space: nowrap;
+}
+
+th.function-index-purpose {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	font-weight: bold;
+	text-align: center;
+	white-space: nowrap;
+}
+
+th.function-index-letter {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1ex;
+	font-size: 120%;
+	font-weight: bold;
+	text-align: center;
+}
+
+td.function-index-name {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+	font-family: monospace;
+}
+
+td.function-index-params {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+}
+
+td.function-index-return {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+}
+
+td.function-index-purpose {
+	display: table-cell;
+	border: 2px ridge gray;
+	padding: 1px 3px;
+}
+
+p.function-param {
+	margin: 0 0 0 1.5em;
+	text-indent: -1.5em;
+}

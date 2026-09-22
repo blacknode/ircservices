@@ -1,0 +1,2145 @@
+Version 5.1
+-----------
+2011/04/05 .24  End-of-life release.  No functional changes.
+2010/06/08 .23	Fixed a truck-sized security hole allowing any user to
+		    read any other user's memos.  Reported by Charalampos
+		    Pournaris <charpour@gmail.com>
+2010/05/21 .22	Fixed potential crash in MemoServ FORWARD.  Reported by
+		    Charalampos Pournaris <charpour@gmail.com>
+2010/01/01 .21	Updated documentation to reflect end-of-life status.
+2009/11/10	Fixed a few bugs in importing XML data, and removed empty
+                    channel access list entries from exported XML data.
+                    Reported by Charalampos Pournaris <charpour@gmail.com>
+2009/11/07	Fixed minor memory leak and failure to apply CSAutokickMax
+		    setting in ChanServ AKICK ADD.  Reported by Charalampos
+		    Pournaris <charpour@gmail.com>
+2009/11/07	Fixed cosmetic bugs in some LIST commands and potential
+		    leakage of memory contents to database files.  Reported
+		    by Charalampos Pournaris <charpour@gmail.com>
+2009/08/09 .20	Fixed compilation error with glibc 2.10 (Gentoo bug #273938).
+2009/07/31 .19	Fixed failure to properly guard against users registering
+		    or linking the HelpServ nickname.  Reported by
+2009/07/27	Fixed various bugs with the StatServ SERVERS command, and
+		    implemented the missing COPY and RENAME subcommands.
+		    Reported by Charalampos Pournaris <charpour@gmail.com>
+2009/07/27	Fixed some memory management issues, including a potential
+		    crash when using the -log command-line option.
+		    Reported by Charalampos Pournaris <charpour@gmail.com>
+2009/07/13	Fixed another harmless "BUG" message.
+2009/07/12	Fixed a harmless "BUG" log message resulting from use of
+		    the MemoServ INFO command with no parameters.  Reported
+		    by Charalampos Pournaris <charpour@gmail.com>
+2009/07/11 .18	Fixed a harmless bug in some protocol modules causing
+		    unnecessary warnings to be logged at shutdown/restart.
+		    Reported by Charalampos Pournaris <charpour@gmail.com>
+2009/07/11	Implemented the OperServ EXCEPTION CLEAR subcommand, which
+		    was previously missing.  Reported by Charalampos
+		    Pournaris <charpour@gmail.com>
+2009/07/11	Fixed improper behavior and potential crash resulting from
+		    OperServ EXCEPTION MOVE.  Reported by Charalampos
+		    Pournaris <charpour@gmail.com>
+2009/06/18	Fixed bug causing "*@*.*" to be improperly allowed as an
+		    autokill mask.  Reported by Charalampos Pournaris
+		    <charpour@gmail.com>
+2009/06/17	Minor documentation cleanup.
+2009/06/17	NickServ IDENTIFY no longer writes a log message when a
+		    user identifies for a nickname they have already
+		    identified for previously.  Suggested by Charalampos
+		    Pournaris <charpour@gmail.com>
+2009/06/16	Added support for the +S user and channel modes in the
+		    Bahamut protocol module.  Suggested by Charalampos
+		    Pournaris <charpour@gmail.com>
+2009/06/14	Fixed typos in a couple of pseudoclient responses.
+		    Reported by Charalampos Pournaris <charpour@gmail.com>
+2009/05/31 .17	Added safety checks to avoid crashing on certain (different)
+		    types of database corruption.  Reported by Ian Justman
+		    <ianj@esper.net>
+2009/05/09	Added safety checks to avoid crashing on certain types of
+		    database corruption.  Reported by Andries Burger
+		    <adb@speedfreaks.co.za>
+2009/05/07 .16	Added NoAdminPasswordCheck configuration option to work
+		    around extraneous global messages reported by
+		    Dionisios K. <vonitsa_net@yahoo.gr>
+2009/05/07	Changed NickServ SUSPEND command to honor NSSecureAdmins
+		    option.  Reported by Dionisios K. <vonitsa_net@yahoo.gr>
+2009/03/31 .15	Fixed bugs causing potential crashes when connecting to
+		    InspIRCd or Unreal servers.
+2009/03/31	Fixed bug causing an improper notification to be sent when
+		    a Services admin uses UNSET on their own nickname.
+		    Reported by Dionisios K. <vonitsa_net@yahoo.gr>
+2008/12/07 .14	Fixed potential infinite loop on detecting a fatal error.
+		    Reported by Jille Timmermans <jille@quis.cx>
+2008/12/07	Fixed race condition in which Services might fail to send
+		    its initial data to the server if the connection took
+		    too long.  Reported by Alexander Barton <alex@barton.de>
+2008/12/07	Fixed bug causing incorrect #defines to be written to
+		    config.h in non-English locales.  Reported by Alexander
+		    Barton <alex@barton.de>
+2008/12/07	Fixed bug causing nickname enforcers to remain online
+		    indefinitely if the associated nickname was dropped
+		    before the enforcer was removed.  Reported by Jille
+		    Timmermans <jille@quis.cx>
+2008/12/07	Fixed bug causing channel ban lists to get desynchronized,
+		    leading to failure to add bans when autokicking users.
+		    Reported (and fix suggested) by Aragon Gouveia
+		    <aragon@phat.za.net>
+2008/11/08 .13	Fixed bug preventing remote users from being recognized by
+		    the rfc1459 protocol module.  Reported by Alexander
+		    Barton <alex@barton.de>
+2008/08/22 .12	Added set_password() interface function for use by modules.
+2008/02/15	Fixed bug causing ChanServ to improperly deop users on
+		    SECUREOPS channels under certain conditions.  Reported
+		    by Timothy C. McGrath <tmhikaru@gmail.com>
+2008/01/03 .11	Fixed bug allowing users to crash Services through improper
+		    use of the ChanServ LISTLEVEL command.  Reported by
+		    Daniel Lindbeck <dajmon@lindnet.se>
+2007/12/31	Fixed bug causing ChanServ to reverse mode +o sent by the
+		    server for an IRC operator joining a channel.  Reported
+		    by Marco Wepfer <kampfteufel@hotmail.com>
+2007/12/22	Added note to section 3-3-1 of the manual pointing out that
+		    memo limits are ignored for memos from Services admins.
+2007/12/09 .10	Fixed bug preventing ircservices-chk from detecting the PID
+		    file properly.  Reported by <chiappa@webinfo.fi>
+2007/12/09	Fixed cosmetic bug causing "internal error" messages to be
+		    emitted when sending memos to users with forwarding
+		    enabled.  Reported by Casey <caseyclaydon@fastmail.com.au>
+2007/11/21	Fixed bug causing compilation to fail on certain platforms.
+		    Reported by Jarrod Frates <jfrates@gmail.com>
+2007/11/21 .9	Fixed security bug unintentionally introduced in 5.1.8.
+2007/11/21 .8	Corrected half-implemented fix in previous version.
+2007/11/21 .7	Fixed crash on certain uses of very long passwords.
+		    Reported by <loverboy@irc.doruk.net.tr>
+2007/10/30	Fixed bug preventing channels already registered at startup
+		    from appearing in their respective founders' LISTCHANS
+		    output.  Reported by <loverboy@irc.doruk.net.tr>
+2007/10/30 .6	Fixed crash on database save under certain conditions.
+		    Reported by Aaron Eldridge <drefsab_zn@hotmail.com>
+2007/10/29 .5	Fixed failure to import some XML data correctly.  Reported
+		    by Tim Owen <timowen@internode.on.net>
+2007/10/25 .4	Added workaround for recent Unreal servers that send
+		    unsourced SQUIT messages.  Reported by Bill Kramme
+		    <bk@slashnet.org>
+2007/10/23 .3	Reviewed the Services codebase, fixing several more bugs
+		    that could lead to crashes in certain circumstances.
+2007/10/20 .2	Fixed bug allowing users with sufficient channel privileges to
+		    crash Services.  Reported by Ali Sor <alisor@soronline.net>
+2007/10/20	Added extra tests to the configure script to ensure that
+		    dynamically-loaded modules can be used correctly, to
+		    work around a problem reported by <iamentity@gmail.com>
+2007/10/14	Added support to convert-db for encrypted passwords in
+		    Anope 1.7.18 and later.  Reported by Pierre Fagrell
+		    <pierre@fagrell.net>
+2007/10/12 .1	Fixed bug preventing encrypted passwords from being
+		    imported from Epona/Anope databases.  Reported by
+		    Pierre Fagrell <pierre@fagrell.net>
+2007/10/10 .0	Version 5.1.0 released.
+2007/10/10	Updated Cygnus, Epona/Anope, HybServ, and
+		    SirvNET/Auspice/Bolivia importers to convert NOOP
+		    settings properly.  Also updated the SirvNET/etc.
+		    importer to convert channel memo level settings.
+2007/10/10	Memos can now be disabled for a channel by disabling the
+		    MEMO privilege level.
+2007/10/06	Added workaround for a rare problem with InspIRCd 1.1.13
+		    and earlier causing the server to be disconnected on a
+		    nickname collision or autokill.  Reported by Casey
+		    <caseyclaydon@fastmail.com.au>; solution suggested by
+		    Craig Edwards <brain@winbot.co.uk>
+2007/09/29	Removed the obsolete "-no-dir-check" option from the
+		    configure -help output.
+2007/09/29	Changed semantics of NickServ NOOP to allow users with NOOP
+		    set to be added to channel access lists at negative
+		    values (such as the NOP list).  Suggested by Trevor
+		    Talbot <quension@mac.com>
+2007/09/16 pre9	Fixed bug causing channels with multiple users not to be
+		    recognized on startup when using InspIRCd.  Reported by
+		    Casey <caseyclaydon@fastmail.com.au>
+2007/09/13 pre8	Fixed crash in MemoServ INFO.  Reported by Casey
+		    <caseyclaydon@fastmail.com.au>
+2007/09/11 pre7	Fixed various problems with the InspIRCd protocol module.
+		    Reported by Casey <caseyclaydon@fastmail.com.au> and
+		    Robin Burchell <surreal.w00t@gmail.com>
+2007/09/10 pre6	Added NSRegDenyIfSuspended configuration option.  Suggested
+		    by Aragon Gouveia <aragon@phat.za.net>
+2007/09/03	Updated InspIRCd module to work with InspIRCD 1.1.x (tested
+		    with 1.1.12).
+2007/08/23 pre5	Added NOOP nickname option.  Suggested by Casey
+		    <caseyclaydon@fastmail.com.au>
+2007/08/23	Added MEMO-RESTRICTED channel option.  Suggested by Casey
+		    <caseyclaydon@fastmail.com.au>
+2007/08/23	Turned warning messages for nonexistent nicknames/channels
+		    into debug messages.
+2007/08/23	Fixed crash introduced in pre4 when a second server is
+		    added to the network.  Reported by Torbjorn Svensson
+		    <azoff@se.linux.org>
+2007/08/23	Added a missing unregister_callback() to the NickServ module.
+2007/08/06 pre4	Added "set identified" NickServ callback for actions to be
+		    taken when a user is marked identified (whether from
+		    the IDENTIFY command or automatic identification).
+		    Also renamed "cancel_user" callback to "cancel user".
+2007/08/05	Updated ratbox protocol module for recent versions of the
+		    ircd-ratbox server.  Patch provided by ongeboren
+		    <xxx.coder@gmail.com>
+2007/08/05	Added -program option to the configure script, allowing the
+		    Services executable name (and the names of related files)
+		    to be changed.  Suggested by Tim Retout <tim@retout.co.uk>
+2007/07/30	Fixed potential display bugs in some log messages.
+		    Reported by Tim Retout <tim@retout.co.uk>
+2007/07/27	Services can now be installed under an alternate root by
+		    setting the INSTALL_PREFIX make variable.  Suggested by
+		    Tim Retout <tim@retout.co.uk>
+2007/07/27	Fixed a bug causing some erroneous server messages to not
+		    processed properly.
+2007/06/11	Dropped some old debugging code.
+2007/06/10 pre3	Fixed bug allowing guest nicknames to be linked.  Reported
+		    by Robin Burchell <surreal.w00t@gmail.com> and
+		    DeadNotBuried <dnb@majestic-liaisons.com>
+2007/05/19 pre2	Updated the Turkish language file, courtesy of Basar U.
+		    Sezer <srcmaster@crypthon.com>
+2007/05/17	The database/version4 module now observes the -forceload
+		    option when loading the nickname database.
+2007/05/17	Replaced RSA's MD5 implementation with one licensed under
+		    more lenient terms.  Suggested by Tim Retout
+		    <tim@retout.co.uk>
+2007/05/14 pre1	Fixed a bug in XML import that caused channel mode locks to
+		    be lost.  Reported by <loverboy@irc.doruk.net.tr>
+2007/05/14	Fixed Services being unable to start if both the compatibility
+		    strdup() function and memory checking were enabled.
+2007/05/14	Fixed a potential crash with corrupt databases.
+2007/05/06 pre0	Added CSSkipModeRCheck option to disable kickbanning of
+		    unregistered nicks from +R-locked channels.  Suggested
+		    by <nim@shadowfire.org>
+2007/05/06	Changed LISTLINKS for other users from admin-only to
+		    oper-only, and documented that LISTEMAIL can be used to
+		    the same effect by ordinary users. Suggested by Robin
+		    Burchell <surreal.w00t@gmail.com>
+2007/04/27	Fixed minor bugs in the built-in [v]snprintf().
+2007/03/31	Moved change logs to docs/ directory.
+2007/03/24 a13	Changed ChanServ SET PASSWORD to remove founder privileges
+		    from any users who had previously identified for the
+		    channel.  Reported by ongeboren <xxx.coder@gmail.com>
+2007/02/16 a12	Fixed possibly incorrect handling by convert-db of nonstandard
+		    channel fields FREASON and FTIME in HybServ databases.
+2007/02/16	Fixed result message for SET TIMEZONE by a Services
+		    administrator whose timezone is set to the default.
+2007/02/16	Fixed a duplicate WALLOPS for NickServ SET PASSWORD by
+		    Services administrators.
+2007/02/16	Removed all support for "modeless" channels (+name).
+2007/02/16	Fixed httpd/redirect handling of nicknames and channel
+		    names containing slashes.  (As a side effect, URLs with
+		    trailing slashes are no longer accepted.)
+2007/02/16	The httpd/top-page module now only responds to requests for
+		    the top page, rather than for any URL.
+2007/02/16	The built-in HTTP server now reports an error on overlength
+		    HTTP request lines rather than silently splitting them.
+2007/02/16	Added password obscurity check to ChanServ REGISTER and SET
+		    PASSWORD.  Suggested by Dionisios K. <vonitsa_net@yahoo.gr>
+2007/02/16	Changed NSRejectEmail configuration directive to RejectEmail,
+		    and added rejection checks to NickServ/ChanServ SET EMAIL.
+2007/02/16	Changed MD_EXCLUSION constant name to MD_EXCLUDE to match
+		    the OperServ command name.
+2007/02/16	Add get/put-field wrapper routines to database code to
+		    remove unnecessary complexity from database modules.
+2007/02/16	Fixed bug causing PID file to not be removed on exit.
+2007/01/14	Fixed bug in configure type definitions.  Reported by
+		    <tigra.ru@gmail.com>
+2006/12/08 a11	Merged section 6 of the user's manual (on adding features
+		    to Services) into the technical manual.
+2006/12/08	Removed unused read/write macros from
+		    modules/database/fileutil.h.
+2006/12/08	Fixed bug causing the "shutdown" parameter to modules'
+		    cleanup functions to always be nonzero.
+2006/12/06	Removed all remaining "press Enter" warning prompts from
+		    configure, making it fully automated.
+2006/12/06	Clarified that missing system functions (strtok(), etc.)
+		    detected by configure do not prevent Services from
+		    being compiled and run.  Also updated the warning for
+		    a missing gethostbyname().
+2006/11/09	The httpd/top-page module now explicitly returns an error
+		    if the specified file cannot be read, rather than
+		    deferring to a subsequent handler.
+2006/11/03	Added workaround for NULL masks in autokick lists.  Reported
+		    by Gabriel Baez <gabriel.baez@solid-ircd.com>
+2006/10/29	Fixed the encryption/unix-crypt module to allow crypt()
+		    results longer than 13 characters and to not truncate
+		    the final character of a PASSMAX-length password.
+2006/10/01	ChanServ OP/VOICE/etc. now check that the target user is on
+		    the channel before performing privilege checks; PROTECT
+		    is now disallowed on auto-deop users.
+2006/09/26	Merged modules/chanserv/autokick.c back into main.c.
+2006/08/16	Updated documentation to reflect new domain name.
+2006/08/06 a10	Added preliminary support for the solid-ircd IRC server.
+2006/06/22 a9	Fixed bug in configuration file handling causing
+		    function-processed directives like LoadModule to break.
+2006/06/22	Added int64 and uint64 types, and added a check to
+		    configure to find appropriate system types for them.
+2006/06/22	Added robustness to socket code in out-of-memory conditions.
+2006/06/22	Changed select() call to not assume that the timeval struct
+		    is valid after the call.
+2006/06/22	Changed the socket code to use recv() and send() on sockets
+		    instead of read() and write().
+2006/06/22	Fixed potential bug causing accepted sockets' mute status
+		    to get out of sync with internal tables.
+2006/06/22	Corrected handling of nested socket callbacks.
+2006/06/22	Renamed NET_MIN_BUFSIZE constant to SOCK_MIN_BUFSIZE, and
+		    moved it from defs.h to sockets.h.
+2006/06/19	Fixed a typo in the OperServ AKILL/SLINE CLEAR syntax
+		    message.  Reported by <RealCFC@chatfirst.com>
+2006/06/06 a8	Hungarian language file updated for 5.1.
+2006/06/06	Added message source parameter to "channel KICK" callback.
+		    Suggested by Jason Farklem <farklem@gmail.com>
+2006/06/03 a7	Fixed handling of language strings added by modules in
+		    external language files.
+2006/06/02	Fixed a rare case in which a timed event could fail to be
+		    executed, and ensure that extremely long timeouts
+		    (>25 days) are not called immediately.
+2006/06/01	Added robustness to mode character/flag conversion functions.
+2006/05/31	Fixed infinite loop in ignore code when a single command
+		    takes longer to execute than the time specified in the
+		    IgnoreDecay configuration directive.
+2006/05/31	Fixed bug that could potentially cause the log file to be
+		    rotated in the middle of writing a log message.
+2006/05/31	Cleaned up restart handling.
+2006/05/31	Fixed bug causing missing parameters in a configuration
+		    directive to get zeroed rather than keeping their
+		    previous values.
+2006/05/31	Fixed cosmetic bug causing "BUG" message to be logged when
+		    deprecated configuration directives are used.
+2006/04/14	Fixed bug allowing infinite join/kick loops on autokick
+		    when Unreal extended bantypes are in use.
+2006/04/14	Fixed bug causing Services to split from InspIRCd servers
+		    without the m_globops.so module loaded.  Reported by
+		    <techie101@gmail.com>
+2006/03/22	Logging initialization moved earlier, to catch any
+		    unexpected log messages before the log file is opened.
+2006/03/22	Fixed a critical error in the supplied [v]snprintf() which
+		    allowed the output to exceed the specified maximum
+		    length.
+2006/03/20	Corrected a design defect in the hash table implementation
+		    creating the potential for entries to get lost after
+		    irc_lowertable[] modifications.
+2006/01/26 a6	Added command aliases for NickServ, ChanServ, and MemoServ
+		    via the NSAlias, CSAlias, and MSAlias configuration
+		    directives.
+2006/01/26	Added support for 2-byte characters in valid_nick() and
+		    valid_chan().
+2006/01/26	Added support for the Unreal NICKCHARS protocol setting.
+2006/01/26	Fixed nickname and channel name validity checking (which
+		    was broken for a few protocols).
+2006/01/26	valid_nick() now defaults to the reference ircd's rules for
+		    nickname grammar rather than RFC 1459.
+2006/01/26	Fixed bug causing databases with load-only fields to be
+		    written incorrectly.
+2006/01/26	Invalid channel names are now automatically removed from
+		    the autojoin list on identify.
+2006/01/26	Fixed memory leak on corrupt channel autokick database.
+2006/01/26	Fixed bug in Hybrid and Ratbox protocol modules causing
+		    forced nickname changing to break.
+2006/01/25	Moved the contents of the TODO file into section 11 of the
+		    technical reference manual.
+2006/01/25	Fixed bug causing nick authentication reason to get lost on
+		    XML import and export.
+2006/01/25	Eliminated SuspendInfo structure (fields flattened into
+		    NickGroupInfo and ChannelInfo).
+2006/01/25	Fixed bug causing database/standard load routine to break
+		    on out-of-order fields.
+2006/01/24	Fixed minor bug in handling of InspIRCd SETNAME.
+2006/01/24 a5	Fixed bug causing ChanServ SET MLOCK with extra parameters
+		    (like +l NNN) to return a syntax error.
+2006/01/23	Added experimental support for the InspIRCd IRC server.
+		    Suggested by Craig Edwards <brain@winbot.co.uk>
+2006/01/23	Removed misc.c's dependencies on other core symbols, and
+		    changed convert-db to link misc.o in rather than
+		    redefine strscpy().
+2006/01/23	Fixed ChanServ DROP crash.  Reported by Vitaliy Ovsyannikov
+		    <V.Ovsyannikov@kr.ru>
+2006/01/22 a4	Added experimental support for the ircd-ratbox IRC server.
+2006/01/22	Fixed crash on NickServ SET/UNSET from unregistered nicks.
+		    Reported by Vitaliy Ovsyannikov <V.Ovsyannikov@kr.ru>
+2006/01/22	Fixed bug causing Services operators in Sirv databases to
+		    be imported with Services administrator privileges.
+2006/01/22	Overlong IRCS channel names are now handled more robustly
+		    in convert-db.
+2006/01/22	Added support to the PTlink database importer for SQline
+		    and SXline databases.
+2006/01/21	The PTlink database importer now imports temporary
+		    (unauthenticated) E-mail addresses.
+2006/01/21	Updated HybServ database importer for more recent versions
+		    of HybServ.
+2006/01/20	Fixed bugs in importing channel greetings and the VOPALL
+		    setting from Cygnus databases.
+2006/01/20	The Cygnus database importer now imports temporary
+		    (unauthenticated) E-mail addresses and channel memo
+		    levels.
+2006/01/18	Moved the contents of the KnownBugs file into the user's
+		    manual as Appendix D.
+2006/01/18	Removed the (now meaningless) -no-dir-check option to the
+		    configure script.
+2006/01/17	Fixed a bug in loading the nickgroup database using the
+		    database/standard module.  Reported by Vitaliy
+		    Ovsyannikov <V.Ovsyannikov@kr.ru>
+2006/01/17 a3	Fixed a bug in importing channel data when using the
+		    database/standard module.  Reported by Vitaliy
+		    Ovsyannikov <V.Ovsyannikov@kr.ru>
+2006/01/17	The language and data file installation procedure no longer
+		    sets the installed files' modes to owner-access-only;
+		    the default file mode (as set with umask) is used.
+2006/01/15 a2	Fixed a bug in loading the ChanServ database in the
+		    database/version4 module.
+2006/01/15	The misc/xml-import module now allows news items to be
+		    imported via the ImportNews configuration directive.
+		    Suggested by Kieron Thwaites <ron2k.za@gmail.com>
+2006/01/15	MemoServ IGNORE now ignores memos from nicknames linked to
+		    nickname (but not wildcard) entries on the ignore list.
+		    Suggested by Robin Burchell <surreal.w00t@gmail.com>
+2006/01/15	Renamed ChannelInfo CI_* flags to CF_* for consistency with
+		    other structures' flags.
+2006/01/09	Moved the access, autojoin, memo, and ignore databases to
+		    their respective modules, and changed the database
+		    names to "nick-access", "nick-autojoin", "memo", and
+		    "memo-ignore" respectively.
+2006/01/09	Changed DBTable.insert() to not return a value.
+2006/01/09 a1	Finished implementing the database/standard module, and
+		    made it the default in the example configuration file.
+2006/01/08	Removed no-longer-needed new_suspendinfo() and
+		    free_suspendinfo() functions.
+2006/01/08	Moved SuspendInfo structure directly into NickGroupInfo and
+		    ChannelInfo structures rather than using pointers.
+2006/01/07	Added ACCLEV_MAX and ACCLEV_MIN constants to explicitly
+		    define ChanServ access levels, rather than relying on
+		    ACCLEV_FOUNDER and ACCLEV_INVALID.
+2006/01/04	Fixed a bug in writing generic database tables.
+2006/01/04	Fixed a bug in the Unreal protocol module causing user
+		    fakehost masks to get set to the user's mode string.
+2005/11/23	Added support for writing generic tables (using the new
+		    database format) in the database/version4 module.
+2005/11/23 a0	Converted tabs to spaces in all source files.
+2005/11/22	Added IncludeFile configuration directive to allow
+		    configuration directives to be split up into multiple
+		    files.  Suggested by Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2005/11/22	Logon news items are no longer sent to users who rejoin the
+		    network after a netsplit (for protocols which include
+		    Services stamps).  Suggested by <v13@it.teithe.gr>
+2005/11/22	Added CSDefModeLock configuration directive to set the
+		    default mode lock for newly registered channels.
+		    Suggested by <us44ever@hotmail.com>
+2005/11/22	Moved database name configuration directives (NickServDB,
+		    etc.) to database/version4 module section.
+2005/11/22	Fixed a bug causing leading newlines in help messages to be
+		    stripped.
+2005/11/22	Added NSSetEmailDelay configuration directive to limit the
+		    frequency with which users can use the NickServ SET
+		    EMAIL command (and thus cause mail authentication
+		    messages to be sent).
+2005/11/22	Added OperServ GETKEY command to retrieve the key of a +k
+		    channel (limited to Services operators).  Suggested by
+		    Dennis Sela <Schutzgeist@uni.de>
+2005/11/22	NickServ INFO now indicates when a nickname's user is using
+		    a different (linked) nick, provided the nick's PRIVATE
+		    option is not set.  Suggested by Craig McLure
+		    <Craig@chatspike.net>
+2005/11/22	Merged several redundant AKILL/SLINE-related language strings.
+2005/11/22	Added CLEAR subcommand to OperServ AKILL and related commands.
+2005/11/21	Added NSRejectEmail configuration directive for disallowing
+		    certain E-mail addresses or address masks from being
+		    used in registration.
+2005/11/21	Autokill expiration WALLOPS messages are now rate-limited
+		    to prevent floods.
+2005/11/21	Added forbidden/suspended/etc. indicators to HTTP server
+		    nickname and channel lists.
+2005/11/21	Added a new configuration directive, WallAdminPrivs
+		    (replacing WallGetpass and WallSetpass), to send out a
+		    WALLOPS or GLOBOPS on all Services administrator actions.
+		    Suggested by Dionisios K. <vonitsa_net@yahoo.gr>
+2005/11/21	The Services root nickname will no longer expire, and may
+		    no longer be dropped by Services admins.  Suggested by
+		    Dionisios K. <vonitsa_net@yahoo.gr>
+2005/11/21	Added lookup_language(), lookup_string(), setstring(), and
+		    addstring() functions to language subsystem, to allow
+		    third-party modules to take advantage of multilingual
+		    support.
+2005/11/21	Renamed setstring() function to mapstring().
+2005/11/20	NickServ IDENTIFY and SET, ChanServ SET, and OperServ SU and
+		    SET now give syntax errors if too many parameters are
+		    given.
+2005/11/20	unload_module() now warns on callbacks added to other modules
+		    that are not removed by the module's exit routine.
+2005/11/20	Services now uses the <stdint.h> include file and its sized
+		    integer types where possible.
+2005/11/20	Finished initial implementation of new database module
+		    design.  Data access functions (get_XXX() and the like)
+		    are now defined in their respective pseudoclient
+		    modules rather than in the database module.
+2005/08/17	Removed StatServ SERVERS COPY and RENAME subcommands.
+2005/08/17	Redesigned database get/put functions to avoid potential
+		    expiration of in-use records.
+2005/08/17	ChanServ OP/VOICE/etc. now accept multiple nicknames.
+		    Suggested by Anton Wolkov (phan70m@gmail.com)
+2005/08/17	Added the ability to load language files on the fly
+		    (LoadLanguageText configuration directive).
+2005/04/03	Removed support for Unreal 3.1 and earlier.
+2005/02/24	SQlines are no longer applied to opers on startup for
+		    protocols that send user modes in the NICK message
+		    (bahamut, hybrid, monkey, ptlink, trircd, unreal).
+2005/02/24	Added initial user modes to the list of parameters for the
+		    "user create" callback.
+2005/02/23	SIGHUP now saves the databases before rehashing the
+		    configuration files.  Suggested by Torbjorn Svensson
+		    <azoff@se.linux.org>
+2005/02/23	Added OperServ debug command MONITOR-IGNORE to monitor the
+		    ignore level of a particular user.
+2005/02/23	Redesigned ignore system.
+2005/02/22	NickServ SET/UNSET for other nicknames (by Services admins)
+		    is now done by including a "!" before the nickname.
+2005/02/22	Added atolsafe() function for more robust string-to-integer
+		    conversion.
+2005/02/22	Added ChanServ ACCESS LISTLEVEL subcommand.
+2005/01/23	Command-line options can now be specified with two dashes,
+		    a la GNU (one dash still works as well).
+2005/01/23	Added -encrypt-all command-line option.
+2005/01/23	"make install" will now create directories as needed, rather
+		    than configure.
+2005/01/23	The configure script is now entirely non-interactive;
+		    installation directories must be specified on the
+		    command line, and configure will not abort if the
+		    directories do not exist.
+2005/01/07	Added "+N" parameter to ChanServ ACCESS/XOP/AKICK LIST.
+2004/12/28	Added Content-Type header with character set information to
+		    mail messages.
+2004/12/14	Don't apply unauthed expiration time to SETAUTH'd nicks.
+2004/12/14	Removed NickServ and ChanServ SENDPASS.
+2004/12/14	Added REAUTH command to nickserv/mail-auth module.
+2004/12/14	Added encryption/unix-crypt module.
+2004/12/14	PTlink database encryption types are now imported correctly.
+2004/12/14	Redesigned encryption system.  Encryption cipher is now
+		    stored with passwords; "cipher" attribute added to XML
+		    <pass>/<founderpass>/<supass> tags.
+2004/12/13	Added [module_]log[_perror]_debug() functions, and changed
+		    module name prefix in log messages ("name:" -> "(name)").
+2004/12/13	Removed workaround for old versions of GCC.
+2004/10/25	"Holes" are no longer left in internal channel autokick
+		    lists after deleting entries.
+2004/10/25	Entry numbering removed from ChanServ ACCESS, XOP, and
+		    AKICK commands.
+2004/09/03	MemoServ SET NOTIFY now correctly displays the current
+		    NickServ nickname instead of always "NickServ".
+2004/09/03	Fixed a memory leak in the httpd/auth-ip module.
+2004/09/03	Removed deprecated nickserv/oldlink module.
+2004/09/03	Added MemoServ RENUMBER command.
+2004/09/02	Added "opers only" message to end of NickServ LISTEMAIL
+		    help when appropriate.
+2004/09/02	Fixed bug resolving symbols when using static modules.
+2004/09/02	Added "end of list" messages for OperServ AKILL/etc LIST/VIEW.
+2004/09/02	Added "+N" parameter to set list starting point for
+		    NickServ/ChanServ LIST and OperServ AKILL/etc LIST/VIEW.
+		    Suggested by Michael D. Smith <msmith@acmecorp.org>
+2004/08/27	Clarified OperServ CLEARMODE response messages.
+2004/08/27	Removed reference to ACCESS in ChanServ REGISTER help to
+		    avoid confusing users when only the XOP commands are
+		    available.
+2004/08/27	Changed the compatibility strsignal() to use the more
+		    common names for SIGSTOP/SIGTSTP.
+2004/08/27	Added strbcpy() function (macro) for improved robustness.
+2004/08/27	Revised message-handling code to optimize lookups of
+		    frequently-seen messages.
+2004/08/27	Removed ChanServ module dependency from XML import module.
+2004/08/26	Finished redesign of module system internals.  Modules now
+		    have a THIS_MODULE macro which automagically points to
+		    the module's data structure; THIS_MODULE made implicit
+		    in relevant modules.c function calls.
+2004/08/13	Channel mode locks are now stored as strings rather than
+		    bitmasks in the on-disk database.
+2004/08/12	NickServ LIST/LISTEMAIL and ChanServ LIST now display "no
+		    matches" instead of "0/0 matches shown" if no matches.
+2004/08/12	Fixed failure to abort in-transit mail messages on mail
+		    module removal (potentially resulting in crashes).
+2004/08/12	Removed MaxSockets (mail/smtp) directive since MaxMessages
+		    now performs the same function.
+2004/08/12	Added MaxMessages configuration directive to mail/main module.
+2004/08/12	Disabled swritemap() in new sockets code to avoid
+		    dependence on munmap().
+2004/08/10	MemoServ FORWARD now forwards all selected memos in a
+		    single mail message.
+2004/08/10	Fixed minor memory leak in sending mail.
+2004/08/10	Fixed bug in mail/smtp module causing blank lines to be
+		    removed from message bodies.
+2004/08/10	Removed MSNotifyAll configuration directive; MemoServ will
+		    now always send notices to all online nicks.
+2004/08/10	Added MSExpireDelay and removed MSExpireUnread configuration
+		    directives.
+2004/08/10	Redesigned channel memo system to send memos to individual
+		    users instead of storing them separately with the channel.
+2004/08/05	DevNull and HelpServ no longer allow their nicknames to be
+		    registered or linked.
+2004/08/05	Add note about increasing stack size on AmigaOS.  Reported
+		    by Michael Trebilcock <trebs@ihug.com.au>
+2004/08/04	Added NickServ RESTOREMAIL command, which allows a user to
+		    restore their nickname's last authenticated E-mail
+		    address after an (unauthenticated) change.  The calling
+		    format of the NickServ SET EMAIL callback has also been
+		    changed.
+2004/08/04	nickserv/mail-auth module no longer changes default
+		    nickname flags on registration.
+2004/08/04	Added notices for delayed errors on mail authentication
+		    message sending.
+2004/08/03	Added support for importing VOPALL channel setting in Cygnus.
+2004/08/03	Fixed bug in configure script which left its temporary
+		    directory sitting around when run with -check.
+2004/08/03	Added ACCLEV_DEFAULT constant and use instead of allocating
+		    and freeing ci->levels to indicate defaults.  Changes
+		    to the default level values will now be reflected
+		    immediately in channels which have not changed that
+		    particular level.
+2004/08/03	Added IP address check to match_usermask(), and removed
+		    special cases scattered throughout the code.  As a
+		    result, memo ignore and autokick now also work with IP
+		    addresses.
+2004/07/29	MODE -o+v from a user on themselves no longer causes
+		    ChanServ to remove the +v.  Reported by
+		    <chat@discoware.com>
+2004/07/28	NSRequireEmail is now enabled by default.
+2004/07/28	Fixed rare bug causing +r (registered) mode to get left on
+		    dropped channels.
+2004/07/28	ChanServ now requires the channel password in the DROP
+		    command; dropping by Services administrators is now
+		    done with the DROPCHAN command.
+2004/07/28	The configure script now checks that pointers have a sane size.
+2004/07/28	Pseudoclients are no longer set +o on servers where they
+		    don't need oper privileges.  Suggested by Ben Goldstein
+		    <beng@nc.rr.com>
+2004/07/28	Clarified OperServ CLEARMODES help.
+2004/07/28	Changed out-of-date "expires at next database update"
+		    message to "expired".
+2004/07/28	Added EXCEPTION COUNT command.
+2004/07/27	Removed CSAutokickReason configuration directive (obsoleted
+		    by "AKICK by <nick>" reason prefix).
+2004/07/27	Added CHECK subcommand for OperServ AKILL/EXCLUDE/SxLINE/
+		    EXCEPTION.
+2004/07/27	Added unsorted hash mode (configure -no-sorted-list).
+2004/07/24	Removed support for the "channel owner" mode present in some
+		    IRC servers.
+2004/07/15	Added SendTimeout configuration directive for mail timeouts.
+2004/07/14	RPM/Debian packages now install into /opt/ircservices and
+		    /var/opt/ircservices instead of under /usr.
+2004/07/13	Memory-checking code (configure -memchecks) now fills
+		    memory with arbitrary values to catch misuse of
+		    uninitialized or freed memory.
+2004/07/13	Added ChanServ NOP (never-op list) command.  Suggested by
+		    Kieron Thwaites <ron2k@webmail.co.za>
+2004/07/13	Removed Italian and Portuguese language files, which were
+		    hopelessly out of date.
+2004/07/13	Rewrote socket-handling code.
+2004/07/02	Moved channel mode lock data to its own structure.
+2004/07/02	Merged NSListMax and CSListMax configuration options into
+		    ListMax, and applied ListMax to OperServ as well.
+2004/06/30	Code base split off from version 5.0.33.
+
+Version 5.0
+-----------
+2009/07/31 .64	ChanServ DEPROTECT no longer removes channel owner mode, to
+		    prevent abuse by rogue users.  Reported by Kieron
+		    Thwaites <ron2k.za@gmail.com>
+2007/11/21 .63	Backported security-related fixes from 5.1.
+2007/06/10 .62	Backported 5.1 fix for a bug allowing guest nicknames to be
+		    linked.
+2007/03/30 .61	Fixed crash on x86-64 systems under certain circumstances.
+		    Reported by Andrey V. Elsukov <bu7cher@yandex.ru>
+2007/03/24 .60	Changed ChanServ SET PASSWORD to remove founder privileges
+		    from any users who had previously identified for the
+		    channel (backported from 5.1a13).  Reported by
+		    ongeboren <xxx.coder@gmail.com>
+2006/10/01 .59	Added support to convert-db for versions of PTlink Services
+		    through 2.26-eol.1.
+2006/08/16	Updated documentation to reflect new domain name.
+2006/06/22 .58	Added workaround to support the broken MD5 encryption used
+		    in Epona/Anope (through at least version 1.7.14),
+		    enabled by the EnableAnopeWorkaround option for the
+		    encryption/md5 module in modules.conf.  Reported by
+		    Gabriel Baez <gabriel.baez@solid-ircd.com>
+2006/06/22	configure -check (run by the Makefile) no longer leaves a
+		    conf-tmp directory lying around.
+2006/06/21	Fixed error when compiling with recent versions of GNU make.
+2006/06/20	Fixed crash when importing some Anope databases.  Reported
+		    by Gabriel Baez <gabriel.baez@solid-ircd.com>
+2006/01/20	Added support to convert-db for recent versions of Epona.
+2006/01/20 .57	Fixed conversion of Anope 1.7 OperServ databases.  Reported
+		    by Matt Smith <ratman6@charter.net>
+2006/01/20	ChanServ SET SECUREOPS now prevents unprivileged users from
+		    gaining channel protect (+a) status as well.  Reported
+		    by A.S. <loverboy@irc.doruk.net.tr>
+2006/01/20	Fixed a bug in the Cygnus database converter causing
+		    autokills with invalid expiration data to expire
+		    immediately rather than remain with no expiration time.
+2006/01/07	Fixed a cosmetic bug in ChanServ LIST causing the no-expire
+		    flag "!" to not be shown for suspended channels.
+2005/11/20 .56	Fixed a bug in StatServ that could cause a crash if
+		    StatServ was unloaded with a rehash while Services
+		    was running.
+2005/11/07	Changed NickServ and ChanServ SET PASSWORD to prevent the
+		    use of spaces in passwords.
+2005/11/07	The NickServ commands DROP, RECOVER, RELEASE, and GHOST now
+		    report a syntax error rather than "password incorrect"
+		    when too many parameters are given.  (As a result,
+		    passwords containing spaces can no longer be used with
+		    these commands.  Use IDENTIFY followed by SET PASSWORD
+		    to set a new password without spaces.)
+2005/10/26	Fixed incorrect end-of-/WHOIS responses for several
+		    pseudoclients.  Reported by Robin Burchell
+		    <surreal.w00t@gmail.com>
+2005/09/26 .55	Added documentation on CSSetChannelTime configuration option.
+2005/08/25	Fixed rare bug allowing users to gain voice status
+		    improperly.  Reported by Anton Wolkov <phan70m@gmail.com>
+2005/08/23	Added "authed" callback for newly-authorized nicknames.
+		    Suggested by Robin Burchell <surreal.w00t@gmail.com>
+2005/08/16 .54	The ChanServ check_kick callback now passes the channel
+		    name as a string instead of the Channel structure, so
+		    the channel name can be known even if the channel is
+		    empty.  Reported by Olly <olly@avansys.co.uk>
+2005/08/13	The S-line commands (SGLINE, SQLINE, and SZLINE) now check
+		    that "*" or similarly overbroad masks are not used.
+		    Suggested by Dionisios K. <vonitsa_net@yahoo.gr>
+2005/08/13	Fixed minor bugs in the code to check whether a new
+		    autokill is too broad (such as "*").
+2005/08/13	Fixed a compilation error (and many warnings) when
+		    compiling with GCC 4.
+2005/08/13	Added UNSET callbacks for NickServ and ChanServ.  Suggested
+		    by Craig McLure <Craig@chatspike.net>
+2005/05/12 .53	Fixed bug causing server connection to fail.
+2005/05/12 .52	Fixed occasional corruption of the NickServ REGISTER syntax
+		    string upon reconfiguration (OperServ REHASH).
+		    Reported by <alm@woodnet.ru>
+2005/05/06	Fixed attempts to send PING messages before connecting to
+		    the server.  Reported by Craig McLure
+		    <Craig@chatspike.net>
+2005/04/02 .51	convert-db now checks for more potential problems with the
+		    imported databases before writing out the XML data.
+2005/04/02	Fixed bugs when converting databases from old versions of
+		    PTlink Services.
+2005/04/01	Fixed handling of links to forbidden nicks when converting
+		    Auspice databases.
+2005/03/31	ChanServ KICK no longer allows Services opers to be kicked.
+2005/03/31	Ensured that usermode +r is cleared from nicks which lose
+		    their identification status (e.g. from FORBID/SUSPEND).
+2005/03/31	NickServ SUSPEND now forces the user of the suspended
+		    nick to change nicknames, as FORBID does.  Reported by
+		    Dionisios K. <vonitsa_net@yahoo.gr>
+2005/03/31	ChanServ now stops non-identified users from joining
+		    channels with mode +R locked on.  Suggested by
+		    Dionisios K. <vonitsa_net@yahoo.gr>
+2005/03/29 .50	Fixed security hole in NickServ LISTLINKS allowing any user
+		    to view a nick's links.  Reported by
+		    <katarn@shadowfire.org>
+2005/03/06 .49	Added Russian language file, courtesy of Alexander Zverev
+		    <tty@inbox.ru>
+2005/03/05	Services will now accept multiple PROTOCTL messages from
+		    the Unreal ircd (as implemented in Unreal CVS).
+2005/03/04	Added support for +I/+j channel modes in Unreal 3.2.3.
+		    Reported by Kieron Thwaites <ron2k@webmail.co.za>
+2005/02/23 .48	Fix careless bug leading to possible crash on exit or rehash.
+2005/02/23 .47	Channels no longer expire while an auto-op user is in the
+		    channel; expiration is delayed until the time specified
+		    by CSExpire after the last such user leaves the channel.
+		    Reported by Anton Wolkov <phan70m@gmail.com>
+2005/02/23	Added user IP addresses to the OperServ LISTUSER debug
+		    command as well.
+2005/02/21 .46	Fixed some warnings during compilation.
+2005/02/21	Fixed bug causing modified files to not be recompiled
+		    properly when compiling with GNU make 3.79.
+2005/02/20	The OperServ debug command LISTUSERS now includes the IP
+		    address for each user before the user's mode string.
+2005/02/19	Added workaround for GCC bugs on PowerPC systems.
+2005/01/27	Fixed careless error in "make distclean".  Reported by
+		    Stanislav Zahariev <sofit@evronet.tv>
+2005/01/21 .45	Added HybServ support to convert-db.  Suggested by
+		    Stanislav Zahariev <sofit@evronet.tv>
+2005/01/21	convert-db is now recompiled properly if the compilation
+		    options passed to the configure script are changed.
+2005/01/13	IRC operators are now properly shown the operator version
+		    of ChanServ HELP LIST.  Reported by Kieron Thwaites
+		    <ron2k@webmail.co.za>
+2004/12/13 .44	Fixed a careless error in the va_copy workaround.
+2004/12/02 .43	Added workaround for va_copy with obsolete compilers.
+		    Reported by <us44ever@hotmail.com>
+2004/12/02	Added support for SGlines on Unreal.  Reported by Dionisios
+		    K. <vonitsa_net@yahoo.gr>
+2004/12/02	Fixed "unknown message" on Unreal SWHOIS.  Reported by
+		    Anton Wolkov <phan70m@gmail.com>
+2004/11/22	Fixed URLs in the documentation to point to the new website.
+2004/11/22 .42	The mail/smtp module now allows multiple RelayHost
+		    configuration directives for backup relay servers.
+		    Suggested by Torbjorn Svensson <azoff@se.linux.org>
+2004/11/22	Fixed extraneous "Unknown message" log messages on Unreal.
+		    Reported by Ali Sor <alisor@softhome.net>
+2004/10/29	Clarified "please change your nick" message text.
+		    Suggested by Dylan v.d Merwe <dylanvdm@icon.co.za>
+2004/10/25	Fixed crash when using the Japanese language file with the
+		    OperServ SLINE COUNT command.
+2004/10/19	Fixed bug allowing StatServ and global noticer nicknames to
+		    be registered/linked.  Reported by M. van Cuijk
+		    <mark@phedny.net>
+2004/10/14	Fixed various bugs and warnings when compiling on x86-64.
+		    Reported by <liverbugg@rinux.org>
+2004/10/14	Added workaround for GNU coreutils (>=5.2) brokenness.
+2004/10/13	SET MLOCK no longer allows locking +K without +i on Unreal.
+		    Reported by <help@thaiirc.in.th>
+2004/10/13	Fixed cosmetic bug in MemoServ IGNORE.  Reported by
+		    <saman@ttnet.net.tr>
+2004/10/11	Fixed disconnect on incoming data flood.  Reported by
+		    <ballsy@mystical.net>
+2004/10/03	Updated the README file for the current manual structure.
+2004/10/03 .41	Fixed SQUIT of juped servers on Bahamut.  Reported by Pasi
+		    Hirvonen <psh@iki.fi>
+2004/10/03	Fixed cosmetic bug in NickServ SUSPEND help.  Reported by
+		    Craig McLure <Craig@chatspike.net>
+2004/10/02	Fixed bug causing endless log messages on full network
+		    buffer.  Reported by <ballsy@mystical.net>
+2004/10/02	OperServ AKILLCHAN now honors the WallOSAkill setting.
+		    Reported by Pasi Hirvonen <psh@iki.fi>
+2004/09/19	Fixed missing object file in Hybrid module compilation.
+		    Reported by Jon Christopherson <jon@layertek.com>
+2004/09/05 .40	Fixed careless bug in autojoin module.
+2004/09/05 .39	Fixed bug allowing some NickServ/ChanServ commands to be
+		    used even in read-only mode.  Reported by Craig McLure
+		    <Craig@chatspike.net>
+2004/09/02	Fixed minor formatting errors in language files.
+2004/09/02	Fixed bugs in SMTP handling.  Reported by Gregg Conklin
+		    <greco@gate.net>
+2004/08/24	Fixed a trivial error in the modules/protocol Makefile.
+2004/08/15 .38	Services now checks channel joins against the channel's
+		    current modes as well as mode locks, to prevent users
+		    from "riding" netsplits into privileged channels.
+		    Reported by Craig McLure <Craig@chatspike.net>
+2004/07/27 .37	Autokicks now prefix the kick reason with "AKICK by <nick>"
+		    to avoid misleading kick messages.  Suggested by Bergee
+		    <lordbergee@comcast.net>
+2004/07/26	Fixed potential crashes in NickServ UNSUSPEND, DROP, and
+		    LINK (from the nickserv/oldlink module only).  Reported
+		    by Tom McIntyre <chawmp@cyberarmy.net>
+2004/07/15	Fixed cosmetic bug in MemoServ INFO display.  Reported by
+		    Bergee <lordbergee@comcast.net>
+2004/07/14	Fixed potential crash on exit when freeing language data.
+2004/07/14	Fixed bug causing nickname enforcers to not be removed when
+		    a nickname was deleted.  Reported by Bergee
+		    <lordbergee@comcast.net>
+2004/07/09 .36	Removed log message on socket buffer size misbehavior.
+2004/07/09	Fixed potential crash on SQUIT.  Reported by Tom McIntyre
+		    <chawmp@cyberarmy.net>
+2004/07/08 .35	Fixed memory leak in httpd/auth-password module when
+		    reconfiguring.
+2004/07/08	Fixed bug causing HTTP password authorization to fail.
+		    Reported by Martin Pels <martinpels@hotmail.com>
+2004/07/07	Added support for invite masks to Hybrid protocol.
+		    Suggested by Jon Christopherson <jon@jons.org>
+2004/07/05 .34	configure now properly detects the GCC version in use when
+		    running under Debian Linux.
+2004/07/02	Fixed bugs in handling MLOCK +/-j on Bahamut.
+2004/07/02	Fixed tiny potential memory leak on failed SET MLOCK.
+2004/06/29 .33	Fixed child process handling bug in mail/sendmail module.
+		    Reported by Ali Sor <alisor@softhome.net>
+2004/06/29	ChanServ STATUS now displays the SOP/AOP/VOP level when the
+		    chanserv/access-xop module is loaded.  Suggested by
+		    Kieron Thwaites <ron2k@webmail.co.za>
+2004/06/29	For Bahamut, SGLINE/SQLINE commands for masks not in the
+		    appropriate list are now reversed by Services (to
+		    prevent "revival" of deleted masks by split servers).
+		    This applies to operator-issued SGLINE/SQLINEs as well.
+2004/06/17	The configure script now checks for two bugs in GCC (fixed
+		    in GCC 3.4.0) which cause Services to crash.
+2004/06/07 .32	Updated Unreal protocol module for Unreal 3.2.1.
+2004/05/24	get_access() (which returns a user's access level on a
+		    channel) is now exported by the chanserv/main module.
+2004/05/18	-z (insecure) users can no longer enter channels locked to
+		    +z on Unreal.  Reported by Dionisios K.
+		    <vonitsa_net@yahoo.gr>
+2004/05/14	Fixed failure to clear ban exceptions on autokick.
+		    Reported by Eric Murphy <emurphy@sporked.us>
+2004/05/12	Updated Bahamut protocol module for Bahamut 1.8.0.  Support
+		    for 1.4.x has been removed.
+2004/05/07	Fixed errors in OperServ SESSIONS and EXCEPTIONS help text.
+		    Reported by Elijah <admin@nevernet.net>
+2004/05/04	Fixed harmless compilation warning in database/version4
+		    module.  Reported by Craig McLure <Craig@chatspike.net>
+2004/04/29 .31	Fixed crash with MLOCK +J when using trircd protocol.
+		    Reported by <irc@teknet.com.tr>
+2004/04/28	Added stricter checks on module loading order.
+2004/04/09 .30	Added logic to configure script to avoid the use of the
+		    -fstack-protector option if doing so would trigger a
+		    compiler bug.  Reported by Torbjorn Svensson
+		    <azoff@se.linux.org>
+2004/04/06	ChanServ no longer requires an explicit IDENTIFY to use INFO
+		    ALL.  Reported by Wolfgang Urban <ircservices@tou.de>
+2004/04/06	NickServ LISTCHANS now properly aborts when a non-servadmin
+		    uses the nickname form of the command.  Reported by
+		    Elijah <admin@nevernet.net>
+2004/04/04	The ChanServ DEPROTECT command now clears channel-owner
+		    status on those IRC servers that support such a mode.
+		    Suggested by <freakycomputer@global.co.za>
+2004/04/02	Fixed additional bug causing autokill exclusions to not
+		    function properly in some cases.
+2004/04/02	Fixed bug causing autokill exclusions to not function under
+		    Unreal.  Reported by Eric Murphy <emurphy@sporked.us>
+2004/03/31	Fixed bug allowing users to improperly be identified for
+		    newly-registered nicknames awaiting authentication.
+		    Reported by <cyberdems@cyberdems.za.net>
+2004/03/30	Added workaround for Unreal SQLINE "bouncing" issue.
+		    Reported by Craig Edwards <brain@winbot.co.uk>
+2004/03/30	ChanServ SET RESTRICTED no longer modifies the internal
+		    NOJOIN level.
+2004/03/30	Fixed failure to reset internal-use AUTODEOP and NOJOIN
+		    channel levels when loading databases from version 4.5
+		    and earlier.  Reported by Wolfgang Urban
+		    <ircservices-coding@tou.de>
+2004/03/24 .29	Added support for extended ban types, new channel mode +f
+		    format, and other feeping creaturism in Unreal 3.2.
+2004/03/24	Fixed PTlink channel database reading, and added workaround
+		    for PTlink bug causing inconsistent data to be stored.
+		    Reported by <dux@fbnet.org>
+2004/03/17	Added experimental support for Hybrid 7 servers.  Thanks to
+		    Jon Christopherson <jon@jons.org> for assistance.
+2004/03/06	Updated tr-ircd protocol module to support version 5.7.
+		    Support for versions before 5.5 has been dropped at the
+		    tr-ircd author's request.
+2004/02/05 .28	The OperServ AKILL/EXCLUDE/EXCEPTION/SLINE LIST and VIEW
+		    commands now only display the first 50 entries matching
+		    the given mask.  Note that no notice is given if the
+		    list is cut off; this will be remedied, and the limit
+		    (50) made configurable, in a future release.
+2004/02/02	Fixed a cosmetic bug in ChanServ SET SECURE help.  Reported
+		    by Andrew Kempe.
+2004/01/22	Fixed a bug causing the ChanServ XOP DEL commands to delete
+		    the wrong access entries.  Reported by <profound@eyerc.net>
+2004/01/05	+ in channel names no longer confuses the httpd/dbaccess
+		    module.  Reported by <phantom@phntm.nix.org.il>
+2004/01/05	Channel entry messages are now prefixed with the channel
+		    name.  Suggested by Medice.
+2004/01/05	Fixed a bug in calculating session memory usage for OperServ
+		    STATS ALL.  Reported by Ali Sor <alisor@softhome.net>
+2003/12/09	Added slightly more verbose logging when a fatal signal is
+		    received.
+2003/12/03 .27	Fixed a stupid bug in the AKILLCHAN command causing corrupted
+		    autokills.  Reported by <freakycomputer@global.co.za>
+2003/12/03	Various code cleanups and memory leak fixes.
+2003/12/02	Fixed security loophole allowing users to obtain channel
+		    privileges with a nickname awaiting authentication
+		    after a SET EMAIL command.
+2003/12/02	MEMCHECKS/SHOWALLOCS log messages now show the full path of
+		    the calling file.
+2003/12/02	Implemented "overwrite" option for XML import.
+2003/12/01	Services no longer logs errors when receiving SZLINE
+		    messages (using the Bahamut protocol).  Reported by
+		    <ballsy@mystical.net>
+2003/11/30	Fixed crash on exit in FreeBSD.  Reported by Chris Riley
+		    <dooley@risanet.com>
+2003/11/30	Fixed memory corruption when unable to open initial log file.
+2003/11/28	Fixed crash on long channel mode commands.  Reported by
+		    <diego@redesul.net>
+2003/11/26 .26	Some configuration settings (such as FromAddress in mail/main)
+		    which were only checked for validity at startup are now
+		    also checked when rehashing the configuration files.
+2003/11/26	Fixed failure to recognize changes in the MSAllowForward
+		    configuration directive (for the memoserv/forward module).
+2003/11/26	Improved internal storage format for nickname authentication
+		    codes (the reason for setting the code is now stored
+		    separately from the code itself).  As a result, Cygnus
+		    codes are now imported without any changes.
+2003/11/26	Fixed infinite-loop bug in Magick database importer.
+		    Reported by <freakycomputer@global.co.za>
+2003/11/25	Fixed potential desynchronization bug with channel MODE -e.
+2003/11/25	The registration delay functionality (NSRegDelay and
+		    NSInitialRegDelay) now shows the remaining amount of
+		    time the user needs to wait rather than the full delay
+		    length.
+2003/11/25	Added NSInitialRegDelay configuration option.  Suggested by
+		    Mark Hetherington <mark@ctcp.net>
+2003/11/25	Documented the workings of hash.h.
+2003/11/25	Fixed more memory leaks, and did minor code cleanups.
+2003/11/20	Fixed a cosmetic bug in OperServ HELP AKILLCHAN.  Reported
+		    by <ballsy@mystical.net>
+2003/11/18 .25	Fixed potential crashes when importing or exporting data
+		    via the command line.
+2003/11/18	Fixed various memory leaks.
+2003/11/17	When SHOWALLOCS is enabled, the file and line at which
+		    memory was allocated or freed is now logged.
+2003/11/15	Fixed bugs in the configure script when using a deprecated
+		    version of GCC.  Reported by Matthew Hodgson
+		    <arathorn@theonering.net>
+2003/11/13	Added AKILLCHAN command to operserv/akill module.
+		    Suggested by <us44ever@hotmail.com> and others.  As a
+		    result, the operserv/akill module now requires a new
+		    configuration directive, AkillChanExpiry, to be set in
+		    modules.conf.
+2003/11/13	OperServ will now issue a warning if EnableExclude is used
+		    with an IRC server type that does not support autokill
+		    exclusions (thus preventing autokills from being sent).
+2003/11/13	The program name "anope" can now be used with convert-db
+		    for Anope databases.  ("epona" will still work as well.)
+2003/11/12	Added support to convert-db for PTlink 2.22.0 and later.
+2003/11/11 .24	Fixed a warning in convert-db compilation.
+2003/11/11	Fixed bugs in convert-db causing some nickname and channel
+		    settings (timezone, language, channel and memo limits)
+		    to not be initialized properly.
+2003/11/11	Added -tzfile, -no-timezones, and -reset-memo-limits
+		    options to the Cygnus database converter in convert-db.
+2003/11/05	Databases can now be exported in XML from the command line
+		    (-export option).
+2003/11/05	GCC versions earlier than 3.2 (except 2.95.3) are now
+		    deprecated.  Variadic macros workaround added for
+		    problem reported by Ali Sor <alisor@softhome.net>
+2003/11/05	Channel last-used time is now updated properly for the
+		    first user to enter the channel if the user has auto-op
+		    privileges.  Reported by <saman@alkol.org>
+2003/11/01 .23	Fixed bug causing database contents to get lost for small
+		    databases on full filesystems.  Reported by
+		    <us44ever@hotmail.com>
+2003/10/29	Fixed minor bugs in convert-db, and added checks to the
+		    data before it is output.  (As a result, convert-db
+		    will take somewhat longer to process the same data.)
+2003/10/27	Added support to convert-db for converting Cygnus databases.
+		    Suggested by Jamie Penman-Smithson <jamie@chatnplay.net>
+2003/10/27	Modified default channel level definitions to use ACCLEV_*
+		    constants from chanserv.h.  If you change the constants
+		    (not recommended for compatibility reasons), the
+		    default channel levels will now change with them.
+2003/10/24	Added note to ListenTo directive documentation concerning
+		    the usage of low port numbers.
+2003/10/18	Added FAQ F.10 regarding the ImmediatelySendAutokill option
+		    to help people who have trouble reading documentation.
+2003/10/17	Fixed a cosmetic bug when giving forbidden nicknames to the
+		    AUTH-related commands.  Reported by <us44ever@hotmail.com>
+2003/10/14	Fixed a typo in the ChanServ SET help text.  Reported by
+		    playa <playa6@sbcglobal.net>
+2003/09/09 .22	The SHOWALLOCS compilation option can now be set from the
+		    configure script instead of editing memory.c directly.
+2003/09/09	Fixed bug causing blank lines in help messages to not be
+		    sent in rare cases.
+2003/09/09	Clarified NickServ AJOIN help with regard to +k and similar
+		    channels.
+2003/08/31	NickServ now displays the proper LIST help text for IRC
+		    operators. Reported by <saturn@jetirc.net>
+2003/08/31	Disabling the AUTOPROTECT channel level now disables
+		    automatic channel founder (Unreal, etc.) as well.
+2003/08/31	ChanServ LEVELS DISABLE AUTOOP (and AUTOVOICE, etc.) now
+		    properly affects the founder as well.  Reported by
+		    Shaun Guth <l8nite@l8nite.net>
+2003/08/31	Fixed desynch on MODE -b with differing upper/lower case
+		    from the actual ban.  Reported by Jeffrey Kam
+		    <jskam@shaw.ca>
+2003/08/31	Fixed potential crash on attempted DROP of a forbidden
+		    channel.  Reported by Marc-Andre A. Fuentes
+		    <nothing@psychopat.org>
+2003/08/30	Add syntax reminder for users that get E-mail address and
+		    password backwards in NickServ REGISTER.  Suggested by
+		    Craig McLure <Craig@chatspike.net>
+2003/08/30	Fixed desynch occurring with MergeChannelModes when a user
+		    joined an empty channel and quickly changed nicknames.
+2003/08/30	NickServ SET EMAIL now logs the previous E-mail address as
+		    well as the new one.  Suggested by
+		    <RealCFC@chatfirst.com>.  As a result, the log message
+		    now has a slightly different format.
+2003/08/30	Fixed bug causing some ChanServ mode changes to get lost.
+		    Reported by Craig McLure <Craig@chatspike.net>
+2003/08/30	ChanServ no longer attempts to restore the topic on a
+		    channel if no topic has been recorded.
+2003/08/30	Added NickServ DROPEMAIL command.
+2003/08/30	ChanServ SET FOUNDER and SET SUCCESSOR now log the previous
+		    founder/successor as well as the new one.  Suggested by
+		    <RealCFC@chatfirst.com>.  As a result, the log messages
+		    now have a slightly different format.
+2003/08/29	Channel mode and topic changes (except for mode changes
+		    caused by CSSetChannelTime) now always use a consistent
+		    source name: ChanServ, OperServ, or the server name,
+		    depending on whether the respective modules are loaded.
+2003/07/27	Added FAQ Z.3.5 regarding backtraces.
+2003/07/16	Added explanation of reasoning behind choice of license
+		    terms.  Suggested by Richard Stallman <rms@gnu.org>
+2003/07/09 .21	Fixed type-related warnings in some environments.
+2003/07/09	Fixed errors when compiling in parallel (make -jN).
+2003/07/04	Fixed warnings about builtin function name clash with GCC.
+		    Reported by Craig McLure <Craig@chatspike.net>
+2003/06/28	Fixed crash on abnormal disconnection from server.
+		    Reported by Jeffrey A. Kent <jeff.kent@myrealbox.com>
+2003/06/25	Fixed compilation failure on OpenBSD.  Reported by
+		    <obi_wan@no.script-irc.de>
+2003/06/21 .20	Fixed a minor memory leak in the socket handling code.
+2003/06/17	Minor tweaks to various Makefiles.
+2003/06/16	Fixed bug causing data in socket write buffers to get
+		    corrupted.
+2003/06/11	Added workaround for GCC bug on SPARC systems.  Reported by
+		    Kevin Kane <kane@firelion.org>
+2003/06/09	Fixed compilation problems on Solaris.  Reported by Kevin
+		    Kane <kane@firelion.org>
+2003/06/09	NickServ autojoin no longer auto-invites users into +i
+		    channels when the user doesn't have INVITE privileges.
+		    Reported by Martin Pels <martinpels@hotmail.com>
+2003/06/05	Fixed bug causing ChanServ to inappropriately remove some
+		    users' channel modes.  Reported by Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2003/06/05	Changed handling of inappropriate channel user mode changes
+		    (e.g. entering a registered channel and setting +v on
+		    oneself before Services' -o comes through) to remove
+		    only the added modes, not all of them.
+2003/06/02	Corrected various errors and inconsistencies in the language
+		    files, and brought section 4 of the manual up to date.
+2003/06/02	Added FORCE option to OperServ UPDATE command.
+2003/06/02	OperServ UPDATE now sends a notice after saving the
+		    databases indicating whether the operation succeeded.
+2003/06/02	Fixed bug causing some callback functions to not be called
+		    if a callback function removed itself from the callback
+		    list.  (Note that this situation does not occur in any
+		    previous versions of Services.)
+2003/05/28	Reworded NickServ replies and documentation for the
+		    mail-auth module to replace "authorize" by the more
+		    accurate "authenticate".
+2003/05/28 .19	Fake hostnames are now handled correctly by the PTlink
+		    protocol module.
+2003/05/28	Services now checks in advance whether a protocol module
+		    has been loaded, and aborts with an error message if
+		    not.  Suggested by Mark Hetherington <mark@ctcp.net>
+2003/05/28	Updated FAQ C.1 and added FAQ C.1.5 regarding errors which
+		    can occur when saving the databases to disk.
+2003/05/28	The ExpireTimeout configuration directive has been
+		    deprecated, as it is no longer used.  This directive
+		    will be removed entirely in the next version of Services.
+2003/05/28	Added documentation to section 6 of the manual on how to
+		    process messages received from the IRC network.
+2003/05/28	The program name used in the /VERSION reply ("ircservices")
+		    is now defined in version.sh for easier changing in
+		    derivative programs.
+2003/05/06	Clarified reasoning behind transfer-of-rights requirement
+		    for submission of code or other changes.
+2003/04/30	Fixed bug in OperServ JUPE command causing Services to be
+		    disconnected from the network when juping an existing
+		    server.  Reported by George Stamatiou <master@xchat.gr>
+2003/04/30	Added CSRegisteredOnly configuration directive.  Suggested
+		    by Stefan Hudson <hudson@mbay.net>
+2003/04/30	Fixed (lack of) interaction between NickServ autojoin and
+		    +i channels causing "cannot join channel" errors on
+		    IDENTIFY.  Reported by Christopher Wilson <owner@candt.net>
+2003/04/28 .18	Fixed bug causing chunks of output to get lost in the middle
+		    of HTTP server responses.  Reported by several people.
+2003/04/28	Fixed cosmetic bug in error message for colliding nicknames.
+2003/04/28	Fixed bug preventing forbidden nicknames from being imported.
+2003/04/28	Added a workaround to convert-db for an apparent bug in
+		    Auspice Services causing CR characters to appear in
+		    mode locks.
+2003/04/23	Fixed bug causing NickServ LIST to not return matches to
+		    Services admins for a pattern matching real hostnames
+		    but not fake ones.  Reported by Craig Edwards
+		    <brain@winbot.co.uk>
+2003/04/22	Fixed bug processing %hd and missing my_snprintf() in
+		    vsnprintf.c.
+2003/04/20 .17	Fixed crash when using UNLINK FORCE with non-linked nicks.
+		    Reported by Matthew Hodgson <arathorn@theonering.net>
+2003/04/15	The configure script now uses "conf-tmp" instead of "tmp"
+		    as its temporary directory name, to avoid potential
+		    clashes with pre-existing directories.
+2003/04/12	Precompiled binaries should now work with Linux kernel 2.2.x.
+		    Reported by <jay@hyperion.sleepygeek.org>
+2003/04/10 .16	Fixed crash on some systems when giving only spaces to
+		    certain commands.  Reported by Joao Luis Marques Pinto
+		    <Lamego@PTlink.net>
+2003/04/08 .15	Support for trircd 4.x removed, and for 5.1 added, on
+		    recommendation from Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2003/03/06	Fixed typo in English language file.  Reported by
+		    <monolith@orblivion.com>
+2003/03/04 .14	Fixed compilation error on some systems.
+2003/03/03 .13	Build number is no longer updated if no files have changed
+		    (this avoids "make ; make install" incrementing the value
+		    twice).  Reported by Craig McLure <Craig@chatspike.net>
+2003/03/03	Users are no longer collided if they have identified but
+		    need to set an E-mail address.  Reported by Andrew Kempe.
+2003/03/03	Nicknames awaiting E-mail authorization now always use the
+		    regular 60-second timeout regardless of the KILL
+		    setting.  Suggested by Andrew Kempe.
+2003/03/03	Added new section (3-1-2) on netsplit recovery to the manual.
+2003/03/03	Added workaround for broken browsers that don't handle
+		    backslashes properly.  Reported by <thebeast@xs4all.nl>
+2003/02/26	Outgoing mail now includes a Date: header, to avoid some
+		    MTAs inserting a date of 1970/1/1.  Reported by Mattias
+		    Karlsson <mattias.karlsson@nocom.se>
+2003/02/26	Added support for channel mode +M in Unreal (3.2 beta).
+2003/02/26	MemoServ SEND now requires identification for the nickname
+		    instead of just an access list match.  Reported by
+		    Rafael Stuhr <rafaelstuhr@gmx.de>
+2003/02/25 .12	ChanServ no longer gives +o to random users in channels on
+		    startup.  Reported by Matthew Hodgson
+		    <arathorn@theonering.net>
+2003/02/25	Core "channel create" callback modified for above fix to send
+		    the user's channel user modes to the called function.
+2003/02/25	NickServ now accepts a command-line option,
+		    "-clear-nick-email", to clear the E-mail addresses of
+		    all registered nicknames.  Suggested by Marc-Andre A.
+		    Fuentes <nothing@psychopat.org>
+2003/02/25	The convert-db program now compiles correctly under Cygwin.
+		    Reported by Mark Hetherington <mark@ctcp.net>
+2003/02/25	Pseudoclients are now properly introduced and removed when
+		    modules are loaded or unloaded at runtime.  Reported by
+		    Georges Berscheid <georges@berscheid.lu>
+2003/02/24	Fixed CSSetChannelTimes under Bahamut.  Reported by JT
+		    <jtraub+irc@dragoncat.net>
+2003/02/24	Fixed validity check on nickname language setting.  Reported
+		    by George Stamatiou <webmaster@xchat.gr>
+2003/02/24	Fixed dangling data directory lock on uplink server death.
+		    Reported by Aragon Gouveia <aragon@phat.za.net>
+2003/02/23	If an unsuspend grace period is set for nickname suspensions
+		    and the mail-auth module is in use, nicknames not yet
+		    authorized will have the delay before expiration of
+		    unauthorized nicks reset to the time of unsuspension.
+2003/02/23	Fixed problem in langcomp when .l files have CRs in them.
+2003/02/20 .11	Fixed 2002/10/24 compilation problem fix (modules/Makefile
+		    was missing the fix).
+2003/02/20	Fixed bugs in the trircd protocol module.  Reported by
+		    Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2003/02/19 .10	Fixed bug causing Services to terminate with a fatal error
+		    on receiving multiple KILL messages in quick succession.
+		    Reported by Andrew Kempe.
+2003/02/17	SMTP traffic is now logged at debug level 1 instead of level 2.
+2003/02/17	Added more debug log messages to the Unreal protocol module.
+2003/02/14	Fixed bug causing Services to hang if disconnected from the
+		    remote server.  Reported by several people.
+2003/02/14	Added checks to avoid "sockprintf() with NULL socket" errors
+		    appearing in the logfile.
+2003/02/14	Fixed trivial bug in calculating socket read timeout.
+2003/02/01 .9	Fixed a bug leading to desynchs.
+2003/01/31 .8	Fixed a number of compilation warnings.
+2003/01/31	Fixed typo and thinko causing crashes on channel mode changes.
+2003/01/30 .7	Fixed crash when opening a corrupt StatServ database.
+		    Reported by Rob van Eijk <rob4@home.nl>
+2003/01/30	Added robustness in clearing mode +r from users after
+		    nickname changes.
+2003/01/30	Users now properly get mode +r upon successful AUTH after
+		    registering a nick.  Reported by <RealCFC@chatfirst.com>
+2003/01/23	SZlines are now properly added on startup when using
+		    Unreal.  Reported by Aragon Gouveia <aragon@phat.za.net>
+2003/01/23	Save database changes if the uplink server disconnects us.
+		    Reported by Aragon Gouveia <aragon@phat.za.net>
+2003/01/22	OperServ KILLCLONES no longer adds a new autokill if an
+		    existing autokill matches the clones' user@host mask.
+		    Reported by Alexander Janssens <alex@cyga.net>
+2003/01/16	Bahamut protocol support cut off for version 1.4.34+ due to
+		    bugs in the Bahamut ircd.
+2003/01/07	Experimental PTlink IRC server support added.
+2003/01/06	Fixed bug causing -remote command-line option to not be
+		    recognized.
+2003/01/06	Fixed Unreal support (Unreal does not support dynamic
+		    autokill exceptions).  Reported by <ron885@bloodheart.com>
+2003/01/06	The wallops warning for repeated bad passwords on a channel
+		    now includes the nickname of the user who sent the last
+		    bad password.  Suggested by <cyberdems@wwirc.za.org>
+2003/01/02	Incorporated fixes for Chunky Monkey IRCD support from
+		    Chris Plant <chris@monkeyircd.org>
+2003/01/01	Fixed bug causing "AKILL has expired" messages to be sent
+		    multiple times.  Reported by <prince@zirc.org>
+2002/12/13	Clarified that "transfer rights" in section 6-3 of the
+		    manual refers only to rights under copyright law.
+2002/12/03	Added documentation on mail modules to section 3 of the
+		    manual.  Reported by Neal Kirby <Nealster02@hotmail.com>
+2002/11/25 .6	Fixed bug causing ChanServ commands to stop working on some
+		    channels.  Reported by <MrBOFH@lomag.net> and others.
+2002/11/23	Added documentation on how to compile modules into Services
+		    (section 6-1-6).
+2002/11/21 .5	The XML import module no longer prints strange error
+		    messages for unknown command-line options.
+2002/11/21	NickServ ACCESS ADD now warns of inappropriate syntax for
+		    masks which contain "!".  Suggested by Panagiotis
+		    Kefalidis <gizm0@ad2u.gr>
+2002/11/19	The configure script now correctly creates parent
+		    directories for the data directory if it does not exist.
+2002/11/19	Fixed configure check for socklen_t on FreeBSD.  Repoted by
+		    Sean Kelly <smkelly@zombie.org>
+2002/11/18 .4	The Makefile now checks that the results of `configure' are
+		    up to date before compiling.  This solves a compilation
+		    problem reported by several people in version 5.0.3.
+2002/11/16 .3	Fixed case-sensitivity bug with channel bans.  Reported by
+		    Alexander Janssens <alex@cyga.net>
+2002/11/16	Fixed topic time setting on Unreal.  Reported by
+		    <cyberdems@wwirc.za.org>
+2002/11/16	Added support for Intel's Linux/x86 compiler (icc) with
+		    optimization disabled.  "./configure -cc icc" to use it.
+2002/11/16	Fixed missing list terminators in several modules
+		    potentially causing crashes on startup or rehash.
+2002/11/13	Fixed a bug causing the contents of the cache to not be
+		    properly read in when using bash 2.05b.
+2002/10/29	Fixed cosmetic bugs when using NickServ IDENTIFY and GETPASS
+		    with forbidden nicknames.  Reported by <cc@omega.org.za>
+2002/10/25	Autokills, session exceptions, and S-lines are now checked
+		    for expiration at each database update.  Reported by
+		    Ali Sor <alisor@softhome.net>
+2002/10/24	Fixed compilation problem on Solaris reported by Geoff
+		    Byers <geoff@systemred.net>
+2002/10/24	Fixed string-constant-related warnings.
+2002/10/22 .2	Clarified bug-reporting instructions.
+2002/10/21	Fixed bug in recording channel topic setters in nick!user@host
+		    format.  Reported by Marcin Wolniewicz <marcin@di.pl>
+2002/10/20	Fixed bug with ChanServ FORBID #.  Reported by
+		    <toxic@linuxmail.gr>
+2002/10/18 .1	Fixed convert-db bugs with linked nicks (Auspice 2.7) and
+		    channel access lists (all programs).  Reported by
+		    <irc@kgn.ru>
+2002/10/17	NickServ LINK and UNLINK are now disabled in read-only mode.
+		    Reported by Dennis Sela <Schutzgeist@uni.de>
+2002/10/11	Fixed several compiler warnings.
+2002/10/11	Cosmetic fixes to debug log messages.
+2002/10/10	Fixed bug causing ChanServ CLEAR BANS to only clear one ban
+		    at a time.  Reported by Ali Sor <alisor@softhome.net>
+2002/10/10	Corrected a cosmetic bug in configure script and a compiler
+		    error when compiling static modules, both on Solaris.
+		    Reported by <oleg_orlov@inbox.ru>
+2002/10/06	Disabled -dumpcore by default in the configure script (to
+		    match help text).
+2002/10/06 .0	Version 5.0.0 released.
+2002/10/02 p15	Removed AKILL option for OperServ STATS command.
+2002/10/02	Fixed bug in checking protocol features from core code.
+2002/09/30	ACC-CHANGE channel privilege is now checked properly.
+		    Reported by Dylan v.d Merwe <dylanvdm@icon.co.za>
+2002/09/29	Added support for Bolivia IRC Services (version 1.2.0)
+		    databases to convert-db.  Suggested by Peter
+		    Samuelsson <psadi4@swipnet.se>
+2002/09/29	Sirv/Auspice database conversion now properly sets the
+		    SECURE option on imported channels.
+2002/09/25 p14	Fixed XML import bug causing channel access lists to get
+		    discarded.
+2002/09/25	Added workaround for GCC 3.x bug (GNATS PR#8028).
+2002/09/24	Fixed errors when channels expired during import.
+2002/09/23	Added SQlineKill configuration directive (operserv/sline).
+		    Suggested by John Edrington <john@cosmicfire.net>
+2002/09/23 p13	Fixed false out-of-memory error in socket handling code.
+		    Reported by <mazta@illlab.ee>
+2002/09/23	Unauthorized E-mail addresses can no longer be used in
+		    NickServ REGISTER or SET EMAIL commands for other
+		    nicknames, to prevent spamming of arbitrary addresses.
+2002/09/22	Fixed bugs in socket buffer memory tracking.
+2002/09/22	Added NetBufferLimit configuration directive and OperServ
+		    STATS NETWORK command.
+2002/09/18	French langauge file added, courtesy of Elijah
+		    <admin@nevernet.net> and Maxime <maxime_imbeau@hotmail.com>
+2002/09/15	-fno-strict-aliasing is now added to the compilation
+		    options for GCC to avoid overaggressive optimization.
+2002/09/15	configure can now be forced to use GCC 2.96, though this is
+		    still not supported.  It will also now look for gcc3 as
+		    an alternative before giving up.
+2002/09/14 p12	"convert-db -h" now lists supported program types in
+		    alphabetical order.
+2002/09/14	Removed unneded ALL parameter from LISTLINKS in
+		    nickserv/oldlink module.
+2002/09/14	Fixed bug in NickServ ACCESS ADD.  Reported by
+		    <Brain@chatspike.net>
+2002/09/04	Fixed bug in handling Auspice databases in convert-db, and
+		    added support for Auspice 2.7.  Reported by <irc@kgn.ru>
+2002/09/04	convert-db now converts nickname notes in Auspice databases
+		    to memos.
+2002/09/01	Removed stray .o file left around in previous releases.
+2002/08/30	configure now detects GCC 2.96 and refuses to use it.
+2002/08/28 p11	Fixed bug in importing nickgroups with IDs >2147483647.
+		    Reported by Martin Pels <martinpels@hotmail.com>
+2002/08/27	Users can no longer LINK pseudoclient nicknames, for real
+		    this time.  Reported by <RealCFC@chatfirst.com>
+2002/08/26 p10	Fixed potential bugs when removing modules with REHASH.
+2002/08/26	Users can no longer LINK pseudoclient nicknames.  Reported
+		    by <RealCFC@chatfirst.com>
+2002/08/26	Reduced memory usage in number-list processing by 56k.
+		    Suggested by Bryce Simonds <kelmar@esper.net>
+2002/08/26	Services now handles TOPIC messages with nick!user@host
+		    properly.  Reported by Carsten Munk <stskeeps@tspre.org>
+2002/08/25	Added Hungarian language file, courtesy of Janos Kapitany
+		    <kapitany.janos@gmail.com>
+2002/08/23	Fixed various bugs in help/error messages, and removed
+		    unused messages from language files.
+2002/08/23	Memos can no longer be sent while in read-only mode.
+2002/08/23	Fixed bug causing desyncs on Bahamut with CSSetChannelTime.
+		    Reported by Russ Garrett <russ@garrett.co.uk>
+2002/08/22	Corrected errors in the language files.  Helpful script
+		    provided by Jacek Margos <jacek.margos@freenet-ag.de>
+2002/08/15	Disallowed links to suspended nicknames in the
+		    nickserv/oldlink module.  Suggested by Holger Baust
+		    <holger.baust@freenet.de>
+2002/08/15 pre9	Removed AUTODEOP and NOJOIN channel levels.
+2002/08/15	Fixed crash on OperServ SQLINE COUNT.  Reported by
+		    <teoman@anet.net.tr>
+2002/08/15	Fixed cosmetic bug when changing the language for another
+		    nickname.  Reported by <Coolkill121@aol.com>
+2002/08/15	Fixed a trivial cosmetic error in NickServ IDENTIFY.
+2002/08/14	A missing newline at the end of a configuration file no
+		    longer causes an error.  Reported by Yaniv Gamzo
+		    <Yaniv@icq.com>
+2002/08/13 pre8	Finished HTML documentation.
+2002/08/13	Renamed httpd/redirect NickPrefix directive to NicknamePrefix.
+2002/08/12	Fixed bug causing autokill exclusions to not work on Unreal
+		    3.1.  Reported by <RealCFC@chatfirst.com>
+2002/08/11	Fixed crash on database update with forbidden nicknames.
+		    Reported by Craig McLure <Craig@chatspike.net>
+2002/08/10 pre7	Brought the example HelpServ help text (data/helpfiles/help)
+		    slightly more up to date.
+2002/08/10	Added SQlineIgnoreOpers directive.  Suggested by Ekim Engin
+		    <eengin@talesoft.de>
+2002/08/10	Fixed delay in expiring unauthorized nicknames with
+		    NSNoAuthExpire set.  Reported by David Orman
+		    <monolith@orblivion.com>
+2002/08/09	Fixed crash on importing nicks with invalid nick groups.
+		    Reported by <saturn@jetirc.net>
+2002/08/09	Added DefTimeZone configuration directive.  Suggested by
+		    George Stamatiou <master@xchat.gr>
+2002/08/09	Added workaround for double-mode (+oqoq, +kk) bug.
+2002/08/09	Added SETCMODE debug command to OperServ.
+2002/08/09	Updated trircd protocol module from suggestions by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/07/29	Halfops can now set -h and +/-v on themselves.  Reported by
+		    Dennis Sela <Schutzgeist@uni.de>
+2002/07/28 pre6	Nicknames linked to the Services super-user nickname now
+		    get super-user privileges as well.  Suggested by Shaun
+		    Guth <l8nite@l8nite.net>
+2002/07/28	Log messages are no longer output for SILENCE messages.
+		    Suggested by Marc-Andre A. Fuentes <nothing@psychopat.org>
+2002/07/28	Fixed junk data getting output in Sirv database conversion.
+2002/07/28	Fixed off-by-one bug in Epona support in convert-db.
+2002/07/28	Added support for Sirv 2.9.0 databases to convert-db.
+		    Suggested by Gorkem Ogut <gorkemogut@hotmail.com>
+2002/07/23	The # character can now be used inside quoted strings in
+		    configuration files.
+2002/07/22	Fixed crash when sending memos to offline users with
+		    MSNotifyAll disabled.  Reported by <ran@fistuk.com>
+2002/07/20	Fixed bugs involving passwords with spaces in them.
+		    Reported by <RealCFC@chatfirst.com>
+2002/07/20	Databases are now properly written to disk after an import.
+2002/07/20	Fixed bug causing data importing to fail.  Reported by
+		    Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/07/18	GLINEs not set by Services are no longer cleared. (Unreal)
+2002/07/18	Fixed bug causing debugging to always get disabled on startup.
+2002/07/17	Corrected ChanServ AKICK documentation.  Reported by Aragon
+		    Gouveia <aragon@phat.za.net>
+2002/07/17	AJOIN and Unreal's MLOCK +L now check validity of channel
+		    name parameters.  Reported by Aragon Gouveia
+		    <aragon@phat.za.net>
+2002/07/17	An error message is now sent if modes +b/+e are used with
+		    MLOCK.  Reported by <RealCFC@chatfirst.com>
+2002/06/24 pre5	Applied fix to format-string bug from version 4.5.41.
+2002/06/23 pre4	Fixed infinite loop on non-Unreal servers.  Reported by
+		    George Stamatiou <master@xchat.gr>
+2002/06/21 pre3	Fixed bug preventing memo notification on IDENTIFY.
+		    Reported by <Ganja51@earthlink.net> and others.
+2002/06/21	Modified configure to work on OSF/1.  Reported by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/06/19	Added support for autokill exceptions in Unreal.  Suggested
+		    by <RealCFC@chatfirst.com>
+2002/06/19	Fixed bug allowing unidentified users to use INFO ALL on
+		    the nickname they are using.
+2002/06/19	Unverified E-mail addresses are no longer shown except to
+		    the user and Services administrators, and are indicated
+		    unverified.  Suggested by Ben Goldstein <beng@nc.rr.com>
+2002/06/19	Fixed two sneaky logic bugs causing crashes in rare cases.
+		    Reported by Sean Kelly <smkelly@slashnet.org>
+2002/06/19	Fixed a typo in ircservices-chk.
+2002/06/19	The initial access list entry for newly-registered nicks can
+		    now be disabled in modules.conf (NSFirstAccessEnable).
+		    Suggested by <RealCFC@chatfirst.com>
+2002/06/19	Fixed bug causing SECUREOPS to not work on servers without
+		    halfops support.  Reported by George Stamatiou
+		    <master@xchat.gr>
+2002/06/19	Added TMODE and +L (server language) support to trircd
+		    protocol module.  Suggested by Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2002/06/18	Fixed "invalid nickname" errors on valid nicknames for many
+		    IRC daemons.  Reported by Romek Krisztian
+		    <r-krisztian@softhome.net>
+2002/06/18	Fixed crash in NickServ SENDPASS and AJOIN on unregistered
+		    nicks.  Reported by <RealCFC@chatfirst.com>
+2002/06/17 pre2	XML importing is now done via the -import command-line option.
+2002/06/16	Command-line options now take an "=" instead of a space
+		    between option name and value.
+2002/06/14	The NickServ LINK command no longer accepts invalid nicks.
+		    Reported by <terminator@koekjes.net>
+2002/06/13	Documentation fixed to conform to HTML 4.01 Transitional.
+2002/06/13	Added a HELP COMMANDS topic to StatServ to match the other
+		    pseudoclients' help systems.
+2002/06/11	Mode lock +L on Unreal now requires +l to be set as well,
+		    to match the IRC server's behavior.  Reported by Aragon
+		    Gouveia <aragon@phat.za.net>
+2002/06/11	AJOIN now prevents "channel" names not beginning in "#"
+		    from being added.  Reported by Aragon Gouveia
+		    <aragon@phat.za.net>
+2002/06/11	Fixed cosmetic bugs in some NickServ syntax error messages.
+2002/06/11	Fixed bugs reported by Romek Krisztian
+		    <r-krisztian@softhome.net>:
+		    - Extra spaces no longer cause problems with some commands.
+		    - Spaces can now be used in passwords.
+		    - Port numbers no longer cause URLs to be rejected.
+		    - NickServ SET TIMEZONE parameter is now checked more
+		      carefully.
+		    - NickServ/ChanServ LIST and NickServ LISTEMAIL now
+		      check for bad Services admin parameters.
+2002/06/09	In-use nicknames can no longer be linked.  Suggested by
+		    Dennis Sela <Schutzgeist@uni.de>
+2002/06/08	Fixed improper expiration when -noexpire option given.
+2002/06/01 pre1	Fixed crash when using RunGroup configuration directive.
+		    Reported by Kieran <daffy@daffy.za.net>
+2002/06/01	NickServ SENDPASS can now be used on any nick, and no
+		    longer shows the E-mail address to avoid spam
+		    collection.  Reported by Ben Goldstein <beng@nc.rr.com>
+2002/06/01	Fixed improper removal of SHUNs in Unreal.
+2002/06/01	Fixed cosmetic bug in NickServ SETAUTH.  Reported by Ben
+		    Goldstein <beng@nc.rr.com>
+2002/05/30	Fixed bug in MemoServ SAVE causing crashes.  Reported by
+		    <saturn@jetirc.net>
+2002/05/26 pre0	Fixed bugs in HTTP utility routines.  Reported by Romek
+		    Krisztian <r-krisztian@softhome.net>
+2002/05/24 a35	Fixed crash on use of unregistered nicks.
+2002/05/23	Fixed OperServ SU password not being saved.  Reported by
+		    <brtb@unirc.net>
+2002/05/23 a34	Fixed crash caused by trying to use forbidden nicks.
+		    Reported by <brtb@unirc.net>
+2002/05/23	Fixed spurious log warnings on forbidding in-use nicknames.
+2002/05/22	Fixed bug allowing all users to use the ChanServ TOPIC
+		    command.  Reported by Mark Hetherington <mark@ctcp.net>
+2002/05/17	Users are now no longer auto-joined to channels they are
+		    already in when identifying for their nick.
+2002/05/15	Fixed bugs in OperServ EXCEPTION MOVE.
+2002/05/15	Fixed bug causing NickServ LIST to not return any results.
+		    Reported by Romek Krisztian <r-krisztian@softhome.net>
+2002/05/14	Services admins can now modify channel access lists without
+		    identifying for the channel.  Suggested by Panagiotis
+		    Kefalidis <gizm0@ad2u.gr>
+2002/05/14	Rewrote database saving routines to avoid data loss.
+2002/05/14 a33	Log filename may now contain %y, %m, or %d (replaced by the
+		    current year, month, or day) for automatic log rotation.
+2002/05/14	Renamed default log, PID, and MOTD files to "ircservices.*"
+		    instead of "services.*".
+2002/05/13	Added crontab script (ircservices-chk) to restart Services
+		    as needed.  Suggested by <manual3000@hotmail.com>
+2002/05/13	Added NickServ LISTEMAIL command.  Suggested by Finny
+		    Merrill <griever@t2n.org>
+2002/05/13	Services admins can now exceed nickname and channel
+		    registration limits.
+2002/05/13	Added NSRegEmailMax configuration directive for limiting
+		    the number of nicknames registered per address.
+		    Suggested by Finny Merrill <griever@t2n.org>
+2002/05/13	Fixed a bug causing failed connections to not be detected
+		    when Services is not running in debug mode.
+2002/05/13	Failed connections are now logged normally instead of as
+		    debug messages.
+2002/05/13	Socket connections should now work properly on FreeBSD
+		    instead of failing most of the time.  Reported by Ben
+		    Goldstein <beng@nc.rr.com>
+2002/05/13	SMTP mail module now checks for " in From: names to avoid
+		    malformed headers.
+2002/05/13 a32	ChanServ no longer removes chanops from IRC operators who
+		    give themselves or others +o via an ircd feature.
+		    Reported by Romek Krisztian <r-krisztian@softhome.net>
+2002/05/13	Added StatServ support to httpd/dbaccess module.
+2002/05/12	Changed the default required access level for the ChanServ
+		    CLEAR command from founder-only to 100 (SOP).
+2002/05/12	The ChanServ LEVELS help no longer mentions the SOP/AOP/etc.
+		    commands if the access-xop module is not loaded.
+2002/05/12	Fixed a bug causing ChanServ LEVELS DESC help to be displayed
+		    for all LEVELS help queries _except_ LEVELS DESC.
+2002/05/10	Fixed failure to recognize protocol features when using
+		    static modules, and added extra checks to ensure
+		    variables are set up correctly.
+2002/05/09	Improved dynamic module usability check in configure script
+		    to handle OpenBSD correctly.  Suggested by Chris Plant
+		    <chris@monkeyircd.org>
+2002/05/08	Changed init.c to avoid a compilation warning under GCC 3.
+		    Reported by Craig McLure <Craig@chatspike.net>
+2002/05/07	StatServ SERVERS DELETE and other root-only commands now
+		    say "permission denied" instead of "syntax error" when
+		    used by a non-root IRC operator.
+2002/05/07	Fixed cosmetic bug in AJOIN list-full error message.
+		    Reported by Romek Krisztian <r-krisztian@softhome.net>
+2002/05/03 a31	Channel user modes are now rechecked when a user identifies
+		    for their nickname.
+2002/05/02	Added appropriate error messages for temporary sendmail()
+		    failures.
+2002/05/02	Fixed minor bug causing ChanServ to try to enter the same
+		    channel twice on autokicks.
+2002/05/01	Fixed a race condition allowing the first user on a channel
+		    to give themselves +v before Services deopped them.
+2002/05/01	Added httpd/top-page module.
+2002/05/01	Added Chunky Monkey IRCD protocol module (protocol/monkey),
+		    courtesy of Chris Plant <chris@monkeyircd.org>
+2002/05/01	Channel mode changes are now sent by the server rather than
+		    ChanServ for Bahamut, to avoid a problem with setting +r.
+2002/05/01 a30	Renamed nick-authorization checking macros (nickserv.h,
+		    nick_* -> user_*).
+2002/05/01	Unified %d/%u/%ld/%lu usage in *printf() calls.
+2002/04/30	Fixed spurious WALLOPS messages when server socket is closed.
+2002/04/30	Merged common code for akills/etc in httpd/dbaccess module.
+2002/04/30	Fixed incorrect nick-kill warning messages with forced nick
+		    changing.  Reported by Panagiotis Kefalidis <gizm0@ad2u.gr>
+2002/04/24	Fixed failure to set user mode +a for Services admins on
+		    Bahamut and trircd.  Reported by Panagiotis Kefalidis
+		    <gizm0@ad2u.gr>
+2002/04/24	Added back missing NetworkDomain directive to modules.conf.
+		    Reported by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/04/24	Removed EsperNet protocol module as development on that
+		    server has stopped.
+2002/04/24	Fixed bug causing crashes on NickServ SET with no parameters.
+		    Reported by Panagiotis Kefalidis <gizm0@ad2u.gr>
+2002/04/17 a29	Fixed a warning in modules/nickserv/main.c.
+2002/04/17	NickServ AUTH now keeps track of bad authorization codes,
+		    and kills users for multiple attempts as with passwords.
+2002/04/17	SQlines are now checked after nickname changes.
+2002/04/17	Fixed cosmetic bug with EXCEPTION LIST on an empty list.
+2002/04/17	Fixed security hole with guest nicks allowing users to
+		    evade Services' notice; the guest nick number is now
+		    re-randomized if the next nick to be assigned is in use.
+2002/04/17	Added autokill exclusion support to xml-import.
+2002/04/14	Fixed a cosmetic bug in the configure script.
+2002/04/12	Newly-registered nicks no longer have kill protection set
+		    when not authorized (when the mail-auth module is in
+		    use).  Reported by Ben Goldstein <beng@nc.rr.com>
+2002/04/12	Fixed bug in NickServ AUTH replies.
+2002/04/12	Fixed improper warning when loading channel database.
+		    Reported by Mark Hetherington <mark@ctcp.net>
+2002/04/10	Fixed bugs in trircd-services database conversion support.
+		    Reported by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/04/09 a28	Added support for autokill exclusions.  Suggested by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/04/09	Fixed bug causing NickServ SET INFO to ignore all words
+		    given after the first one.  Reported by Romek Krisztian
+		    <r-krisztian@softhome.net>
+2002/04/09	Fixed bug causing xml-import to ignore all channels.
+		    Reported by Adrian Cantrill
+		    <adrian.cantrill@dial.pipex.com>
+2002/04/08	Autokills are now sent after wallops when the
+		    ImmediatelySendAkill option is set.
+2002/04/08	Improved trircd IRC server support and trircd-services
+		    database conversion support, thanks to Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/04/08	Reworked memo expiration logic as below.
+2002/04/05 a27	Reworked expiration logic to avoid long blocks checking for
+		    expired data and missed expirations.
+2002/04/05	Fixed improper aborts when reading in corrupted databases.
+2002/04/01	Fixed crash when certain commands did not receive enough
+		    parameters.  Reported by several people.
+2002/03/30 a26	Fixed potential buffer overflow in HTTP daemon.
+2002/03/27	Fixed bug processing commands with extra spaces in them.
+2002/03/26	Fixed bug causing nickname password to be sent for ChanServ
+		    SENDPASS.  Reported by George Stamatiou <master@xchat.gr>
+2002/03/26	Fixed compilation warnings in modules/chanserv/check.c.
+2002/03/26	Fixes and changes suggested by Mark Hetherington
+		    <mark@ctcp.net>:
+		    - Changed "akill" to "autokill" in configuration options.
+		    - Fixed bug allowing guest nicks to be registered/linked.
+2002/03/19	Fixed "ban not found" message when removing an autokick ban.
+		    Reported by Mark Hetherington <mark@ctcp.net>
+2002/03/19 a25	Fixed a bug in socket write buffer handling causing data to
+		    be lost.  Reported by Mark Hetherington <mark@ctcp.net>
+2002/03/14	Fixed a bug causing crashes with a corrupt database.
+2002/03/13	Fixes and changes suggested by Mark Hetherington
+		    <mark@ctcp.net>:
+		    - Fixed bug causing nick groups with ID 0 to be created.
+		    - Fixed cosmetic bug with NickServ UNLINK FORCE.
+		    - Fixed bug in bugfix for linking of guest nicks.
+		    - Added support for SVSMODE on Dreamforge/Bahamut/Unreal.
+2002/03/11 a24	Fixed bug in LINK allowing guest nicks to be registered.
+		    Reported by Mark Hetherington <mark@ctcp.net>
+2002/03/01	Fixed crash with Unreal and +S clients.  Reported by Mark
+		    Hetherington <mark@ctcp.net>
+2002/02/28	Added AllowRaw configuration directive (disabled by default).
+2002/02/28	Optimized processing for MSNotifyAll with MemoServ SEND.
+2002/02/28	The main OperServ module can no longer be unloaded via the
+		    OperServ REHASH command (doing so would cause a crash).
+2002/02/28	Fixed a potential crash if databases got corrupted.
+2002/02/28	Fixed CSRestrictDelay option (finally!) to not give free
+		    rides to users who would be unprivileged anyway, and
+		    enabled it by default (with a timeout of 15 seconds).
+2002/02/28 a23	Added SETAUTH command to nickserv/mail-auth module.
+		    Suggested by Mark Hetherington <mark@ctcp.net>
+2002/02/28	Fixed security hole allowing users to be considered
+		    "identified" for nicks with an authorization code set.
+2002/02/27	Added options to NickServ LIST and httpd/dbaccess to filter
+		    by and display nickname authorization codes.  Suggested
+		    by Mark Hetherington <mark@ctcp.net>
+2002/02/27	Added options to nickname/channel lists (httpd/dbaccess) to
+		    display only forbidden, suspended, or non-expiring items.
+2002/02/27	Added support for GET query strings in HTTP server.
+2002/02/26	Fixed bug resulting in "not identified" after nickname
+		    registration.  Reported by Ben Goldstein <beng@nc.rr.com>
+2002/02/26	Prevent use of the NickServ UNLINK command on self.
+2002/02/26	Fixed bug causing autokick masks to get corrupted on add.
+		    Reported by Mark Hetherington <mark@ctcp.net>
+2002/02/26	Fixed bug causing database load errors on certain types of
+		    bad data.  Reported by Mark Hetherington <mark@ctcp.net>
+2002/02/22 a22	2002/2/22 22:22:22 commemorative release.
+2002/02/16	Fixed bug causing guested nicks to keep getting guested and
+		    noexpire/forbidden flags to disappear from nicks.
+		    Reported by Mark Hetherington <mark@ctcp.net>
+2002/02/15 a21	Fixes and changes suggested by Mark Hetherington
+		    <mark@ctcp.net>:
+		    - The httpd/dbaccess module now displays suspension
+		      information for suspended nicks and channels.
+		    - NickServ HELP REGISTER now emphasizes that a _valid_
+		      E-mail address is required with mail-auth.
+		    - Clients with the Unreal +S (service pseudoclient)
+		      mode are no longer affected by channel settings.
+		    - Forbidden nicks can now be dropped with DROPNICK.
+2002/02/12	Added NSFirstAccessWild configuration directive.
+2002/02/12	Fixed bug loading databases with a "#" channel registered.
+2002/02/12	Fixed crash in ChanServ INFO for no-expire channels.
+		    Reported by Mark Hetherington <mark@ctcp.net>
+2002/02/11	Fixed bug in handling of failed socket connections.
+		    Reported by Ben Goldstein <beng@nc.rr.com>
+2002/02/09	Fixed help messages relating to channel access levels to
+		    reflect the updated levels.  Reported by Martin Pels
+		    <martinpels@hotmail.com>
+2002/02/09	Added TOPIC access level for ChanServ TOPIC command.
+2002/02/09	Changed AUTODEOP and NOJOIN access levels to -1 and -100.
+2002/02/08 a20	Mode changes from a single event are now merged into a
+		    single mode message even if MergeChannelModes isn't set.
+2002/02/08	Made ChanServ STATUS command available to normal users.
+2002/02/08	Rescaled access levels to make better use of the available
+		    range (itself reduced to -999..999).
+2002/02/08	Fixed bug causing modes for one channel to get sent to a
+		    different one in certain cases.
+2002/02/08	EnableGetpass, NSEnableRegister, and CSEnableRegister
+		    options are now properly handled on reconfigure.
+2002/02/07	Marked the mail/sendmail module as DISCOURAGED in
+		    example-ircservices.conf.
+2002/02/07	Prevent registration of channel names not starting with "#"
+		    to avoid problems with ircds with other channel types.
+2002/02/07	Fixes and changes suggested by Mark Hetherington
+		    <mark@ctcp.net>:
+		    - GETPASS was not actually disabled if !EnableGetpass.
+		    - Cosmetic fix to ChanServ HELP COMMANDS for IRCops.
+		    - More robust checking on autokick masks.
+		    - The channel "#" can no longer be registered or forbidden.
+		    - Fixed crash on ChanServ AKICK from unregistered nick.
+		    - Services admins no longer duplicated in operator list.
+2002/02/06	Fixed crash in SENDPASS command.  Reported by SiliconAI
+		    <siliconai@aus3d.net>
+2002/02/06	Fixed bug causing confirmation messages for MemoServ SEND to
+		    not be sent.  Reported by Mark Hetherington <mark@ctcp.net>
+2002/02/05 a19	Fixed corrupted messages after REHASH.  Reported by Mark
+		    Hetherington <mark@ctcp.net> and others.
+2002/02/05	Added wallops on OperServ REHASH or SIGHUP.  Suggested by
+		    Mark Hetherington <mark@ctcp.net>
+2002/02/05	Fixed unregistered nicks getting a STATUS of 1.  Reported
+		    by Mark Hetherington <mark@ctcp.net>
+2002/02/05	Fixed crash with ChanServ SET RESTRICTED on new channels.
+		    Reported by Russ Garrett <russ@garrett.co.uk>
+2002/02/04	Fixes and changes suggested by Mark Hetherington
+		    <mark@ctcp.net>:
+		    - LIST command no longer shown to non-opers if
+		      ListOpersOnly enabled.
+		    - GETPASS can now be disabled.
+		    - HELP messages on Unreal no longer cause errors.
+		    - Signals no longer cause select() messages in log.
+		    - Fixed bug causing oper.db to grow relentlessly.
+		    - Fixed bug in reading/writing exception.db.
+2002/02/03	Renamed ChanServ SET TOPIC command to TOPIC.  Suggested by
+		    Jollino <jollino@sogno.net>
+2002/02/03	Fixed bug causing autovoice to break on servers without
+		    halfops.  Reported by Russ Garrett <russ@garrett.co.uk>
+2002/02/03	Updated numerous help messages.
+2002/02/03 a18	Fixed bug causing channel levels to get reset on a LEVELS
+		    DISABLE.  Reported by Russ Garrett <russ@garrett.co.uk>
+2002/02/02	Fixed bug where founder-only channel levels would show up
+		    as "10000" in ChanServ LEVELS LIST.
+2002/02/02	Added command reference and configuration file documentation.
+2002/02/02	Fixed typos/formatting in language files (no content changes).
+2002/02/01	Fixed bugs in news module causing ADD to use bad item
+		    numbers and DEL to not work at all.  Reported by Kevin
+		    <Kevc@gmx.co.uk>
+2002/02/01	Fixed minor typos reported by Russ Garrett <russ@garrett.co.uk>
+2002/01/29	Fixed bug causing access levels for ChanServ commands to be
+		    incorrectly checked.  Reported by Todd Punderson
+		    <todd@doonga.net>
+2002/01/29	Added URL and E-mail fields to httpd/dbaccess channel
+		    information display.
+2002/01/29	Fixed cosmetic bugs in NickServ DROPNICK output and
+		    httpd/dbaccess nickname information display.  Reported
+		    by Martin Pels <martinpels@hotmail.com>
+2002/01/28	Fixed crash in nickserv/oldlink LISTLINKS command.
+2002/01/28 a17	Fixed BUG message occurring when a nick with registered
+		    channels was dropped.  Reported by Martin Pels
+		    <martinpels@hotmail.com>
+2002/01/28	Fixed potential crash when dropping in-use channels.
+2002/01/28	Fixed crash when expiring nicks with registered channels.
+		    Reported by Martin Pels <martinpels@hotmail.com>
+2002/01/28	Fixed bug causing oper help for NickServ SET to not be
+		    shown.  Reported by Martin Pels <martinpels@hotmail.com>
+2002/01/28	Fixed bug in MemoServ SET LIMIT where DEFAULT was
+		    interpreted as 0 and anything else as DEFAULT.
+		    Reported by Martin Pels <martinpels@hotmail.com>
+2002/01/28	Removed IrcIIHelp pseudoclient and ircII help files.
+2002/01/24	Fixed bug in configure that caused the data directory to be
+		    asked for on the first run even if -defaults was given.
+2002/01/24	Added the OperServ SERVERMAP command.
+2002/01/24 a16	MemoServ no longer requires ChanServ to load.
+2002/01/24	Sessions module (operserv/sessions) no longer requires
+		    autokill module in order to load.
+2002/01/24	Got OperServ LISTSERVERS debug command working.
+2002/01/24	Fixed bug causing time of maximum user count to be set to
+		    maximum user count.
+2002/01/24	Fixed a cosmetic bug in OperServ STATS uptime display.
+2002/01/24	Fixed up OperServ STATS ALL processing.
+2002/01/24	Channel last-used time properly set again on auto-op.
+2002/01/23	Fixed several bugs in channel auto-mode handling.
+2002/01/23	Fixed GLINE (autokill) handling on ircu 2.9.32.
+2002/01/23	Main nick now indicated by "*" in NickServ LISTLINKS.
+2002/01/23	NickServ UNLINK now sets main nick to current nick when
+		    unlinking main nick.
+2002/01/23	Fixed bug causing main nick to change on UNLINK.
+2002/01/23	Fixed memory leak with -log command-line option.
+2002/01/23	Fixed handling of overlong mode parameters in set_cmode().
+2002/01/22	Made pack_ip() syntax check more robust.
+2002/01/22	username@[IP-address] E-mail addresses are now permitted.
+2002/01/22	Added checks on configuration parameter values for systems
+		    with a 64-bit `long' type.
+2002/01/22	Users who get changed to guest nicks will no longer be
+		    affected by SQlines on guest nicks.
+2002/01/22	If a client matches an SQline (and no SGline or SZline) and
+		    the IRC server supports forced nick changes, the client
+		    will be sent a 432 (invalid nickname) reply and have
+		    its nick changed instead of being killed.
+2002/01/22	A 433 (nick in use) reply is no longer sent as soon as a
+		    client connects with a registered nickname.
+2002/01/21 a15	Added preliminary Win32 support via Cygnus.  Assistance
+		    from Andre Arruda <unblessed@ircd.com.br>
+2002/01/21	Changed hostmask creation code to only mask off the last
+		    part of an IP address, even for (former) class A/B
+		    addresses.  Suggested by Sly.
+2002/01/21	Fixed bug parsing incomplete user@host masks.  Reported by Sly.
+2002/01/21	convert-db is now installed in data directory by make install.
+2002/01/21	Renamed executable file from "services" to "ircservices",
+		    and main configuration file to "ircservices.conf".
+2002/01/21	"make spotless" target may now also be called as "distclean".
+2002/01/21	Fixed cosmetic bug in "configuration file not found" error.
+2002/01/21	Removed dependency on Perl for static compilation.
+2002/01/20	Fixed bug in usage of `tar' program.
+2002/01/19	Added NOQUIT support to trircd protocol module.  Suggested
+		    by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/01/19	Renamed import-db to convert-db.
+2002/01/18	Made PTlink database importing more robust.
+2002/01/18	Fixed bug causing import-db to fail with trircd databases.
+		    Reported by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/01/18 a14	Fixed lots of errors in import-db.
+2002/01/17	Added trircd handler to import-db.
+2002/01/17	import-db no longer imports channel access levels (LEVELS
+		    command settings); all channels are reset to default.
+2002/01/16	Changed default access level for ACC-CHANGE to 4 to match
+		    behavior for *OP (HOP users allowed to add VOPs).
+2002/01/16	Removed unneeded code in ChanServ do_opvoice().
+2002/01/16	Added ChanServ KICK command.  Suggested by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/01/16	ChanServ REGISTER now requires identification, not just
+		    recognition, for the registering user's nick.
+		    Suggested by Hans v Steenbergen <thebeast@xs4all.nl>
+2002/01/16	Fixed bug causing module symbols to not resolve under FreeBSD.
+		    Reported by Todd Punderson <todd@doonga.net>
+2002/01/15	Added quote parsing to allow SGLINEs with spaces in them.
+		    Reported by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2002/01/14 a13	The Services stamp of the last user to identify for a nick
+		    is now stored in the permanent database; new user
+		    handling modified to distinguish between users with and
+		    without Services stamps on supported IRC servers.
+		    Suggested by Finny Merrill <griever@t2n.org>
+2002/01/14	Fixed bug causing crashes when saving databases with expired
+		    nicknames.  Reported by Todd Punderson <todd@doonga.net>
+2002/01/14 a12	Services will now try to remove or raise the core dump size
+		    limit when configured with -dumpcore.
+2002/01/14	Fixed bug causing -log command-line option to not work.
+2002/01/14	Moved LogMaxUsers, WallGetpass, and WallSetpass to
+		    services.conf (where they belong).
+2002/01/14	Made OperServ RESTART work correctly again.
+2002/01/14	Fixed crash on REHASH when StatServ is in use.  Reported by
+		    Martin Pels <martinpels@hotmail.com>
+2002/01/14	Fixed broken-connection log message to be slightly more useful.
+2002/01/14	Fixed crash on remote SQUIT.  Reported by Martin Pels
+		    <martinpels@hotmail.com>
+2002/01/13	Ignored data elements no longer cause XML importing to
+		    abort immediately.
+2002/01/13	Fixed bug in XML import causing crashes when called twice.
+2002/01/13	Removed trailing null bytes from passwords in XML export.
+2002/01/13	Fixed bug in XML export causing crashes when OperServ SU
+		    password is not set.
+2002/01/13	Rewrote import-db for 5.0; new database is now output as XML.
+2002/01/11	Mode locks are now saved as character strings in XML export.
+2002/01/08 a11	Added XML import module (xml-import) and dbaccess link.
+2002/01/07	Added automatic parsing of form variables to HTTP server.
+2002/01/06	Fixed memory leak (forgetting to free nickgroup ignore list).
+2002/01/04	Fixed MemoServ bugs occurring with default memo limits.
+2002/01/03	Removed duplicate "flags" line in NickGroupInfo XML output.
+2002/01/02	Modified XML export format to make it easier to parse.
+2002/01/01	Added AJOIN command to NickServ HELP COMMANDS.  Reported by
+		    Russ Garrett <russ@garrett.co.uk>
+2002/01/01	Fixed bugs with MemoServ SET FORWARD and memo forwarding.
+		    Reported by Russ Garrett <russ@garrett.co.uk>
+2001/12/26 a10	Fixed bug causing strange channel user modes to be auto-set.
+		    Reported by Russ Garrett <russ@garrett.co.uk>
+2001/12/26	Added access levels link to ChanServ information page
+		    (httpd/dbaccess).  Suggested by Russ Garrett
+		    <russ@garrett.co.uk>
+2001/12/26	Fixed bug in auth-password module causing Protect lines to be
+		    ignored.  Reported by Russ Garrett <russ@garrett.co.uk>
+2001/12/26	Fixed bug in news database writing causing corruption.
+2001/12/26	Fixed missing slash on closing <nickinfo> tag in XML export
+		    module.  Reported by Russ Garrett <russ@garrett.co.uk>
+2001/12/26	Fixed callback ordering bug causing S-line kills to leave
+		    "ghost" users in the session count.  Reported by
+		    <ron885@linuxfreemail.com>
+2001/12/26	Fixed off-by-one bug causing corrupted output in XML export
+		    module.  Reported by Russ Garrett <russ@garrett.co.uk>
+2001/12/25 a9	Rewrote move_exception() for modules.
+2001/12/24	Fixed off-by-one error in OperServ EXCEPTION MOVE.
+		    Reported by <v13@priest.com>
+2001/12/22	Fixed crash using LEVELS SET on a newly-registered channel.
+		    Reported by <v13@priest.com>
+2001/12/22	configure script now checks for presence of hstrerror().
+		    Reported by Michael Trebilcock <trebs@ihug.com.au>
+2001/12/22	Added news display to httpd/dbaccess module.
+2001/12/21	Protocol modules now clean up after themselves on exit.
+2001/12/21	Added support for tokens with Unreal.  Suggested by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/12/21	ChanServ OP/VOICE/etc. no longer set redundant modes.
+		    Suggested by <fabulous@t7ds.com.br>
+2001/12/20	Fixed various bugs with clearing channel modes.
+2001/12/20	Added support for Unreal UMODE2 message.  Suggested by
+		    codemastr <codemstr@ptd.net>
+2001/12/20 a8	SIGHUP now re-reads the configuration files instead of
+		    restarting.
+2001/12/20	SIGUSR2 no longer opens log file if it was closed before.
+2001/12/20	Added reconfiguration support for modules.
+2001/12/20	Renamed AkillReason config directive to AutokillReason.
+2001/12/19	Fixed crash when unloading modules on exit.
+2001/12/17	Fixed infinite loop on signal.  Reported by Georges
+		    Berscheid <Georges@Berscheid.lu>
+2001/12/14	Fixed various problems caused by signal timing.
+2001/12/14	Fixed compile error on FreeBSD.  Reported by Ben Goldstein
+		    <beng@nc.rr.com>
+2001/12/13 a7	Added ability to re-read configuration files.
+2001/12/13	Fixed infinite loop in channel mode checking.
+2001/12/13	Fixed bug in mode merging where mode letters and parameters
+		    got out of sync with large number of modes at once.
+2001/12/13	Cleaned up configuration file handling.
+2001/12/11	Converted module documentation to HTML.
+2001/12/09	Converted FAQ to HTML.
+2001/12/07	Added xml-export module.
+2001/12/05	Added "list is empty" replies for NickServ ACCESS LIST.
+2001/12/05	Fixed error messages for forbidden nicks when used with
+		    NS AJOIN LIST <nick> or MS IGNORE LIST <nick>.
+2001/12/04	Fixed CSEnableRegister directive not being recognized.
+2001/12/04 a6	Added ChanServ SET HIDE.  Patch provided by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/12/04	Added NickServ autojoin module, provided by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/12/04	Added MemoServ IGNORE module, provided by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/12/04	Fixed bug in httpd/auth-password module causing crashes on
+		    malformed HTTP requests.
+2001/12/01	Added locking for data directory.
+2001/12/01	Changed XYZFile configuration directives to XYZFilename.
+2001/12/01	Renamed KillClonesAkillExpire directive (operserv/main) to
+		    KillClonesAkill and made it optional.
+2001/12/01	Merged SessionLimitAkill and SessionLimitAkillReason
+		    configuration directives (operserv/sessions).
+2001/11/26	Added NOQUIT support (for Bahamut/Unreal), based on code
+		    from Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/11/26	Fixed bug allowing old (incompatible) modules to be loaded.
+2001/11/26	Fixed stupid bugs in httpd/auth-password and operserv/news
+		    modules.  Reported by Finny Merrill <griever@t2n.org>
+2001/11/26	Fixed bug in configure causing -dumpcore etc. to not work.
+2001/11/25 a5	Nick and channel expire times may now be set < 1 day.
+2001/11/25	Fixed misleading note about autokill reasons "not being
+		    displayed to the user" in OperServ AKILL help text.
+		    Reported by Elijah <nevernet@cfl.rr.com>
+2001/11/25	Removed BadPassSuspend configuration directive.
+2001/11/25	A warning is now sent when a user will be disconnected
+		    after one more bad password.
+2001/11/25	+a is no longer set for Services admins when they are not
+		    opered.  Suggested by Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2001/11/25	config.h and Makefile.inc are no longer modified if their
+		    contents are unchanged, to avoid unneeded recompilation.
+2001/11/25	Added -defaults, -bindest, -datdest options to configure.
+2001/11/25	Moved CDEFS compilation options from Makefile to configure.
+2001/11/25	Added memo expiration capability.  Suggested by Mauritz
+		    Antunes <mauritz@americasnet.com.br>
+2001/11/25	Fixed socket buffering bug causing all sorts of weirdness.
+2001/11/25	Version information moved to version.c (instead of .h).
+2001/11/25	Fixed infinite loop bug in ChanServ SET MLOCK.
+2001/11/25	Added support for Unreal +f/+L channel modes.
+2001/11/24	Fixed bug in Japanese EUC->SJIS code conversion.
+2001/11/24	Initial access mask is no longer displayed in NickServ
+		    REGISTER response when access masks are in use.
+2001/11/24	Nickname parameter for ChanServ OP/VOICE/etc. now defaults
+		    to the user sending the command if not given.
+2001/11/24	Fix really stupid bug making everyone always identified
+		    for their nick.
+2001/11/24	The build number in version.h is now updated every build
+		    instead of just when a main source file changes.
+2001/11/24	Added httpd/dbaccess module and removed obsolete
+		    listnicks/listchans handling.
+2001/11/24	Added httpd/auth-ip module.
+2001/11/24	Added SET TIMEZONE to NickServ.
+2001/11/24	Fixed stray s_NickServs in ChanServ HELP responses.
+2001/11/24	Autokick set and last-used times are now recorded.
+2001/11/24	Added NSEnableRegister and CSEnableRegister directives.
+2001/11/23 a4	Added support for differing channel owner modes (+q in
+		    Unreal, +u in trircd).
+2001/11/23	Added httpd/auth-password module.
+2001/11/23	Properly abort loading if protocol_nickmax+1 > NICKMAX.
+2001/11/23	Added trircd4 protocol module, courtesy of Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/11/23	SENDPASS modules now properly check for trapdoor encryption.
+2001/11/22	Added SMTP mail sending module.
+2001/11/22	Added MemoServ FORWARD module.
+2001/11/21	Fixed bug with SENDAUTH command response.  Reported by
+		    Andrew Kempe.
+2001/11/21	Fixed crash when an unregistered nick enters a channel.
+2001/11/21	Added OperMaxExpiry directive to autokill module.
+		    Suggested by Finny Merrill <griever@t2n.org>
+2001/11/19 a3	Moved `authstat' field from NickGroupInfo to NickInfo (to
+		    stop people from stealing privs off an identified nick).
+2001/11/19	Fixed bug in alpha 2 preventing compilation.
+2001/11/17 a2	Fixed bug preventing unregistered nicks from getting
+		    channel founder privileges with IDENTIFY.
+2001/11/17	Reverse mode changes by users who will be deopped after
+		    channel mode merging (prevents stealing +v with server
+		    ops).  Reported by Ali Sor <alisor@softhome.net>
+2001/11/17	Fixed infinite loop (stack overflow) bug with MLOCK -k.
+2001/11/14	Fixed bug in data/Makefile causing make install to crash.
+		    Last 2 reported by Martin Pels <martinpels@hotmail.com>
+2001/11/14	Fixed nick getting linked to itself by NickServ LINK.
+		    Reported by Finny Merrill <griever@t2n.org>
+2001/11/14	Fixed bugs loading linked and forbidden nicks.
+2001/11/14	Backup database files are no longer overwritten on update.
+2001/11/12	OperServ SU can now be used by any IRC operator if NickServ
+		    is not loaded.
+2001/11/11	Fixed bug causing NickServ submodules to not release main
+		    NickServ module on exit.
+2001/11/11	Added more error checking to [un]use_module().
+2001/11/11	Fixed failure to unload some modules.
+2001/11/11	Fixed bug recording real name for NickServ INFO command.
+		    Last 2 reported by Finny Merrill <griever@t2n.org>
+2001/11/10 a1	Moved README and README-5.0 content to docs/ directory (new
+		    HTML manual, incomplete).
+2001/11/08	Several outdated command-line options removed.
+2001/11/08	Select new data directory when executable directory is
+		    changed in configure.
+2001/11/08	Fixed potential invalid pointer bug with unloading modules.
+2001/11/08	Unload modules on exit.  Fixes RESTART bug reported by
+		    Finny Merrill <griever@t2n.org>
+2001/11/07	Added database module support for StatServ.
+2001/11/07	Eliminated warnings from malloc(0) and calloc(0).
+2001/11/07	Added support for SQLINE on Unreal servers.
+2001/11/07	Fixed bug loading nicknames registered in version 5.0 (as
+		    opposed to imported).
+2001/11/07	Fixed crash when using HELP command with no parameters.
+2001/11/07	Fixed failure to start up when databases did not exist.
+		    Last 3 reported by Finny Merrill <griever@t2n.org>
+2001/11/07	Fixed compilation problem on FreeBSD.  Reported by Andrew
+		    Kempe.
+2001/11/07	Changed configure's default data directory selection to be
+		    slightly more intelligent, and fixed a bug with spaces
+		    in target directory names.
+2001/11/05 a0	Redesigned channel access level system.
+2001/11/05	Added EsperNet protocol module, courtesy of Bryce Simonds
+		    <kelmar@esper.net>
+2001/11/04	Added HTTP nick/channel redirect module (httpd/redirect).
+2001/11/04	Added SENDPASS modules for NickServ and ChanServ.
+2001/11/03	Added HTTP server module (httpd/main).
+2001/11/02	Added checks for pathologically long configuration files.
+2001/11/02	SZLINE-equivalent support added for Unreal protocol.
+2001/11/02	Autokills and S-lines are now sent on startup if the
+		    relevant ImmediatelySend... option (modules.conf) is set.
+2001/11/01	NickServ/ChanServ no longer allow suspended nicks/channels
+		    to be dropped (which would cancel the suspension).
+		    Reported by Michael Haisley <eternal@unrealircd.org>
+2001/11/01	NickServ DROP now drops all linked nicks at once; DROPNICK
+		    command added for Services admins to drop other nicks.
+		    DROP now requires a password to avoid accidents.
+2001/10/31	NickServ now records nicks which a user has identified for
+		    as long as the user remains online (and not split).
+2001/10/31	OperServ now writes a log message whenever a non-oper sends
+		    a command to it.
+2001/10/31	Added NickServ SET MAINNICK command.
+2001/10/29	Added DEFAULT option to MemoServ SET LIMIT (admin version).
+2001/10/29	Completed initial version of new nick link system.
+2001/10/28	OperServ RAW is now limited to the Services super-user.
+2001/10/01	The default options for new channels can now be set in the
+		    configuration file (CSDef...).
+2001/10/01	Make sure server names to JUPE are valid (contain a period).
+2001/10/01	OperServ no longer allows the same server to be juped twice.
+2001/10/01	Fixed "no such server" error when SQUITting a juped server.
+		    Reported by codemastr <codemstr@ptd.net>
+2001/09/30	user@host of command sender is now logged as well as nick
+		    for FORBID/SUSPEND of both nicks and channels.
+2001/09/30	Added CSSetChannelTime configuration directive.  Suggested
+		    by Finny Merrill <griever@t2n.org>
+2001/09/30	NS/CS SET PASSWORD now obeys ShowPassword config setting.
+2001/09/30	Added ability to compile modules statically; configure will
+		    select static/shared depending on the system.
+2001/09/29	Added support for S-lines (SGLINE/SQLINE/SZLINE).
+2001/09/29	Renamed "StaticAkillReason" configuration directive
+		    (operserv/akill module) to "AkillReason"; the reason
+		    in the autokill can be inserted with "%s".
+2001/09/28	Added support for nickname IP address when using Bahamut.
+		    Suggested by Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2001/09/28	KILLCLONES no longer says "AKILL added" when the autokill
+		    module is not in use.
+2001/08/22	Added SetServerTimes configuration option for Unreal.
+		    Suggested by Finny Merrill <griever@t2n.org>
+2001/08/10	Nickname passwords, URLs, and E-mail addresses are now
+		    shared among all linked nicks in a group.
+2001/08/10	Services root privilege obtained with SU now remains
+		    effective as long as the user is connected.
+2001/08/06	Added NickServ AUTH module to allow for verification of
+		    E-mail addresses.
+2001/08/06	NickServ REGISTER no longer displays the user@host mask in
+		    its response if access lists are not in use.
+2001/08/06	NickServ RECOVER/RELEASE/GHOST no longer check the access
+		    list for the target nickname; the correct password must
+		    be given in order to use the command.
+2001/08/06	Made nickname access list support optional and moved it to
+		    a separate module.
+2001/08/03	Added initial mail-sending support.
+2001/07/06	Modified configure to accept GNU-style "--option[=value]"
+		    options.
+2001/07/06	Moved DUMPCORE option from configure script to Makefile.
+2001/07/06	Added "-prefix" option to configure script.
+2001/07/06	Moved Services log filename from config.h to services.conf.
+2001/07/06	Moved group to run as and file umask from configure script
+		    to services.conf.
+2001/07/05	Configure script now derives default data directory from
+		    program directory path.
+2001/07/05	Modularized encryption code.
+2001/07/05	Added rule to lang/Makefile to create `index' from en_us.l.
+2001/06/28	Removed workaround for broken encrypted passwords.
+2001/06/28	Moved network domain name setting from configure script to
+		    module configuration file.
+2001/06/18	NSDefNone configuration directive removed (the default is
+		    now no options set).
+2001/06/13	OperServ *NEWS LIST now lists in newest-first order.
+2001/06/13	The last time of use is now recorded for each autokill and
+		    can be seen with the AKILL VIEW command.
+2001/06/10	Changes to channel successors are now logged.
+2001/06/10	Removed registered nick matching from autokicks.
+2001/06/09	Last seen user@host is now shown to nick owner and Services
+		    admins in NickServ INFO even if ALL is not given.
+2001/06/09	Newly registered nicks now use a "use default language"
+		    setting which obeys changes in DEF_LANGUAGE.  Suggested
+		    by Jacek Margos <jacek.margos@freenet-ag.de>
+2001/06/09	Completed redesign of nick linking system.
+2001/06/08	ChanServ INFO ALL will now show the last topic and setter
+		    regardless of channel modes.
+2001/06/08	Don't show nick E-mail addresses in ChanServ INFO or
+		    ACCESS/AKICK LIST.
+2001/05/23	Don't allow servadmin ACCESS LIST on forbidden nicks.
+2001/05/21	Last seen time is now set when changing nicks.
+2001/04/24	Initial Guest nick number (for NSForceNickChange) now random.
+2001/04/24	Fixed potential bugs in JOIN/PART handling and +v checks.
+2001/04/23	langcomp now removes output file on errors.
+2001/03/21	Only set umode +a on identify if the user is opered.
+2001/03/18	Services admin/etc. help messages are now visible to all
+		    (and only) IRCops.
+2001/03/18	Removed old clone checking code (CheckClones).
+2001/03/18	Fixed bug setting NSEnforcerUser when it contains an "@".
+2001/03/11	Added support for configuration directives for modules.
+2001/03/11	Fixed buggy /whois replies.
+2001/03/10	Initial module support completed.  Idea initially suggested
+		    by <dnar@terrax.net>
+2001/03/10	Code base split off from version 4.5.8.
+
+*** Change log for version 4.5 and earlier versions is in Changes.old ***

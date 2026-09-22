@@ -1,0 +1,954 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services - Frequently Asked Questions (FAQ)</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>Frequently Asked Questions (FAQ)</h2>
+
+<p align=right><font size=-1><a href=index.html>Table of Contents</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<h2 align=center>Frequently Asked Questions (FAQ) concerning Services</h2>
+
+<p><hr width="50%">
+
+<h2>Index:</h2>
+
+<h3>A. General questions</h3>
+<a href="#A1">A.1. What is Services (a.k.a. IRC Services or Services for
+	IRC Networks)?</a>
+<br><a href="#A2">A.2. Where can I find Services?</a>
+<br><a href="#A3">A.3. Does Services run under Windows?</a>
+<br><a href="#A4">A.4. How about other operating systems?</a>
+
+<h3>B. Compiling and starting Services</h3>
+B.1. (deleted)
+<br><a href="#B1.5">B.1.5. Why does <tt>configure</tt> complain that my
+	compiler has bugs in it?  Can't you work around them?</a>
+<br><a href="#B2">B.2. <tt>configure</tt> reports that my system doesn't
+	have the <tt>strtok()</tt> function.  Isn't that a bug?</a>
+<br><a href="#B3">B.3. When I run "<tt>make</tt>", I get an error message like
+	"<tt>missing separator</tt>", "<tt>Need an operator</tt>",
+	"<tt>Unexpected end of line seen</tt>", etc.</a>
+<br><a href="#B3.5">B.3.5. I get an error like "<tt>Makefile.inc not
+	found</tt>".</a>
+<br>B.4. (deleted)
+<br><a href="#B5">B.5. I need support for the XYZ protocol.</a>
+<br><a href="#B6">B.6. Whenever I start Services, I get a message on my IRC
+	server saying "<tt>connection refused</tt>" or something similar,
+	and Services gives an error message from the server saying
+	"<tt>Closing Link: </tt>. . .".</a>
+<br><a href="#B7">B.7. My IRC server is giving me messages like "<tt>Connection
+	to services.example.net[127.0.0.1] activated</tt>" and then
+	"<tt>Access denied -- no N line</tt>".  Why?</a>
+<br><a href="#B8">B.8. When I say "<tt>/connect services.*</tt>", it doesn't
+	work!</a>
+<br><a href="#B9">B.9. Services complains in the logfile about being unable to
+	load the default language, or gives messages like "<tt>Warning: bad
+	number of strings (747, wanted 863) for language 0 (en_us)</tt>".</a>
+
+<h3>C. Running Services</h3>
+<a href="#C1">C.1. Services keeps giving errors saying that the data
+	directory is locked and the databases won't be updated.</a>
+<br><a href="#C1.5">C.1.5. Services is giving "Can't create temporary
+	database file" errors.</a>
+<br><a href="#C2">C.2. Services can't keep up with my network&mdash;it is
+	eventually disconnected with "<tt>Max SendQ exceeded</tt>".  What
+	can I do about this?</a>
+<br><a href="#C3">C.3. Services starts up okay, but if I try to register a
+	nickname, it replies with "<tt>Sorry, registration failed</tt>" or
+	"<tt>Internal error - unable to process request.</tt>"</a>
+<br><a href="#C4">C.4. Services crashed with a segmentation fault.</a>
+<br><a href="#C5">C.5. Services' channel mode setting doesn't work.  I can't
+	set modes with OperServ, and every time ChanServ tries to set a
+	mode, my server reverses the change.</a>
+<br><a href="#C5.5">C.5.5. But my U:lines are set correctly!</a>
+<br><a href="#C6">C.6. My server sometimes sends messages saying "<tt>Notice --
+	User on services.example.net remotely JOINing new channel</tt>".</a>
+<br><a href="#C7">C.7. How can I make Services send replies using
+	<tt>PRIVMSG</tt> (<tt>/msg</tt>) instead of <tt>NOTICE</tt>?</a>
+<br><a href="#C8">C.8. Can I make ChanServ send channel modes all at once
+	instead of one at a time?</a>
+<br><a href="#C9">C.9. I sometimes get errors in the log file about "user
+	record not found", "non-existent nick", or "unknown channel".  What
+	are these?</a>
+<br><a href="#C10">C.10. Long messages from Services sometimes get a colon
+	(":") inserted in the middle.</a>
+<br><a href="#C11">C.11. Services crashes when loading databases on SPARC
+	systems.</a>
+<br><a href="#C12">C.12. When using Services with InspIRCd, the IRC server
+	gives a warning about "nonstandard modes".</a>
+
+<h3>D. NickServ features</h3>
+<a href="#D1">D.1. Some people get nick collided when their nickname is
+	changed to <tt>Guest###</tt>.</a>
+<br><a href="#D2">D.2. Trying to use <tt>REGISTER</tt> or <tt>SET EMAIL</tt>
+	resulted in an "address is unauthenticated" message, but the user
+	hasn't registered any nicknames before.</a>
+
+<h3>E. ChanServ features</h3>
+<a href="#E1">E.1. How do I make ChanServ join/stay in a channel?</a>
+<br><a href="#E2">E.2. Services ignored the <tt>SET SUCCESSOR</tt> setting and
+	deleted a channel when the founder expired.</a>
+<br><a href="#E3">E.3. When ChanServ sets the topic for a channel, it always
+	appends "<tt>(<i>nickname</i>)</tt>" to the end.  How do I make it
+	not do that?</a>
+<br><a href="#E4">E.4. The <tt>ACCESS</tt> command is confusing to some
+	users.  Can you add a channel option to select between the
+	<tt>ACCESS</tt> and <tt>XOP</tt> commands?</a>
+<br><a href="#E5">E.5. Why can't you force users to register E-mail
+	addresses with channels like you can with nicknames?</a>
+<br><a href="#E6">E.6. If I use <tt>SET MLOCK</tt> on a channel to set a
+	key, then anyone who enters the channel when empty can see it!  How
+	do I avoid this?</a>
+<br>E.7. (deleted)
+<br><a href="#E8">E.8. If a channel operator sets mode <tt>-o+v</tt> on
+	himself, ChanServ always sends <tt>-v</tt>.</a>
+<br><a href="#E9">E.9. ChanServ <tt>UNBAN</tt> doesn't work properly on
+	Unreal.</a>
+<br><a href="#E10">E.10. Why are the <tt>STATUS</tt> error messages so
+	strange?  Why doesn't <tt>STATUS</tt> obey the language setting in
+	NickServ?</a>
+<br><a href="#E11">E.11. Whenever a user enters an empty channel, I see
+	messages about "channel TS", and the user loses and then gets
+	channel ops again.</a>
+<br><a href="#E12">E.12. When a user is autokicked from a channel,
+	sometimes Services doesn't ban them and they get stuck in a
+	join/kick loop.</a>
+
+<h3>F. OperServ features</h3>
+<a href="#F1">F.1. Using the OperServ <tt>JUPE</tt> command results in server
+	messages like "<tt>Server juped.server introduced by non-hub server
+	services.example.net</tt>" or causes Services to be disconnected.</a>
+<br><a href="#F2">F.2. I can't use the <tt>ADMIN</tt> command to add
+	Services administrators&mdash;it tells me "<tt>Permission
+	denied.</tt>"</a>
+<br><a href="#F3">F.3. How can I set up multiple Services super-users?</a>
+<br><a href="#F4">F.4. When I add an autokill, the users matching it don't
+	get killed.</a>
+<br><a href="#F5">F.5. Services reports (via <tt>/stats u</tt> or <tt>/msg
+	OperServ STATS</tt>) a different number of users online than I get
+	from doing <tt>/lusers</tt>.</a>
+<br><a href="#F6">F.6. Trying to use OperServ gives me "Access denied", but my
+	nick is in the ServicesRoot directive and is registered, and I've
+	identified for my nick.</a>
+<br><a href="#F7">F.7. I used the <tt>RAW</tt> command to do something, and
+	then Services stopped working!</a>
+<br><a href="#F8">F.8. On Unreal, every time I use the <tt>/gline</tt>
+	command, Services cancels the G:line.</a>
+<br><a href="#F9">F.9. Services doesn't add <tt>AKILL</tt>s/G:lines for
+	users matching autokill masks.</a>
+<br><a href="#F10">F.10. Services doesn't kill users matching a newly-added
+	autokill mask even if <tt>ImmediatelySendAutokill</tt> is set.</a>
+
+<h3>Z. Bug reporting and feature requests</h3>
+<i>(section deleted)</i>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=A></a>
+<h3 align=center>A. General questions</h3>
+
+<a name=A1></a>
+<p><dl><dt><b>A.1. What is Services (a.k.a. IRC Services or Services for
+	IRC Networks)?</b>
+<dd><p>
+	Services is a software package providing various services such as
+	nickname and channel registration for IRC networks.
+	<a href=index.html>Read the documentation</a> for more information.
+</dl>
+
+<a name=A2></a>
+<p><dl><dt><b>A.2. Where can I find Services?</b>
+<dd><p>
+	See <a href="1.html#3">section 1-3</a> of the manual.
+</dl>
+
+<a name=A3></a>
+<p><dl><dt><b>A.3. Does Services run under Windows?</b>
+<dd><p>
+	Services has been reported to run when compiled under the
+	<a href="http://sources.redhat.com/cygwin/">Cygwin</a>
+	<font size=-1>[<tt>sources.redhat.com</tt>]</font> environment for
+	Windows, but has not been tested extensively and is not supported
+	by the author.
+	<p>
+	One user has reported success in running Services as a Windows
+	service; however, the database files must be owned by the Windows
+	user under which Services runs (<i>e.g.</i> Administrator), and the
+	files' security properties must be changed to prevent the file
+	owner from being altered.
+</dl>
+
+<a name=A4></a>
+<p><dl><dt><b>A.4. How about other operating systems?</b>
+<dd><p>
+	Services was at one point reported to be usable under OS/2;
+	however, it has not been tested recently and is not supported.
+	The author has also heard reports of Services being used with
+	moderate success on AmigaOS.
+</dl>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=B></a>
+<h3 align=center>B. Compiling and starting Services:</h3>
+
+<a name=B1></a>
+<p><dl><dt><i>B.1. (deleted)</i>
+</dl>
+
+<a name=B1.5></a>
+<p><dl><dt><b>B.1.5. Why does <tt>configure</tt> complain that my
+	compiler has bugs in it?  Can't you work around them?</b>
+<dd><p>
+	GCC versions earlier than 3.4 have bugs which cause the
+	<tt>__builtin_apply()</tt> and <tt>__builtin_return()</tt>
+	pseudofunctions to be miscompiled (see GCC Bugzilla, bugs
+	<a href="http://gcc.gnu.org/bugzilla/show_bug.cgi?id=8028">8028</a> and
+	<a href="http://gcc.gnu.org/bugzilla/show_bug.cgi?id=11151">11151</a>
+	<font size=-1>[<tt>gcc.gnu.org</tt>]</font>, for details).
+	Working around this problem requires the use of assembly language,
+	so workarounds are platform-specific; Services has workarounds for
+	these bugs on the Intel x86, SPARC, and PowerPC platforms, but on
+	other systems, you will need to use GCC 3.4 or later, or the
+	<tt>configure</tt> script will report an error and refuse to
+	continue.
+</dl>
+
+<a name=B2></a>
+<p><dl><dt><b>B.2. <tt>configure</tt> reports that my system doesn't
+	have the <tt>strtok()</tt> function.  Isn't that a bug?</b>
+<dd><p>
+	Many system libraries, including some versions of the libraries
+	used with Linux and Solaris, have subtle bugs in their
+	<tt>strtok()</tt> implementations which cause Services to perform
+	improperly, or even crash in some cases. The <tt>configure</tt>
+	script checks for these bugs, and reports <tt>strtok()</tt> as "not
+	found" if one or more bugs are present.  (In fairness, the
+	definition of <tt>strtok()</tt> is vague in some respects, and
+	developers of these libraries may have interpreted it differently
+	than the way it is used in Services.)
+</dl>
+
+<a name=B3></a>
+<p><dl><dt><b>B.3. When I run "<tt>make</tt>", I get an error message like
+	"<tt>missing separator</tt>", "<tt>Need an operator</tt>",
+	"<tt>Unexpected end of line seen</tt>", etc.</b>
+<dd><p>
+	Your <tt>make</tt> program isn't compatible with the Makefile for
+	Services.  The Makefile was designed to work with GNU
+	<tt>make</tt>, version 3.79 or later, and may not work with older
+	versions or other systems' "<tt>make</tt>" programs.  In
+	particular, the <tt>make</tt> programs bundled with SunOS/Solaris
+	and FreeBSD have been reported not to work; you will need to use
+	GNU <tt>make</tt> on these systems.  See the
+	<a href="2.html#1">system requirements section</a> for details.
+</dl>
+
+<a name=B3.5></a>
+<p><dl><dt><b>B.3.5. I get an error like "<tt>Makefile.inc not found</tt>".</b>
+<dd><p>
+	You forgot to run the <tt>configure</tt> script first.  See the
+	<a href="2.html#3">installation directions</a>.
+</dl>
+
+<a name=B4></a>
+<p><dl><dt><i>B.4. (deleted)</i>
+</dl>
+
+<a name=B5></a>
+<p><dl><dt><b>B.5. I need support for the XYZ protocol.</b>
+<dd><p>
+	Services can be made to support new IRC protocols with the addition
+	of new protocol modules.  You will need to write a protocol module
+	to support the specific protocol you want to use; see the
+	<a href="tech/index.html">technical manual</a> for details.
+</dl>
+
+<a name=B6></a>
+<p><dl><dt><b>B.6. Whenever I start Services, I get a message on my IRC
+	server saying "<tt>connection refused</tt>" or something similar,
+	and Services gives an error message from the server saying
+	"<tt>Closing Link: </tt>.&nbsp;.&nbsp;.".</b>
+<dd><p>
+	You need to configure your IRC server to accept Services as an IRC
+	server.  For IRC servers based on the irc2.x distribution, that
+	involves adding two lines like the following to your
+	<tt>ircd.conf</tt> file:
+	<blockquote>
+	<tt>C:127.0.0.1:password:services.whatever.net::99</tt>
+	<br><tt>N:127.0.0.1:password:services.whatever.net::99</tt>
+	</blockquote>
+	See your IRC server's documentation for details about configuring
+	your servers to accept connections from Services.
+	<p>
+	Note particularly that "no N:line" errors can mean any of several
+	things:
+	<p><ul>
+	<li>Services' IP address or host name is different than that in the
+	    first parameter to the <tt>N:</tt> line.  On some systems,
+	    using "<tt>localhost</tt>" in the <tt>RemoteServer</tt>
+	    configuration directive will not always get you the IP address
+	    <tt>127.0.0.1</tt>!  To check what hostname or IP address the
+	    IRC server thinks you have, start up an IRC client on the same
+	    machine you are running Services on, connect to the server
+	    given in the <tt>RemoteServer</tt> directive, and do a
+	    <tt>/whois</tt> on yourself; the hostname in the <tt>/whois</tt>
+	    response should be used as the first <tt>N:</tt> line parameter.
+	<p>
+	<li>Your IRC server has been compiled to use encrypted <tt>N:</tt>
+	    line passwords but you gave a plaintext password as the second
+	    <tt>N:</tt> line parameter, or vice versa.
+	<p>
+	<li>The server name given as the third <tt>N:</tt> line parameter
+	    does not match the name given in the <tt>ServerName</tt>
+	    configuration directive.  The third parameter is not the
+	    IP address or hostname of the remote server (Services in this
+	    case), but rather the server name presented in the server
+	    registration (<tt>SERVER</tt>) message; this is an important
+	    distinction that can be easily forgotten.
+	</ul>
+</dl>
+
+<a name=B7></a>
+<p><dl><dt><b>B.7. My IRC server is giving me messages like "<tt>Connection
+	to services.example.net[127.0.0.1] activated</tt>" and then
+	"<tt>Access denied -- no N line</tt>".  Why?</b>
+<dd><p>
+	This is typically caused by including a port number in the C:line
+	for Services, which tells your server to try to autoconnect to it.
+	This is not what you want, because Services will connect to the
+	server itself, but does not listen for servers to connect to it.
+	The solution is to remove the port number from the C:line.
+</dl>
+
+<a name=B8></a>
+<p><dl><dt><b>B.8. When I say "<tt>/connect services.*</tt>", it doesn't
+	work!</b>
+<dd><p>
+	As described in answer B.7 above, Services does not listen for
+	connections, so you cannot <tt>/connect</tt> to it.
+</dl>
+
+<a name=B9></a>
+<p><dl><dt><b>B.9. Services complains in the logfile about being unable to
+	load the default language, or gives messages like "<tt>Warning: bad
+	number of strings (747, wanted 863) for language 0 (en_us)</tt>".</b>
+<dd><p>
+	You forgot to run "<tt>make install</tt>" after compiling Services.
+</dl>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=C></a>
+<h3 align=center>C. Running Services:</h3>
+
+<a name=C1></a>
+<p><dl><dt><b>C.1. Services keeps giving errors saying that the data
+	directory is locked and the databases won't be updated.</b>
+<dd><p>
+	This can occur if Services was interrupted (<i>e.g.,</i> by a power
+	failure) or crashed while writing the databases.  Remove the file
+	given in the warning message (this is the file specified by the
+	<tt>ircservices.conf</tt>
+	<a href="a.html#LockFilename"><tt>LockFilename</tt></a> directive,
+	by default "<tt>.lock</tt>" in the Services data directory), then
+	use the OperServ <a href="4.html#oper.update"><tt>UPDATE</tt></a>
+	command to save the databases; alternatively, the <tt>FORCE</tt>
+	option can be used with the OperServ <tt>UPDATE</tt> command to
+	perform both steps at once.
+</dl>
+
+<a name=C1.5></a>
+<p><dl><dt><b>C.1.5. Services is giving "Can't create temporary database
+	file" errors.</b>
+<dd><p>
+	Make certain that (1) the disk on which the databases are stored is
+	not full, and (2) that Services has permission to create files in
+	the data directory (on Unix systems, this means that the user-ID that
+	Services runs as must have write and execute permission on the data
+	directory, as well as execute permission on all parent directories
+	of the data directory).
+</dl>
+
+<a name=C2></a>
+<p><dl><dt><b>C.2. Services can't keep up with my network&mdash;it is
+	eventually disconnected with "<tt>Max SendQ exceeded</tt>".  What
+	can I do about this?</b>
+<dd><p>
+	If you have a really large network (tens of thousands of
+	simultaneous users), Services in its default configuration may not
+	be able to keep up with all the network traffic.  Here are some
+	possible ways to speed Services up:
+	<p><ul>
+	<li>Run it on a faster computer.  (Services does <i>not</i> need to
+	    run on the same system as an IRC server!  If you have several
+	    computers connected via Ethernet or another type of high-speed
+	    network, it's perfectly fine to have an ircd on one machine and
+	    Services on a separate machine.)
+	<li>Remove all unneeded modules from <tt>ircservices.conf</tt>.
+	<li>Configure Services with the <tt>-no-sorted-lists</tt> option
+	    and recompile.  (This will speed up nickname and channel
+	    access, but commands like NickServ and ChanServ LIST will no
+	    longer return names in alphabetical order.)
+	<li>Reduce the nickname and channel expiration periods.
+	<li>Reduce the size of your autokill, S-line, and session limit
+	    exception lists as much as possible, or remove the relevant
+	    modules (<tt>operserv/akill</tt>, <tt>operserv/sline</tt>, and
+	    <tt>operserv/sessions</tt>) entirely.
+	<li>Reduce the maximum number of autokicks per channel.  (This will
+	    not have a direct effect, but it may keep the problem from
+	    getting worse.)
+	<li>Increase the <tt>UpdateTimeout</tt> setting in
+	    <tt>ircservices.conf</tt>, to reduce the frequency of database
+	    synchronization.  However, keep in mind that this will mean
+	    more potential data loss if/when Services falls off your
+	    network or crashes.
+	<li><b>Don't</b> run in debug mode!
+	</ul>
+	<p>Services has been successfully used on networks as large as
+	22,000 simultaneous users with 260,000 registered nicks.
+</dl>
+
+<a name=C3></a>
+<p><dl><dt><b>C.3. Services starts up okay, but if I try to register a
+	nickname, it replies with "<tt>Sorry, registration failed</tt>" or
+	"<tt>Internal error - unable to process request.</tt>"</b>
+<dd><p>
+	Make sure you've selected the correct IRC protocol (IRC server)
+	module in <tt>ircservices.conf</tt>, as described in
+	<a href="2.html#4">section 2-4</a>.
+</dl>
+
+<a name=C4></a>
+<p><dl><dt><b>C.4. Services crashed with a segmentation fault.</b>
+<dd><p>
+	Hopefully most of the bugs have been worked out of Services by now,
+	but if you run into a problem like this, you may find the
+	<tt>cron</tt> utility useful for dealing with such with it; the
+	<tt>ircservices-chk</tt> script, installed in the same place as the
+	<tt>ircservices</tt> executable, will check whether Services is
+	running and restart it if not (see
+	<a href="2.html#6-ircservices-chk">section 2-6</a> for details).
+</dl>
+
+<a name=C5></a>
+<p><dl><dt><b>C.5. Services' channel mode setting doesn't work.  I can't
+	set modes with OperServ, and every time ChanServ tries to set a
+	mode, my server reverses the change.</b>
+<dd><p>
+	If you're running the DALnet, Unreal, or Undernet IRC server, make
+	sure <i>every</i> server on your network has a U:line for Services
+	in <tt>ircd.conf</tt>; for example:
+	<blockquote>
+	<tt>U:services.whatever.net:*:*</tt>
+	</blockquote>
+	Services will report in a <tt>WALLOPS</tt> or <tt>GLOBOPS</tt>
+	message the first time it discovers it cannot change modes.
+</dl>
+
+<a name=C5.5></a>
+<p><dl><dt><b>C.5.5. But my U:lines are set correctly!</b>
+<dd><p>
+	If the <tt>ircd.conf</tt> file was created, edited, or copied from
+	a Windows computer, then it may be corrupt (Windows inserts
+	<tt>^M</tt> characters at the end of every line), which will cause
+	the ircd to not recognize the U:line.  Use a text editor such as vi
+	or Emacs to remove the <tt>^M</tt> characters, or re-create the
+	file from scratch.
+</dl>
+
+<a name=C6></a>
+<p><dl><dt><b>C.6. My server sometimes sends messages saying "<tt>Notice --
+	User on services.example.net remotely JOINing new channel</tt>".</b>
+<dd><p>
+	This is normal, and happens whenever ChanServ kicks a user from a
+	channel in which they were the first to enter (for example, a user
+	without privileges entering a channel with the <tt>RESTRICTED</tt>
+	setting active, or a user on the channel's autokick list).  In this
+	case, ChanServ joins the channel for a short period of time to
+	prevent the user from joining again immediately after they've been
+	kicked.  If you are using the Bahamut or Unreal IRC servers, this
+	will result in a message like the above; it can be safely ignored.
+</dl>
+
+<a name=C7></a>
+<p><dl><dt><b>C.7. How can I make Services send replies using
+	<tt>PRIVMSG</tt> (<tt>/msg</tt>) instead of <tt>NOTICE</tt>?</b>
+<dd><p>
+	You can't.  RFC 1459 (the IRC protocol definition) requires that
+	all automated clients send all replies using <tt>NOTICE</tt> rather
+	than <tt>PRIVMSG</tt>, and Services follows that requirement.  If
+	you want to change how Services replies appear in your IRC client,
+	change your client's settings.
+</dl>
+
+<a name=C8></a>
+<p><dl><dt><b>C.8. Can I make ChanServ send channel modes all at once
+	instead of one at a time?</b>
+<dd><p>
+	Yes; enable the <tt>MergeChannelModes</tt> directive in
+	<tt>ircservices.conf</tt>.  (Note that this has minor security
+	implications&mdash;be sure to read the comments in the example
+	configuration file.)
+</dl>
+
+<a name=C9></a>
+<p><dl><dt><b>C.9. I sometimes get errors in the log file about "user
+	record not found", "non-existent nick", or "unknown channel".  What
+	are these?</b>
+<dd><p>
+	These messages can appear when Services disconnects a user from the
+	network or removes (kicks) a user from a channel, and are the
+	result of time lag inherent in all networked systems.  For example,
+	if an autokilled user connects to the network and immediately sends
+	a <tt>/join</tt> command to join a channel, the user's server may
+	receive the <tt>/join</tt> before it receives the disconnection
+	message from Services.  Services will then receive the <tt>/join</tt>
+	for what it thinks is a user who no longer exists, and reports that
+	it received a message for a non-existent nickname.
+	<p>
+	These messages do not indicate a bug or other problem, and can be
+	safely ignored.
+</dl>
+
+<a name=C10></a>
+<p><dl><dt><b>C.10. Long messages from Services sometimes get a colon
+	(":") inserted in the middle.</b>
+<dd><p>
+	This is caused by a bug in the "mIRC" IRC client for Windows
+	computers; if you try to send a very long message using the
+	<tt>/operserv</tt> (or <tt>/nickserv</tt>, etc.) command, such as a
+	long global notice, then mIRC will insert a colon in the middle of
+	it.  There is nothing Services can do to fix this, since Services
+	can't tell whether the colon was intentionally put there or not.
+	If you experience this problem, try upgrading mIRC to the latest
+	version or using another IRC client.  Alternatively, as a
+	workaround you can use <tt>/msg OperServ</tt> instead of
+	<tt>/operserv</tt>.
+	<p>
+	See also <a href="http://trout.snt.utwente.nl/ubbthreads/ubbthreads.php?ubb=showflat&amp;Number=117232&amp;site_id=1#import">this thread</a>
+	<font size=-1>[<tt>trout.snt.utwente.nl</tt>]</font> on the mIRC
+	forums.
+</dl>
+
+<a name=C11></a>
+<p><dl><dt><b>C.11. Services crashes when loading databases on SPARC
+	systems.</b>
+<dd><p>
+	This is due to a bug in some versions of GCC running on SPARC
+	systems.  Services contains a temporary workaround for this
+	problem, but it is very compiler- and environment-specific, and it
+	may not work for you.  The bug has been filed in the GCC bug
+	database as
+	<a href="http://gcc.gnu.org/bugzilla/show_bug.cgi?id=11151">bug
+	11151</a> <font size=-1>[<tt>gcc.gnu.org</tt>]</font>, and has been
+	fixed as of GCC 3.4.
+</dl>
+
+<a name=C12></a>
+<p><dl><dt><b>C.12. When using Services with InspIRCd, the IRC server
+	gives a warning about "nonstandard modes".</b>
+<dd><p>
+	A message like the following:
+	<blockquote><tt>WARNING: The server services.example.net is sending
+		nonstandard modes: 'ChanServ MODE +r' where FMODE should be
+		used, and may cause desyncs.</tt></blockquote>
+<p>
+	is a side effect of the way Services works, and can be safely
+	ignored; the "may cause desyncs" text does not apply to Services.
+</dl>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=D></a>
+<h3 align=center>D. NickServ features:</h3>
+
+<a name=D1></a>
+<p><dl><dt><b>D.1. Some people get nick collided when their nickname is
+	changed to <tt>Guest###</tt>.</b>
+<dd><p>
+	Make sure you have <tt>Guest*</tt> (or whatever prefix you
+	specified in <tt>ircservices.conf</tt>) listed in a Q:line in the
+	<tt>ircd.conf</tt> file for <i>all</i> of your servers.  For
+	example:
+
+	<blockquote>
+	<tt>Q::Reserved for Services:Guest*</tt>
+	</blockquote>
+
+	This prevents people from using <tt>Guest###</tt> nicks and
+	colliding people who get their nicks changed.  Note that some IRC
+	servers will generate messages whenever someone gets their nick
+	changed to <tt>Guest###</tt> by Services and a configuration line
+	like the above is used; you may want to modify your IRC client's
+	configuration so it doesn't display the messages (or change the IRC
+	server itself so it doesn't generate them).
+	<p>
+	Alternatively, if your IRC server supports SQlines, you can set an
+	SQline on the same mask using the OperServ <tt>SQLINE ADD</tt>
+	command (in the <tt>operserv/sline</tt> module), and Services will
+	take care of making sure all servers have Q:lines for the nick.
+</dl>
+
+<a name=D2></a>
+<p><dl><dt><b>D.2. Trying to use <tt>REGISTER</tt> or <tt>SET EMAIL</tt>
+	resulted in an "address is unauthenticated" message, but the user
+	hasn't registered any nicknames before.</b>
+<dd><p>
+	Another user may have set the same E-mail address on their
+	nickname.  Use the <tt>LISTEMAIL</tt> command to see what nicknames
+	have the problem address associated with them.
+</dl>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=E></a>
+<h3 align=center>E. ChanServ features:</h3>
+
+<a name=E1></a>
+<p><dl><dt><b>E.1. How do I make ChanServ join/stay in a channel?</b>
+<dd><p>
+	You don't.  Use a bot instead.
+</dl>
+
+<a name=E2></a>
+<p><dl><dt><b>E.2. Services ignored the <tt>SET SUCCESSOR</tt> setting and
+	deleted a channel when the founder expired.</b>
+<dd><p>
+	Normally, this is because the successor had too many channels
+	registered; in this case, you will see an entry in the log file
+	like the following:
+
+	<blockquote>
+	<tt>[date] Successor (SuccessorNick) of channel #somechannel owns
+	    too many channels, deleting channel #somechannel</tt>
+	</blockquote>
+</dl>
+<a name=E3></a>
+<p><dl><dt><b>E.3. When ChanServ sets the topic for a channel, it always
+	appends "<tt>(<i>nickname</i>)</tt>" to the end.  How do I make it
+	not do that?</b>
+<dd><p>
+	This has nothing to do with Services, and is a feature of the IRC
+	server itself which occurs when Services sets the topic on a
+	channel.  The "(nickname)" is not actually included in the topic,
+	and the second and later users to join the channel will not see it.
+	There is no way to disable it for the first user, unless you modify
+	the IRC server itself.
+</dl>
+<a name=E4></a>
+<p><dl><dt><b>E.4. The <tt>ACCESS</tt> command is confusing to some
+	users.  Is there a way to select between the <tt>ACCESS</tt> and
+	<tt>XOP</tt> commands?</b>
+<dd><p>
+	No; just tell those users to not use the <tt>ACCESS</tt> command.
+	(You can also disable the <tt>ACCESS</tt> command for the whole
+	network by removing or commenting out the
+	<tt>LoadModule&nbsp;chanserv/access-levels</tt> line in
+	<tt>ircservices.conf</tt>, but this will prevent even users who
+	understand the <tt>ACCESS</tt> command from using it.)
+</dl>
+<a name=E5></a>
+<p><dl><dt><b>E.5. Why can't you force users to register E-mail
+	addresses with channels like you can with nicknames?</b>
+<dd><p>
+	Such functionality is unneeded, because ChanServ requires users to
+	register their nicknames before allowing them to register channels.
+	As long as you require users to include E-mail addresses with
+	nicknames, you can just look up the address for the channel
+	founder's nickname if a problem arises with a particular channel.
+</dl>
+
+<a name=E6></a>
+<p><dl><dt><b>E.6. If I use <tt>SET MLOCK</tt> on a channel to set a
+	key, then anyone who enters the channel when empty can see it!  How
+	do I avoid this?</b>
+<dd><p>
+	Set the <tt>RESTRICTED</tt> option for the channel, as described in
+	<a href="4.html#chan.set_mlock">the help for <tt>SET MLOCK</tt></a>,
+	or use a bot to keep the channel open.
+</dl>
+
+<a name=E7></a>
+<p><dl><dt><i>E.7. (deleted)</i>
+</dl>
+
+<a name=E8></a>
+<p><dl><dt><b>E.8. If a channel operator sets mode <tt>-o+v</tt> on
+	himself, ChanServ always sends <tt>-v</tt>.</b>
+<dd><p>
+	This is a side effect of security measures which prevent non-autoop
+	users from getting a <tt>+v</tt> in before Services deops them.
+	Either do the <tt>+v</tt> before the <tt>-o</tt> or use the
+	ChanServ <tt>VOICE</tt> command.
+</dl>
+
+<a name=E9></a>
+<p><dl><dt><b>E.9. ChanServ <tt>UNBAN</tt> doesn't work properly on
+	Unreal.</b>
+<dd><p>
+	In recent versions of Unreal, it is possible to set bans on a
+	user's IP address.  However, Unreal 3.2 servers do not send client
+	IP address information to Services, so it is impossible to tell
+	which IP-address bans match the user; thus the <tt>UNBAN</tt>
+	command will fail to remove them.  Unreal 3.2.1 and later do send
+	IP addresses to Services, so if you upgrade all of your servers the
+	problem will go away.
+</dl>
+
+<a name=E10></a>
+<p><dl><dt><b>E.10. Why are the <tt>STATUS</tt> error messages so
+	strange?  Why doesn't <tt>STATUS</tt> obey the language setting in
+	NickServ?</b>
+<dd><p>
+	The <tt>STATUS</tt> command is intended primarily for use by bots,
+	to allow them to take advantage of access level information stored
+	in Services.  For this reason, the responses to the <tt>STATUS</tt>
+	command, including error messages, need to have a fixed format that
+	can be understood by a computer.
+</dl>
+
+
+<a name=E11></a>
+<p><dl><dt><b>E.11. Whenever a user enters an empty channel, I see
+	messages about "channel TS", and the user loses and then gets
+	channel ops again.</b>
+<dd><p>
+	These messages and mode changes are harmless, and are caused by the
+<a href="a.html#protocol/(insert_protocol_name_here).CSSetChannelTime"><tt>CSSetChannelTime</tt></a>
+	configuration option (see also <a href="3.html#2-1.channel-ts">the
+	relevant part of section 3-2-1</a>).  This functionality is
+	implemented by sending a message to the network that Services has
+	the "proper" timestamp (TS) and modes for the channel.
+	Unfortunately, many IRC servers blindly cancel their own modes,
+	including the channel ops of the user who initially joined the
+	channel, before noticing that Services is not actually changing any
+	modes; this results in the server sending out a "<tt>-o</tt>" mode
+	change immediately followed by a "<tt>+o</tt>".  Some servers also
+	seem to think that the timestamp change is a bug (or hack attempt)
+	and send out a warning to IRC operators about it.
+	<p>
+	All of these messages are harmless and can be safely ignored, but
+	if they bother you, you may want to consider disabling the
+	<tt>CSSetChannelTime</tt> option.
+</dl>
+
+
+<a name=E12></a>
+<p><dl><dt><b>E.12. When a user is autokicked from a channel,
+	sometimes Services doesn't ban them and they get stuck in a
+	join/kick loop.</b>
+<dd><p>
+	If you are using the Unreal IRC server, this may be caused by
+	"extended ban types", specifically third-party Unreal modules that
+	add ban types beyond the standard types in Unreal 3.2 (<tt>q</tt>,
+	<tt>n</tt>, <tt>c</tt>, and <tt>r</tt>); Services cannot support
+	such ban types, since their behavior is undefined by the base
+	Unreal protocol.  Try disabling such modules and see if the problem
+	persists.
+</dl>
+
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=F></a>
+<h3 align=center>F. OperServ features:</h3>
+
+<a name=F1></a>
+<p><dl><dt><b>F.1. Using the OperServ <tt>JUPE</tt> command results in server
+	messages like "<tt>Server juped.server introduced by non-hub server
+	services.example.net</tt>" or causes Services to be disconnected.</b>
+<dd><p>
+	In all irc2.x-derived IRC servers (and possibly others), every
+	server on the network must have an H:line for Services in the
+	<tt>ircd.conf</tt> file, which looks something like:
+
+	<blockquote>
+	<tt>H:*::services.example.net</tt>
+	</blockquote>
+</dl>
+
+<a name=F2></a>
+<p><dl><dt><b>F.2. I can't use the <tt>ADMIN</tt> command to add Services
+	administrators&mdash;it tells me "<tt>Permission denied.</tt>"</b>
+<dd><p>
+	Did you define yourself as the Services super-user?  You need to
+	insert your nickname in the
+	<a href="a.html#operserv/main.ServicesRoot"><tt>ServicesRoot</tt></a>
+	directive in the <tt>operserv/main</tt> section of
+	<tt>modules.conf</tt>.  Also make sure that you have registered and
+	identified for your nickname, and that you have IRC operator
+	privileges.
+</dl>
+
+<a name=F3></a>
+<p><dl><dt><b>F.3. How can I set up multiple Services super-users?</b>
+<dd><p>
+	You can't.  However, you can allow Services administrators to
+	obtain Services super-user privilege by setting a password with the
+	OperServ <a href="4.html#oper.set_supass"><tt>SET SUPASS</tt></a>
+	command; Services admins can then use the
+	<a href="4.html#oper.su"><tt>SU</tt></a> command to obtain Services
+	super-user privilege.
+</dl>
+
+<a name=F4></a>
+<p><dl><dt><b>F.4. When I add an autokill, the users matching it don't get
+	killed.</b>
+<dd><p>
+	Services does not kill users when an autokill is added; it only
+	kills them when they next connect.  This is designed behavior,
+	intended to reduce the possibility of a mistyped autokill causing
+	the wrong users to get killed.  (Suppose you typed "<tt>AKILL ADD
+	*@*</tt>" and then accidentally hit Enter before finishing the host
+	mask&nbsp;.&nbsp;.&nbsp;.)
+</dl>
+
+<a name=F5></a>
+<p><dl><dt><b>F.5. Services reports (via <tt>/stats u</tt> or <tt>/msg
+	OperServ STATS</tt>) a different number of users online than I get
+	from doing <tt>/lusers</tt>.</b>
+<dd><p>
+	Services doesn't count its own pseudo-clients (NickServ, ChanServ,
+	etc.) in its user count, so Services will normally report a number
+	somewhat lower than /lusers.  This number will vary depending on
+	which pseudo-clients are loaded, and will also change as nickname
+	enforcers are introduced and removed.
+	<p>
+	If you have a very large and/or busy network, there may be an
+	additional offset, either positive or negative, caused by lag
+	(1) between users signing on/off and Services recognizing them, or
+	(2) between Services killing a user and the servers receiving the
+	kill.  On a network with under 500 simultaneous clients, this
+	difference should typically not be more than one at any time, but
+	it can increase quickly as the network grows in size.  (If the
+	difference is abnormally large, see <a href="#C2">question C.2</a>
+	for ways to speed Services up.)
+	<p>
+	Finally, you may have encountered a bug in Services.  If the
+	difference in counts increases over time without a corresponding
+	increase in the number of users online, then this is the most
+	likely explanation.
+</dl>
+
+<a name=F6></a>
+<p><dl><dt><b>F.6. Trying to use OperServ gives me "Access denied", but my
+	nick is in the <tt>ServicesRoot</tt> directive and is registered,
+	and I've identified for my nick.</b>
+<dd><p>
+	You need to be opered (<i>i.e.,</i> user mode <tt>+o</tt> from using
+	<tt>/oper</tt>; this is different from channel operator mode) to
+	access OperServ.
+</dl>
+
+<a name=F7></a>
+<p><dl><dt><b>F.7. I used the <tt>RAW</tt> command to do something, and
+	then Services stopped working!</b>
+<dd><p>
+	To quote from the help for the <tt>RAW</tt> command:
+
+	<blockquote>
+	<tt>This command is intended primarily for testing of Services
+	    and IRC servers; it has a very limited range of uses on a
+	    live network, and can wreak havoc on a network or cause
+	    Services to crash if used improperly.  <b>DO NOT USE THIS
+	    COMMAND</b> unless you are absolutely certain you know
+	    what you are doing!</tt>
+	</blockquote>
+
+	In particular, Services does <i>not</i> process any messages sent
+	with the <tt>RAW</tt> command; so if (for example) you use
+	<tt>KILL</tt> to kill a user, Services will think the user is still
+	online, and if they connect to the network again, Services may fail
+	to recognize the new user or even crash.  You should not use the
+	<tt>RAW</tt> command without a detailed understanding of both the
+	IRC protocol and the internal design of Services itself.
+</dl>
+
+<a name=F8></a>
+<p><dl><dt><b>F.8. On Unreal, every time I use the <tt>/gline</tt> command,
+	Services cancels the G:line.</b>
+<dd><p>
+	This is designed behavior.  Use the OperServ
+	<a href="4.html#oper.akill"><tt>AKILL</tt></a> command instead of
+	the <tt>/gline</tt> command.
+</dl>
+
+<a name=F9></a>
+<p><dl><dt><b>F.9. Services doesn't add <tt>AKILL</tt>s/G:lines for users
+	matching autokill masks.</b>
+<dd><p>
+	If you have
+	<a href="a.html#operserv/akill.EnableExclude"><tt>EnableExclude</tt></a>
+	defined in the <tt>operserv/akill</tt> section of
+	<tt>modules.conf</tt>, but your IRC server does not support
+	autokill exclusions, then Services will not add <tt>AKILL</tt>s or
+	G:lines, because doing so would prevent autokill exclusions from
+	working properly.  See <a href="3.html#4-3-exclude">section
+	3-4-3</a> for details.
+</dl>
+
+<a name=F10></a>
+<p><dl><dt><b>F.10. Services doesn't kill users matching a newly-added
+	autokill mask even if <tt>ImmediatelySendAutokill</tt> is set.</b>
+<dd><p>
+	Services never kills users when a new autokill is added; the
+	<a href="a.html#operserv/akill.ImmediatelySendAutokill"><tt>ImmediatelySendAutokill</tt></a>
+	configuration directive only causes Services to send the autokill
+	itself (that is, the user/host mask from which to prohibit new
+	connections) to the IRC servers on your network.  This is a safety
+	feature intended to limit the damage caused by a mistyped autokill;
+	see also <a href="#F4">answer F.4</a> above.
+	<p>
+	Note that some IRC servers will themselves kill users matching a
+	newly-added autokill; this is unrelated to Services.
+</dl>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=Z></a>
+<h3 align=center>Z. Bug reporting and feature requests:</h3>
+
+<p><i>(This section has been deleted since Services is no longer being
+maintained.)</i>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<p align=right><font size=-1><a href="index.html">Table of Contents</a></font>
+
+</body>
+</html>

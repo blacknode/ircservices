@@ -1,0 +1,1014 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 3. Communication (socket) handling</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">3. Communication (socket) handling</h2>
+
+<p class="section-toc">
+     3-1. <a href="#s1">Overview</a>
+<br/>3-2. <a href="#s2">Creating, configuring, and destroying sockets</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;3-2-1. <a href="#s2-1">Interface routines</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;3-2-2. <a href="#s2-2">Socket callbacks</a>
+<br/>3-3. <a href="#s3">Establishing and breaking connections</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;3-3-1. <a href="#s3-1">Outgoing connections</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;3-3-2. <a href="#s3-2">Incoming connections</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;3-3-3. <a href="#s3-2">Disconnecting</a>
+<br/>3-4. <a href="#s4">Sending and receiving data</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;3-4-1. <a href="#s4-1">Sending data</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;3-4-2. <a href="#s4-2">Receiving data</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;3-4-3. <a href="#s4-3">Muting sockets</a>
+<br/>3-5. <a href="#s5">Retrieving socket information</a>
+<br/>3-6. <a href="#s6">The socket polling routine</a>
+</p>
+
+<p class="backlink"><a href="2.html">Previous section: Core Services functionality</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="4.html">Next section: The module system</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">3-1. Overview</h3>
+
+<p>In Services, all network communication is performed through the socket
+subsystem, defined in the files <tt>sockets.c</tt> and <tt>sockets.h</tt>.
+This subsystem provides routines for managing sockets, which have a type of
+<tt>Socket&nbsp;*</tt>, connecting to or accepting connections from the
+network, and sending and receiving data.</p>
+
+<p>All network communication in Services is performed asynchronously.  Send
+(write) operations buffer the data given and return immediately; receive
+(read) operations are performed via <i>callbacks</i>, functions called by
+the central polling routine when particular events occur, and the actual
+reading routines operate on a read buffer which is filled by the polling
+routine as data is received from the remote host.  The polling routine
+itself is called by the Services main loop.</p>
+
+<p>The socket subsystem is designed so that it can be used in other
+programs as well with minimal changes.  (In fact, I currently use it in the
+HTTP server I wrote for my personal domain.)  Note, however, that only TCP
+connections over IPv4 are supported.  The socket subsystem uses the
+following functions from other Services source files, so replacements or
+stubs will need to be provided: <tt>log()</tt>, <tt>log_perror()</tt>,
+<tt>log_debug()</tt>, <tt>log_perror_debug()</tt>, <tt>pack_ip()</tt>.</p>
+
+<p>Below, <a href="#s2">section 3-2</a> discusses the creation and
+management of socket objects, including a list of callbacks;
+<a href="#s3">section 3</a> discusses connecting to (and listening for
+connections from) remote hosts; <a href="#s4">section 3-4</a> discusses
+sending and receiving data; <a href="#s5">section 3-5</a> discusses
+functions for retrieving information about sockets; and
+<a href="#s6">section 3-6</a> discusses the socket polling routine in
+detail.</p>
+
+<p>All socket routines which can fail return a valid error code in the
+system variable <tt>errno</tt> on failure.  The error codes returned are
+generally the same as those returned by the equivalent system calls or
+standard library functions; special note of particular error codes is
+included where appropriate.</p>
+
+<p>There are a few preprocessor constants and macros used in the source
+that are worth mentioning:</p>
+
+<dl>
+<dt><tt><b>SOCK_MIN_BUFSIZE</b></tt></dt>
+    <dd>Sets both the minimum socket buffer size and the increment by which
+	the buffer size is increased when necessary.  Defined in
+	<tt>sockets.h</tt>.</dd>
+
+<dt><tt><b>WARN_ON_BUFSIZE</b></tt></dt>
+    <dd>If defined, causes a warning message to be logged when a socket's
+	read or write buffer cannot be expanded due to the per-connection
+	or total buffer size limit (as set by <tt>sock_set_buflimits()</tt>).
+	Only one warning is logged per socket.  Optionally defined in
+	<tt>sockets.c</tt>.</dd>
+
+<dt><tt><b>DISABLE_SWRITEMAP</b></tt></dt>
+    <dd>If defined, disables the <tt>swritemap()</tt> function (see
+	<a href="#s4">section 3-4</a>), removing a dependency on the
+	<tt>munmap()</tt> system call and the <tt>sys/mman.h</tt> header
+	file.  Optionally defined in <tt>sockets.c</tt>.</dd>
+
+<dt><tt><b>TRACE_CALLS</b></tt></dt>
+    <dd>If defined, enables tracing of function calls (entry and exit) via
+	<tt>log_debug()</tt>.  Optionally defined in <tt>sockets.c</tt>.</dd>
+
+<dt><tt><b>ENTER</b>(<i>fmt</i>,...)</tt>
+<br/><tt><b>ENTER_WITH</b>(<i>retfmt</i>, <i>fmt</i>,...)</tt></dt>
+	<dd>Used in function call tracing to log entry to a function, along
+	with the values of any parameters.  <tt><i>fmt</i></tt> is a
+	<tt>printf()</tt>-style format string (which must be a string
+	literal) for formatting the function parameter values (passed as
+	extra parameters to the macro), and should cause each parameter to
+	be written in an appropriate format separated by commas.
+	<tt>ENTER_WITH()</tt> is used for functions which return a value,
+	and takes an extra parameter, <tt><i>retfmt</i></tt>, which is the
+	format string to use to display the return value, such as
+	<tt>"%d"</tt> or <tt>"%p"</tt> (the parameter is passed here to
+	avoid having to include it at every return point).  These macros
+	do nothing if function call tracing is not enabled.  Defined in
+	<tt>sockets.c</tt>.</dd>
+
+<dt><tt><b>RETURN</b></tt>
+<br/><tt><b>RETURN_WITH</b>(<i>val</i>)</tt></dt>
+	<dd>Used in function tracing to log exit from a function (and
+	perform the <tt>return</tt> as well).  <tt>RETURN</tt> is used for
+	<tt>void</tt> functions, while <tt>RETURN_WITH()</tt> is used for
+	functions that return a value.  If function call tracing is not
+	enabled, these macros simply perform a <tt>return</tt>.  Defined in
+	<tt>sockets.c</tt>.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">3-2. Creating, configuring, and destroying sockets</h3>
+
+<p>Before any other operations can be performed, a socket object must be
+created, either explicitly or by accepting a connection from a listener
+socket (see <a href="#s3-2">section 3-3-2</a>.  Socket objects are the
+means by which the socket subsystem keeps track of sockets, and are used
+in place of system socket descriptors with all relevant functions.</p>
+
+<p>Before actually establishing a connection, certain aspects of socket
+behavior can be configured.  In particular, it is important to set up
+proper callback routines (see <a href="#s2-2">section 3-2-2</a>) or you
+will be unable to do anything useful with the socket!  Sockets can also be
+set to be blocking (applying only to write operations occurring then the
+write buffer is full), and a write timeout can be set, causing the socket
+to be automatically disconnected if a certain amount of time passes without
+being able to send any data to the remote host.  All configuration routines
+can be called regardless of whether the socket is connected or not.</p>
+
+<p>When a socket object is no longer needed, it should be destroyed in
+order to free resources used by the socket.  If a connected socket is
+destroyed, it is automatically disconnected first.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-1">3-2-1. Interface routines</h4>
+
+<p>The following routines are used for creating, configuring, and
+destroying sockets:</p>
+
+<dl>
+<dt><tt>Socket *sock_new()</tt></dt>
+    <dd>Creates and returns a new, unconnected socket object.  The socket
+	has no callbacks associated with it, and defaults to no write
+	timeout and non-blocking mode.  The socket's internal read and
+	write buffers are each created with a size of
+	<tt>SOCK_MIN_BUFSIZE</tt> bytes.</dd>
+
+<dt><tt>void sock_setcb(Socket *<i>s</i>, SocketCallbackID <i>which</i>,
+	SocketCallback <i>func</i>)</tt></dt>
+    <dd>Sets the function for the callback event selected by
+	<tt><i>which</i></tt> (one of the <tt>SCB_*</tt> constants) to the
+	function <tt><i>func</i></tt> for the given socket.  If
+	<tt><i>func</i></tt> is <tt>NULL</tt>, then no function will be
+	called for the selected callback event.</dd>
+
+<dt><tt>sock_set_wto(Socket *<i>s</i>, int <i>seconds</i>)</tt></dt>
+    <dd>Sets the write timeout for the given socket to
+	<tt><i>seconds</i></tt> seconds.  If data is buffered for sending
+	and no data can be sent within the specified interval, the socket
+	will automatically be disconnected, as if the remote host had
+	closed the connection.  A value of zero for <tt><i>seconds</i></tt>
+	clears the timeout, allowing data to be buffered indefinitely.</dd>
+
+<dt><tt>sock_set_blocking(Socket *<i>s</i>, int <i>blocking</i>)</tt></dt>
+    <dd>Sets whether write operations should block or return an error
+	(<tt>EAGAIN</tt>) if no buffer space is available for data passed
+	to one of the send routines and the remote host is not ready to
+	accept more data.  Note that if sufficient buffer space is
+	available, write operations will always return immediately
+	regardless of this setting.</dd>
+
+<dt><tt>void sock_free(Socket *<i>s</i>)</tt></dt>
+    <dd>Destroys the given socket, freeing all resources used by the
+	socket.  If the socket is connected to a remote host, the
+	connection is automatically terminated, as if <tt>disconn()</tt>
+	(see <a href="#s3-3">section 3-3-3</a>) had been called.</dd>
+</dl>
+
+<p>There are two other routines which operate on the socket subsystem as a
+whole, rather then on a particular socket:</p>
+
+<dl>
+<dt><tt>sock_set_buflimits(uint32 <i>per_conn</i>, uint32 <i>total</i>)</tt></dt>
+    <dd>Sets the maximum combined send and receive buffer size allowed for
+	a single socket (first parameter) and for all sockets as a whole
+	(second parameter), in bytes.  Any data that arrives when one of
+	these limits has been reached will not be received until buffer
+	space becomes available; any send operations performed will fail if
+	no space is available.  A value of zero for either parameter
+	disables the respective limit; any other value is rounded down to a
+	multiple of <tt>SOCK_MIN_BUFSIZE</tt> (values smaller than
+	<tt>SOCK_MIN_BUFSIZE</tt> are rounded up).</dd>
+
+<dt><tt>sock_set_rto(int <i>msec</i>)</tt></dt>
+    <dd>Sets the read timeout used by the socket polling routine, in
+	milliseconds.  If no socket activity occurs during this interval,
+	the polling routine will return control to its caller.  Zero is a
+	valid value, and tells the polling routine to return immediately if
+	no data has been received by the system.  A negative value disables
+	the timeout, causing the polling routine to wait indefinitely for
+	socket activity.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-2">3-2-2. Socket callbacks</h4>
+
+<p>As mentioned above, the socket subsystem makes use of <i>callbacks</i>
+for socket activity processing.  Rather than having the caller code
+explicitly read from the socket, potentially blocking if no data is
+available, a polling routine (discussed in <a href="#s6">section 3-6</a>)
+monitors all sockets for activity, "calling back" to the caller when
+certain events occur.  The functions to be called for each event can be
+set independently for each socket, using the aforementioned
+<tt>sock_setcb()</tt> routine; events to which no function is assigned
+(the default state) are ignored.  Two parameters are passed to the callback
+function: a <tt>Socket&nbsp;*</tt> parameter indicating the socket on which
+the event occured, and a <tt>void&nbsp;*</tt> parameter whose meaning
+depends on the particular callback (some callbacks do not use it at all).
+The exact callback function signature is:</p>
+
+<div class="code">void <i>callback</i>(Socket *<i>s</i>, void *<i>param</i>)</div>
+
+<p>This type (a pointer to it, rather) is defined as <tt>SocketCallback</tt>
+in <tt>sockets.h</tt>.</p>
+
+<p>The following events (listed by the name of the constant used as the
+<tt><i>which</i></tt> parameter to <tt>sock_setcb()</tt>) can have callback
+functions attached to them:</p>
+
+<dl>
+<dt><tt><b>SCB_CONNECT</b></tt></dt>
+    <dd>Called when a connection initiated by calling the <tt>conn()</tt>
+	routine (see <a href="#s3-1">section 3-3-1</a>) completes
+	successfully.  The <tt>void&nbsp;*</tt> parameter is not used.</dd>
+
+<dt><tt><b>SCB_DISCONNECT</b></tt></dt>
+    <dd>Called when an existing connection is broken, either by the remote
+	host or by calling the <tt>disconn()</tt> routine (see
+	<a href="#s3-3">section 3-3-3</a>), or when a connection initiated
+	by calling the <tt>conn()</tt> routine fails.  The
+	<tt>void&nbsp;*</tt> parameter indicates the type of disconnection:
+	<ul><li><b><tt>DISCONN_LOCAL</tt>:</b> The connection was broken
+		locally by calling the <tt>disconn()</tt> routine.</li>
+	    <li><b><tt>DISCONN_REMOTE</tt>:</b> The connection was broken
+		by the remote host.</li>
+	    <li><b><tt>DISCONN_CONNFAIL</tt>:</b> The connection attempt
+		was rejected by the remote host or otherwise failed.</li></ul>
+	For remote disconnection events (<tt>DISCONN_REMOTE</tt> and
+	<tt>DISCONN_CONNFAIL</tt>), the global <tt>errno</tt> variable
+	indicates the cause of the disconnection if known, zero
+	otherwise.</dd>
+
+<dt><tt><b>SCB_ACCEPT</b></tt></dt>
+    <dd>Called when a remote host connects to a listener socket (see
+	<a href="#s3-2">section 3-3-2</a>).  The primary socket parameter
+	to the callback is the listener socket, and the
+	<tt>void&nbsp;*</tt> parameter is the newly-created socket (of type
+	<tt>Socket&nbsp;*</tt>).  Note that listener sockets will
+	immediately drop all incoming connections if no function is
+	assigned to this callback.</dd>
+
+<dt><tt><b>SCB_READ</b></tt></dt>
+    <dd>Called when data has been received on the socket and is available
+	for reading (see <a href="#s4-2">section 3-4-2</a>).  The
+	<tt>void&nbsp;*</tt> parameter, cast to <tt>uint32</tt>, is the
+	number of bytes of data available for reading.</dd>
+
+<dt><tt><b>SCB_READLINE</b></tt></dt>
+    <dd>Called when data has been received on the socket and is available
+	for reading, much like <tt>SCB_READ</tt>; however, this callback is
+	only called when a full line of data (containing a newline) is
+	available to be read.  If both this callback and <tt>SCB_READ</tt>
+	have functions assigned to them, both functions will be called in
+	turn until there is no more data to process; see
+	<a href="#s4-2">section 3-4-2</a> for details.</dd>
+
+<dt><tt><b>SCB_TRIGGER</b></tt></dt>
+    <dd>Called when a <i>write trigger</i> is encountered on the socket.
+	Write triggers are created using the <tt>swrite_trigger()</tt>
+	routine, described in <a href="#s4-1">section 3-4-1</a>.  A write
+	trigger causes this callback to be called when all data before the
+	trigger has been successfully sent to the remote host, but before
+	any data beyond the trigger has been sent.  The
+	<tt>void&nbsp;*</tt> parameter is the arbitrary value passed to
+	<tt>swrite_trigger()</tt>.</dd>
+</dl>
+
+<p>Internally, callback functions are called using the local
+<tt>do_callback()</tt> routine.  This routine sets the <tt>SF_CALLBACK</tt>
+flag on the socket while the callback is in progress, to ensure that the
+socket is not destroyed while it is still in use.  The routine also checks
+after the callback returns whether any flags were set indicating that the
+connection was broken (<tt>SF_BROKEN</tt>) or that the socket should be
+destroyed (<tt>SF_DELETEME</tt>) or disconnected locally
+(<tt>SF_DISCONNECT</tt>).  The function returns 0 if the socket was
+disconnected, 1 otherwise.  It also returns 1 if either the socket or the
+callback is unspecified (<tt>NULL</tt> or zero), to simplify the caller's
+logic.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">3-3. Establishing and breaking connections</h3>
+
+<p>From the point of view of any particular host, there are two general
+ways in which a connection to a remote host can be established: either by
+actively connecting to the remote host (outgoing), or by waiting for the
+remote host to request a connection (incoming).  The socket subsystem
+supports both of these, the former via the <tt>conn()</tt> routine and the
+latter via listener sockets.  Outgoing connections are handled
+asynchronously, like all other socket operations, and the
+<tt>SCB_CONNECT</tt> callback is used to inform the caller when the
+connection has completed.</p>
+
+<p>Once a connection has been established, it can also be broken at either
+the local or the remote side.  The socket subsystem provides the
+<tt>disconn()</tt> routine for deliberately closing a connection, and
+notifies the caller of a connection closed by the remote host through the
+<tt>SCB_DISCONNECT</tt> callback.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-1">3-3-1. Outgoing connections</h4>
+
+<p>To establish a connection to a remote host, the caller should first
+create a socket, configure it as appropriate (including, at minimum, the
+<tt>SCB_CONNECT</tt> and <tt>SCB_DISCONNECT</tt> callbacks), then call the
+<tt>conn()</tt> routine:</p>
+
+<div class="code">int <b>conn</b>(Socket *<i>s</i>,
+         const char *<i>host</i>, int <i>port</i>,
+         const char *<i>lhost</i>, int <i>lport</i>)</div>
+
+<p>This routine attempts to establish a TCP connection to the host
+specified by <tt><i>host</i></tt> on TCP port number <tt><i>port</i></tt>.
+The hostname may be specified as either a hostname, which is passed to the
+system's <tt>gethostbyname()</tt> address lookup function (if the call
+returns multiple addresses, the first one returned by the system will be
+used), or a numeric IPv4 address, which is parsed directly.  The address to
+be used for the local side of the socket can also be specified with the
+<tt><i>lhost</i></tt> and <tt><i>lport</i></tt> parameters; values of
+<tt>NULL</tt> and zero, respectively, leave the choice of the corresponding
+parameter to the system.</p>
+
+<p>If an error is encountered in setting up the connection, such as an
+invalid host name or port number, the <tt>conn()</tt> routine returns -1
+and sets <tt>errno</tt> appropriately; the value in <tt>errno</tt> may be
+negative, indicating a hostname resolution failure (pass the negative of
+this value to <tt>hstrerror()</tt> to obtain an error message string).
+Otherwise, the routine returns zero, signifying that the connection is in
+process.</p>
+
+<p>When the connection completes, the socket subsystem calls the socket's
+<tt>SCB_CONNECT</tt> callback function to notify the caller that the
+connection is ready for use.  Alternatively, the connection may be refused
+by the remote host, in which case the socket's <tt>SCB_DISCONNECT</tt>
+callback is called with a parameter of <tt>DISCONN_CONNFAIL</tt>.</p>
+
+<p>Note that when a connection is made to the local host or a sufficiently
+close remote host, the connection may complete or be rejected immediately.
+If the connection is rejected, <tt>conn()</tt> will return an error, but if
+it is accepted, the <tt>SCB_CONNECT</tt> callback will be called
+immediately, before <tt>conn()</tt> returns; the caller must therefore
+perform all necessary setup for the callback function before calling
+<tt>conn()</tt>.</p>
+
+<p>Internally, <tt>conn()</tt> sets the <tt>SF_CONNECTING</tt> flag on the
+socket while the connection is being processed by the system; the socket
+polling routine then watches for the connection to complete or fail,
+setting the <tt>SF_CONNECTED</tt> flag in the former case and calling the
+appropriate callback.  If the connection completes immediately,
+<tt>conn()</tt> itself sets the <tt>SF_CONNECTED</tt> flag.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-2">3-3-2. Incoming connections</h4>
+
+<p>In order to accept connections from remote hosts, a <i>listener
+socket</i>, which "listens" for connections on a specified port, must first
+be created.  This is done with the <tt>open_listener()</tt> routine:</p>
+
+<div class="code">int <b>open_listener</b>(Socket *<i>s</i>, const char *<i>host</i>,
+                  int <i>port</i>, int <i>backlog</i>)</div>
+
+<p>This function turns the given socket into a listener socket which will
+accept connections on the given TCP port.  If <tt><i>host</i></tt> is not
+<tt>NULL</tt>, connections will only be accepted on the corresponding IP
+address (processed the same way as for <tt>conn()</tt>&mdash;note in
+particular that if the hostname has multiple addresses associated with it,
+only one will be used).  The <tt><i>backlog</i></tt> value is passed
+directly to the system's <tt>listen()</tt> function, and indicates how many
+connections the system should allow to be pending (recognized by the system
+but not yet accepted by the program).</p>
+
+<p>In order to actually accept connections, a function must be assigned to
+the socket's <tt>SCB_ACCEPT</tt> callback (if no function is assigned, any
+connections received by the socket will be dropped immediately).  The
+<tt>void&nbsp;*</tt> parameter passed to this function is a new socket
+object that has been created for the connection, already connected to the
+remote host.  The new socket is initialized in the same manner as sockets
+created with <tt>sock_new()</tt>, so the accept callback will need to
+configure the socket appropriately (setting callback functions and so on).
+The new socket can be used in the same manner as sockets explicitly created
+with <tt>sock_new()</tt>, except that the socket will be automatically
+destroyed when disconnected (thus the caller must be careful not to
+continue using the socket after the connection is closed).</p>
+
+<p>Internally, the <tt>SF_LISTENER</tt> flag is used to mark an active
+listener socket.  When a read event occurs on such a socket, the
+<tt>do_accept()</tt> internal routine accepts the connection, creates a
+new socket object (with the <tt>SF_SELFCREATED</tt> flag set, to indicate
+that the socket was created internally rather than an external
+<tt>sock_new()</tt> call and should be destroyed upon disconnection), sets
+up the new socket with the accepted connection, and calls the listener
+socket's <tt>SCB_ACCEPT</tt> callback function.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-3">3-3-3. Disconnecting</h4>
+
+<p>When a connection is no longer needed, the <tt>disconn()</tt> routine
+can be called to disconnect a connected socket from the remote host:</p>
+
+<div class="code">void <b>disconn</b>(Socket *<i>s</i>)</div>
+
+<p>This routine first flushes the socket's write buffer if any unsent data
+remains, then calls the socket's <tt>SCB_DISCONNECT</tt> callback with a
+parameter of <tt>DISCONN_LOCAL</tt>.  The return value is zero on success,
+-1 on error (such as an invalid or listener socket).  If there is unsent
+data remaining in the write buffer and it cannot be immediately sent to the
+remote host, however, then <tt>disconn()</tt> will return successfully
+without calling the <tt>SCB_DISCONNECT</tt> callback; in this case, the
+callback will be called by the socket polling routine once all the data has
+been sent.</p>
+
+<p>A connection may also be closed by the remote host; in this case, the
+socket subsystem will automatically return the socket to an unconnected
+state, calling the <tt>SCB_DISCONNECT</tt> callback with a parameter of
+<tt>DISCONN_REMOTE</tt>.  In this case, there is no point in attempting to
+send any data remaining in the write buffer, and it is simply discarded.
+If the disconnection is detected while a socket callback is being processed
+(for example, when an attempt to send data to the remote host fails), the
+disconnection will be postponed until the callback completes, so callback
+functions do not need to worry about checking the socket's status after
+every send operation.</p>
+
+<p>Listener sockets cannot be closed with <tt>disconn()</tt>; a separate
+function, <tt>close_listener()</tt>, is used to stop the socket from
+accepting new connections and return it to an unused (unconnected) state.</p>
+
+<p>Internally, disconnection is handled by the <tt>do_disconn()</tt>
+routine, which is called for all types of disconnections&mdash;local,
+remote, and connection failures&mdash;with the code appropriate to the
+disconnection reason.  The code may be bitwise OR'd with
+<tt>DISCONN_RESUME_FLAG</tt>, a local flag (masked out before calling the
+disconnect callback) indicating that the call to <tt>do_disconn()</tt> is
+being made to continue a disconnection in progress.  The routine performs
+the following operations:</p>
+
+<ul>
+<li class="spaced">Ensures that the socket pointer is not <tt>NULL</tt> and
+	does not reference a listener socket, returning an error (-1 with
+	<tt>EINVAL</tt>) in either case.</li>
+
+<li class="spaced">Checks whether the socket's <tt>SF_DISCONNECTING</tt>
+	flag, indicating a disconnection operation in progress, is set.  If
+	the flag is set and the <tt>DISCONN_RESUME_FLAG</tt> flag is not
+	set in the disconnection code, the disconnection request is ignored
+	and success (zero) is returned.</li>
+
+<li class="spaced">Checks whether the socket's <tt>SF_DISCONN_REQ</tt>
+	flag, indicating a disconnection request in progress, is set.  If
+	so, and if the disconnection code is <tt>DISCONN_LOCAL</tt>, the
+	request is ignored.  (Remote disconnects and connection failures
+	are passed through, overriding local disconnects, so that if a
+	remote disconnect is detected while <tt>disconn()</tt> is flushing
+	the write buffer, for example, the disconnect callback will see the
+	code <tt>DISCONN_REMOTE</tt> rather than <tt>DISCONN_LOCAL</tt>.</li>
+
+<li class="spaced">Checks the socket's <tt>SF_CONNECTING</tt> and
+	<tt>SF_CONNECTED</tt> flags.  If neither flag is set, the socket is
+	not connected, so there is nothing to do, and the request is
+	ignored.</li>
+
+<li class="spaced">Sets the socket's <tt>SF_DISCONN_REQ</tt> flag.</li>
+
+<li class="spaced">Clears the socket's file descriptor from the set of
+	descriptors to check for read status (see <a href="#s6">section
+	3-6</a>).</li>
+
+<li class="spaced">If the disconnection code is <tt>DISCONN_LOCAL</tt> and
+	there is unsent data in the write buffer, calls
+	<tt>flush_write_buffer()</tt> (see <a href="#s4-1">section
+	3-4-1</a>) to send the data out.  If the data cannot be sent
+	immediately, the socket's <tt>SF_DISCONNECT</tt> flag is set, and
+	success is returned; <tt>do_disconn()</tt> must be called again by
+	the socket polling routine with the <tt>DISCONN_RESUME_FLAG</tt>
+	flag set in the code once all data has been sent.</li>
+
+<li class="spaced">Sets the socket's <tt>SF_DISCONNECTING</tt> flag.</li>
+
+<li class="spaced">Shuts down communications on the socket at the system
+	level, by calling <tt>shutdown()</tt> and <tt>close()</tt>.  (The
+	actual closing of the file descriptor is handled by
+	<tt>sock_closefd()</tt>, an internal routine that takes care of
+	clearing socket object fields and file descriptor set bits
+	appropriately.)</li>
+
+<li class="spaced">Clears out the socket's write map list (ses
+	<a href="#s4-1">section 3-4-1</a>).</li>
+
+<li class="spaced">Calls the socket's <tt>SCB_DISCONNECT</tt> callback
+	function, if one is set, passing the disconnection code with the
+	<tt>DISCONN_RESUME_FLAG</tt> internal flag cleared.</li>
+
+<li class="spaced">Clears the socket's <tt>SF_DISCONNECTING</tt> flag.</li>
+
+<li class="spaced">If the socket's file descriptor is no longer unset
+	(meaning that the disconnect callback function reconnected the
+	socket), aborts further processing and returns success.</li>
+
+<li class="spaced">Clears the socket's <tt>SF_CONNECTING</tt> and
+	<tt>SF_CONNECTED</tt> flags.</li>
+
+<li class="spaced">If the socket's <tt>SF_SELFCREATED</tt> flag, indicating
+	a socket created by accepting a connection, or <tt>SF_DELETEME</tt>
+	flag, indicating a delayed destroy operation, is set, destroys the
+	socket; otherwise frees all buffer space used by the socket.</li>
+</ul>
+
+<p>Note that the values used for the disconnection codes do not include
+	zero; this is to avoid unexpected consequences when the value is
+	converted to a pointer for use as the <tt>void&nbsp;*</tt> argument
+	to the callback function.  (Theoretically, conversions both ways
+	should handle the zero and <tt>NULL</tt> values appropriately, but
+	there's always the possibility of a broken compiler
+	.&nbsp;.&nbsp;.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s4">3-4. Sending and receiving data</h3>
+
+<p>The socket subsystem includes several routines for sending data to and
+receiving data from remote systems, which more or less mimic the standard
+system and library functions for reading and writing data.  These routines
+never block, however; send operations store the given data in the socket's
+write buffer and return immediately (with the exception discussed under
+<tt>sock_set_blocking()</tt> in <a href="#s2-1">section 3-2-1</a>), while
+receive operations return an end-of-file condition if there is not enough
+data in the read buffer to satisfy the operation.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-1">3-4-1. Sending data</h4>
+
+<p>There are two main families of data sending routines: string-based
+(stdio-like) routines and buffer-based routines.  The interfaces are as
+follows:</p>
+
+<dl>
+<dt><tt>int <b>sputs</b>(const char *<i>str</i>, Socket *<i>s</i>)</tt></dt>
+    <dd>Sends the given null-terminated string to the given socket, like
+	<tt>fputs()</tt>.  (Does <i>not</i> write a trailing newline.)
+	Returns the number of bytes written, or -1 on failure.</dd>
+
+<dt><tt>int <b>sockprintf</b>(Socket *<i>s</i>, const char *<i>fmt</i>, ...)</tt>
+<br/><tt>int <b>vsockprintf</b>(Socket *<i>s</i>, const char *<i>fmt</i>, va_list <i>args</i></tt></dt>
+    <dd>Formats the variadic argument list according to the format string
+	<tt><i>fmt</i></tt> and sends it to the given socket, like
+	<tt>fprintf()</tt>.  Returns the number of bytes written, or -1 on
+	failure.</dd>
+
+<dt><tt>int32 <b>swrite</b>(Socket *<i>s</i>, const char *<i>buf</i>, int32 <i>len</i>)</tt></dt>
+    <dd>Sends data from buffer <tt><i>buf</i></tt> of length
+	<tt><i>len</i></tt> to the given socket, like <tt>write()</tt>.
+	Returns the number of bytes written, or -1 on failure.</dd>
+
+<dt><tt>int32 <b>swritemap</b>(Socket *<i>s</i>, const char *<i>buf</i>, int32 <i>len</i>)</tt></dt>
+    <dd>Sends data to the given socket, like <tt>swrite()</tt>; the buffer
+	<tt><i>buf</i></tt> is taken to be a region of memory (of length
+	<tt><i>len</i></tt>) mapped with <tt>mmap()</tt>, and will be freed
+	automatically with <tt>munmap()</tt> when all of the data has been
+	sent to the socket.  If <tt>DISABLE_SWRITEMAP</tt> (see
+	<a href="#s1">section 3-1</a>) is defined, returns the error
+	<tt>ENOSYS</tt>.</dd>
+
+<dt><tt>int <b>swrite_trigger</b>(Socket *<i>s</i>, void *<i>data</i>)</tt></dt>
+    <dd>Inserts a <i>write trigger</i> at the socket's current write buffer
+	position, causing the socket's <tt>SCB_TRIGGER</tt> callback
+	function to be called when all data written prior to the
+	<tt>swrite_trigger()</tt> call has been successfully sent to the
+	remote host, and before any data written subsequently has been
+	sent.  The value passed as the <tt><i>data</i></tt> parameter is
+	passed on unmodified to the callback function.</dd>
+</dl>
+
+<p>The first three functions perform the actual writing using the internal
+<tt>buffered_write()</tt> routine.  This function first resets the
+timestamp used for detecting send timeouts if there is no data waiting to
+be sent (either in the write buffer or in mapped buffers, as described
+below), then copies the caller's data into the socket's write buffer up to
+the current buffer size and calls the <tt>flush_write_buffer()</tt> routine
+to send out any buffered data that can be sent without blocking; these two
+steps are repeated until all of the caller's data has been buffered (and
+possibly sent).</p>
+
+<p>The <tt>flush_write_buffer()</tt> routine, in turn, first checks for
+mapped write buffers and write triggers, as described below, then calls the
+system's <tt>send()</tt> function to send a single contiguous block of data
+to the remote host.  The data actually sent (which may be none at all, if
+the system is not ready to accept any more data for the socket) is removed
+from the write buffer, and the number of bytes sent is returned.  The
+routine returns -1 on system error (or invalid parameter), and -2 if the
+socket was in the middle of a disconnect and there is no more data to
+send.  <tt>flush_write_buffer()</tt> also manages the set of file
+descriptors to watch for write-ready events, used in the polling routine,
+and shrinks the socket's buffers if a send operation removes all pending
+data from the write buffer.</p>
+
+<p>If an attempt to flush the write buffer fails when the buffer is full,
+<tt>buffered_write()</tt> attempts to expand the buffer.  This is done by
+calling <tt>resize_how_much()</tt> to find out how much the buffer should
+be expanded by (the current implementation uses a constant 10%, rounded up
+to the next multiple of <tt>SOCK_MIN_BUFSIZE</tt>), then performs the actual
+resize operation.  If <tt>resize_how_much()</tt> returns zero, meaning that
+trying to expand the buffer would exceed the per-connection or total buffer
+size limit, or if the attempt to resize the buffer fails, then
+<tt>buffered_write()</tt> either returns an <tt>EAGAIN</tt> error or blocks
+until some buffer space can be freed, depending on whether the socket has
+been set blocking via <tt>sock_set_blocking()</tt> or not.</p>
+
+<p>In order to avoid the overhead of moving data around on every send
+operation, the write buffer is used circularly, through the use of four
+pointers in the <tt>Socket</tt> structure:</p>
+<ul>
+<li><b><tt>wbuf</tt>:</b> Points to the base address of the buffer.</li>
+<li><b><tt>wptr</tt>:</b> Points to the first byte of valid data in the
+	buffer.</li>
+<li><b><tt>wend</tt>:</b> Points to the first byte after the last byte of
+	valid data in the buffer.</li>
+<li><b><tt>wtop</tt>:</b> Points to one byte beyond the last byte of the
+	buffer (for convenience).</li>
+</ul>
+
+<p>The <tt>wbuf</tt> and <tt>wtop</tt> pointers remain constant (except for
+changes in the location or size of the buffer itself) for the life of the
+socket, while the <tt>wptr</tt> and <tt>wend</tt> pointers advance
+circularly through the buffer space as data is added and removed.  The
+amount of data in the buffer can be computed as
+<tt>wend&nbsp;-&nbsp;wptr</tt>, modulo the buffer size; note that this
+difference will be negative if <tt>wend</tt> has wrapped around to the
+beginning of the buffer but <tt>wptr</tt> has not, so the buffer size
+(<tt>wtop&nbsp;-&nbsp;wbuf</tt>) must be added to the result, as is done
+in the <tt>write_buffer_len()</tt> function. Thus an empty buffer is
+indicated by <tt>wend&nbsp;==&nbsp;wptr</tt>, while a full buffer is
+indicated by <tt>wend&nbsp;==&nbsp;wptr-1</tt> (again, modulo the buffer
+size), leaving a one-byte pad to avoid a full buffer being mistakenly
+treated as an empty one.</p>
+
+<p>The last two functions for sending data, <tt>swritemap()</tt> and
+<tt>swrite_trigget()</tt>, record their data in the <i>write-map list</i>,
+a singly-linked list of structures containing information on mapped buffers
+and write triggers.  The structure is <tt>struct wmapinfo</tt>, defined
+within the <tt>Socket</tt> structure definition in <tt>sockets.c</tt>, and
+contains the following fields:</p>
+
+<ul>
+<li><b><tt>next</tt>:</b> A pointer to the next structure in the list.</li>
+<li><b><tt>wait</tt>:</b> The number of bytes left to send from the write
+	buffer before processing this structure.</li>
+<li><b><tt>map</tt>, <tt>maplen</tt>:</b> The buffer pointer and buffer
+	length (for write triggers, the data for the callback function and
+	zero).</li>
+<li><b><tt>pos</tt>:</b> The current position within the buffer (the number
+	of bytes sent from the buffer so far).</li>
+</ul>
+
+<p>The head of the list is stored in the <tt>writemap</tt> field of the
+socket object; the tail of the list is also recorded in the
+<tt>writemap_tail</tt> field for efficiency reasons.  If the list is empty,
+both fields are <tt>NULL</tt>.</p>
+
+<p>When <tt>swritemap()</tt> or <tt>swrite_trigger()</tt> is called, a new
+structure is created and appended to the list, with the <tt>map</tt> and
+<tt>maplen</tt> fields set to the buffer pointer and length (or the trigger
+data and zero), the <tt>pos</tt> field set to zero, and the <tt>wait</tt>
+field set to the current length of the write buffer.  The
+<tt>flush_write_buffer()</tt> then checks at the beginning of the routine
+whether the first write-map structure (if one exists) is ready for
+processing (has a <tt>wait</tt> value of zero).  If so, data is sent from
+the mapped buffer instead of the socket's write buffer; in the case of a
+write trigger, the <tt>SF_WTRIGGER</tt> flag is set, to cause the polling
+routine to call the socket's write trigger callback function and to prevent
+any further buffer flushes from occurring before then.  Otherwise, data is
+sent from the socket's write buffer as usual, and every write-map
+structure's <tt>wait</tt> field is decremented by the number of bytes sent.
+<i>Implementation note: This roundabout method is a result of adding the
+<tt>swritemap()</tt> and <tt>swrite_trigger()</tt> fields after the initial
+socket subsystem design was complete (in fact, Services does not use them
+at all&mdash;I added them for my HTTP server).  A more intelligent design
+would use a write-map or similar structure for every block of data to be
+sent, possibly pointing into a common buffer like the current write
+buffer.</i></p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-2">3-4-2. Receiving data</h4>
+
+<p>Like send operations, there are two main groups of receive routines,
+string- (or character-) based and buffer-based:</p>
+
+<dl>
+<dt><tt>int <b>sgetc</b>(Socket *<i>s</i>)</tt></dt>
+    <dd>Reads a single byte (character) from the socket, returning the
+	value of the byte read or <tt>EOF</tt> if no data is available.
+	Assumes the socket passed in is valid.</dd>
+
+<dt><tt>int <b>sgets</b>(char *<i>buf</i>, int32 <i>len</i>, Socket *<i>s</i>)</tt></dt>
+    <dd>Reads a line of data (ending with an LF character, value 0x0A) from
+	the given socket, storing it in <tt><i>buf</i></tt>.  If the string
+	(including the null terminator) requires more than <tt><i>len</i></tt>
+	bytes, it is truncated to <tt><i>len</i>-1</tt> bytes, but the
+	entire string (to the newline) is removed from the socket'S buffer.
+	Returns <tt><i>buf</i></tt>, or <tt>NULL</tt> if no complete line
+	is available to read or an error occurs.</dd>
+
+<dt><tt>int <b>sgets2</b>(char *<i>buf</i>, int32 <i>len</i>, Socket *<i>s</i>)</tt></dt>
+    <dd>Reads a line of data from the given socket and stores it in
+	<tt><i>buf</i></tt>, like <tt>sgets()</tt>; however, a trailing
+	LF or CR/LF pair will be stripped from the string before it is
+	returned.</dd>
+
+<dt><tt>int <b>sread</b>(Socket *<i>s</i>, char *<i>buf</i>, int32 <i>len</i>)</tt></dt>
+    <dd>Reads a block of data from the socket, returning the number of
+	bytes successfully read (which may be less than <tt><i>len</i></tt>,
+	or zero, if insufficient data is available in the socket's
+	buffer to satisfy the requsst).  Returns -1 on error.</dd>
+</dl>
+
+<p>All four of these functions operate on the socket's read buffer.  This
+buffer is filled by the socket polling routine (see <a href="#s6">section
+3-6</a>) when data has been received by the system and is available for
+reading from the socket.  The routines are intended to be called from the
+<tt>SCB_READ</tt> or <tt>SCB_READLINE</tt> callbacks, which are called by
+the polling routine when data is available.</p>
+
+<p>The use of two distinct callbacks for reading data is to facilitate the
+processing of both binary and textual data.  When data has been received on
+the socket's connection and stored in the buffer, the socket subsystem
+first calls the <tt>SCB_READ</tt> callback function, passing the number of
+bytes available for reading (an integer value, cast to <tt>void&nbsp;*</tt>
+for the call).  If the callback function leaves some data in the buffer (or
+no function is assigned), and if at least one newline character is present
+in the buffer, the <tt>SCB_READLINE</tt> callback function is then called,
+again with the number of bytes available for reading.  If there is still
+data left in the buffer, both callbacks are called again in order,
+repeating until either all data has been consumed or the
+<tt>SCB_READ</tt>/<tt>SCB_READLINE</tt> pair does not read any data from
+the socket's buffer.</p>
+
+<p>The read buffer is handled in the same manner as the write buffer; four
+fields (<tt><i>rbuf</i></tt>, <tt><i>rptr</i></tt>, <tt><i>rend</i></tt>,
+and <tt><i>rtop</i></tt>) are used to manage data insertion and removal,
+and like the write buffer, the read buffer is used circularly to avoid
+overhead from moving data around.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-3">3-4-3. Muting sockets</h4>
+
+<p>If the caller does not want to receive socket events for a certain
+socket, the socket can be <i>muted</i>.  The socket subsystem will not
+attempt to receive any data from the remote host for a muted socket, and
+will not call the <tt>SCB_READ</tt> or <tt>SCB_READLINE</tt> callbacks.
+Listener sockets can also be muted, causing the socket subsystem to not
+accept any connections from remote hosts or call the <tt>SCB_ACCEPT</tt>
+callback (connection attempts will be left waiting in the operating
+system's queue).  Note that muting a socket does not have any effect on the
+operating system's low-level data processing; if the OS automatically
+accepts connection attempts at the protocol level, for example, the remote
+host will still see the connection established.  Also note that a socket in
+the process of connecting or disconnecting will still call the
+<tt>SCB_CONNECT</tt> or <tt>SCB_DISCONNECT</tt> callback when the operation
+completes, and the write buffer will still be flushed normally, causing the
+<tt>SCB_TRIGGER</tt> callback to be called if a write trigger is
+encountered.</p>
+
+<p>The functions for muting and unmuting sockets are:</p>
+
+<dl>
+<dt><tt>void <b>sock_mute</b>(Socket *<i>s</i>)</tt></dt>
+    <dd>Mutes the given socket, disabling all read and accept events.
+	Does nothing if the socket was already muted.</dd>
+
+<dt><tt>void <b>sock_unmute</b>(Socket *<i>s</i>)</tt></dt>
+    <dd>Unmutes the given socket, allowing read and accept events to occur.
+	Does nothing if the socket was not muted.  If any data is present
+	in the socket's read buffer, the <tt>SCB_READ</tt> and
+	<tt>SCB_READLINE</tt> callbacks will be called once regardless of
+	whether any new data has arrived on the socket.</dd>
+</dl>
+
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s5">3-5. Retrieving socket information</h3>
+
+<p>The following routines can be used to retrieve information on sockets:</p>
+
+<dl>
+<dt><tt>int <b>sock_isconn</b>(const Socket *<i>s</i>)</tt></dt>
+    <dd>Returns whether the socket is currently connected to a remote
+	host (nonzero if connected, else zero).</dd>
+
+<dt><tt>int <b>sock_remote</b>(const Socket *<i>s</i>, struct sockaddr *<i>sa</i>,
+	int *<i>lenptr</i>)</tt></dt>
+    <dd>Retrieves the remote host's address if the socket is connected,
+	returning 0 on success, -1 on failure.  Equivalent to the system
+	call <tt>getpeername()</tt> on ordinary sockets.</dd>
+
+<dt><tt>int <b>sock_get_blocking</b>(const Socket *<i>s</i>)</tt></dt>
+    <dd>Returns whether the given socket is in blocking mode or not.
+	The return value is positive if the socket is in blocking mode,
+	zero if it is in non-blocking mode, or -1 if the socket parameter
+	is invalid.</dd>
+
+<dt><tt>uint32 <b>read_buffer_len</b>(const Socket *<i>s</i>)</tt>
+<br/><tt>uint32 <b>write_buffer_len</b>(const Socket *<i>s</i>)</tt></dt>
+    <dd>Returns the given socket's read or write buffer length (the
+	amount of data received but not processed, or buffered but not
+	yet sent, respectively), in bytes.  The socket parameter must
+	point to a valid socket (it is not checked for validity).</dd>
+
+<dt><tt>uint32 <b>sock_rwstat</b>(const Socket *<i>s</i>,
+	uint64 *<i>read_ret</i>, uint64 *<i>written_ret</i>)</tt></dt>
+    <dd>Returns the amount of data received and sent on the given socket.
+	The amount of data received is stored in the location pointed to by
+	<tt><i>read_ret</i></tt>, and the amount sent is stored in the
+	location pointed to by <tt><i>write_ret</i></tt>, both in bytes;
+	the amount of data sent does not include data stored in the write
+	buffer but not yet sent to the remote host.  Either pointer can be
+	<tt>NULL</tt> if the corresponding value is not needed.  The
+	routine returns 0 on success, -1 on failure.</dd>
+
+<dt><tt>int <b>sock_bufstat</b>(const Socket *<i>s</i>,
+	uint32 *<i>socksize_ret</i>, uint32 *<i>totalsize_ret</i>,
+	int *<i>ratio1_ret</i>, int *<i>ratio2_ret</i>)</tt></dt>
+    <dd>Returns buffer size information about the given socket (if not
+	<tt>NULL</tt>) and about the socket subsystem as a whole.
+	<tt><i>socksize_ret</i></tt> is set to the number of bytes
+	allocated for the given socket's read and write buffers, and
+	<tt><i>ratio1_ret</i></tt> is set to the ratio of this value to
+	the per-socket buffer size limit set with
+	<tt>sock_set_buflimits()</tt>, expressed as a percentage rounded up
+	to the nearest integer; if a <tt>NULL</tt> value is passed for the
+	socket, <tt><i>socksize_ret</i></tt> will be left unmodified, and
+	<tt><i>ratio1_ret</i></tt> will be set to zero. Likewise,
+	<tt><i>totalsize_ret</i></tt> is set to the total number of bytes
+	allocated for socket buffers, and <tt><i>ratio2_ret</i></tt> is set
+	to the percentage ratio of this value to the total buffer size
+	limit.  The function's return value is the larger of the two ratios
+	given above, also as a percentage.  If the per-socket or total
+	buffer size limit is disabled, the corresponding ratio will be set
+	to zero.  Any of the return talue parameters can be set to
+	<tt>NULL</tt>, in which case the corresponding value will not be
+	returned.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s6">3-6. The socket polling routine</h3>
+
+<p>The final socket interface routine, <tt>check_sockets()</tt>, is the
+workhorse of the socket subsystem.  The routine waits for activity to
+occur, reading data from any sockets on which new data has been received,
+flushing the write buffer when a socket becomes ready for sending more
+data, and accepting connections from listener sockets on which a new
+connection request is received.  If a timeout has been set with
+<tt>sock_set_rto()</tt> (see <a href="#s2-1">section 3-2-1</a>), the
+routine returns control to the caller if no activity occurs within that
+time (the name "rto", for "read timeout", is something of a misnomer, since
+it applies to all types of activity: read-ready, write-ready, and new
+connection).</p>
+
+<p>When called, <tt>check_sockets()</tt> first sets up the file descriptor
+sets and timeout value used in the <tt>select()</tt> system call (the file
+descriptor sets are actually initialized and modified by other routines as
+appropriate; <tt>check_sockets()</tt> makes a copy of them so the originals
+are not modified by <tt>select()</tt>.  The timeout is ordinarily the value
+given to <tt>sock_set_rto()</tt>, but if one or more sockets with a write
+timeout set has data pending in the write buffer, the timeout is reduced to
+the time until the earliest timeout (with second resolution).  Then
+<tt>select()</tt> is invoked; signals are enabled only for the duration of
+the <tt>select()</tt> call, and disabled immediately after
+<tt>select()</tt> returns.  (It is assumed that signals are disabled when
+<tt>check_sockets()</tt> is called; <tt>init_signals()</tt> disables
+signals before it returns, so this prerequisite is fulfulled.)  The
+<tt>select()</tt> call is made in a loop to ensure that a received signal
+is not interpreted as an error.</p>
+
+<p>After <tt>select()</tt> returns (and if it does not return an error),
+<tt>check_sockets()</tt> then loops through each file descriptor used in
+the <tt>select()</tt> call.  The <tt>Socket</tt> structure corresponding to
+each file descriptor is found from the <tt>sockets[]</tt> array, maintained
+separately from the linked list of sockets for this purpose.</p>
+
+<p>A write-ready event on a socket indicates either that a deferred
+connection has completed or failed, or that a connected socket has is ready
+to accept data for sending.  In the latter case, <tt>check_sockets()</tt>
+simply calls <tt>flush_write_buffer()</tt> to send data out;
+<tt>flush_write_buffer()</tt> takes care of removing the file descriptor
+from the set to check for write-ready events if all data is flushed from
+the socket's write buffer.  In the former case, <tt>check_sockets()</tt>
+retrieves the value of the socket's <tt>SO_ERROR</tt> option, which
+indicates the status of the connection attempt.  A value of zero indicates
+success, while nonzero is an <tt>errno</tt>-style error number; the
+appropriate callback (<tt>SCB_CONNECT</tt> or <tt>SCB_DISCONNECT</tt>) is
+called, the socket's descriptor is removed from the write-ready set, and if
+the connection was successful and the socket is not muted, the descriptor
+is then added to the read-ready set so that it is checked on the next call
+to <tt>check_sockets()</tt>.</p>
+
+<p>After processing any write-ready event for a socket, the socket is
+checked for write trigger events as indicated by the <tt>SF_WTRIGGER</tt>
+socket flag, and if the flag is set, the <tt>SCB_TRIGGER</tt> is called
+repeatedly until the flag is no longer set.  (The flag is cleared before
+each call to the callback function, but the callback function may set a new
+write trigger which is triggered before the function returns.)</p>
+
+<p>A read-ready event on a socket indicates either that a connected socket
+has received data or a disconnection event, or that a listener socket
+received a connection request.  The latter case is simple;
+<tt>check_sockets()</tt> calls <tt>do_accept()</tt> to accept the
+connection, then proceeds to the next file descriptor.  In the former case,
+the read buffer is first expanded if it is currently full, then
+<tt>fill_read_buffer()</tt> is called to actually receive data from the
+socket into the read buffer.  <tt>fill_read_buffer()</tt> returns the
+number of bytes read from the socket, or -1 on error, in which case the
+socket is disconnected with the <tt>DISCONN_REMOTE</tt> code.
+<i>Implementation note: As documented in the code, if data arrives on a
+connection but the socket's read buffer is full and has reached the
+per-socket or total buffer size limit, the data will be left alone, causing
+<tt>select()</tt> to return immediately the next time it is called; this
+results in the program "busy-waiting" until either data is removed from the
+read buffer or space is made available to expand the buffer.</i></p>
+
+<p>After reading data from the socket, <tt>check_sockets()</tt> calls the
+<tt>SCB_READ</tt> and <tt>SCB_READLINE</tt> callbacks in turn, as described
+in <a href="#s4-2">section 3-4-2</a>.  Even if the socket was not returned
+in the read-ready set from <tt>select()</tt>, the callbacks are still
+called if the <tt>SF_UNMUTED</tt> flag is set; this flag is set by
+<tt>sock_unmute()</tt> to indicate that a socket has just been unmuted, and
+cleared by <tt>check_sockets()</tt> before calling the read callbacks.</p>
+
+<p>Finally, <tt>check_sockets()</tt> checks whether a write timeout has
+occurred on sockets that have a timeout set.  If so, the socket is
+disconnected with the <tt>DISCONN_REMOTE</tt> code, on the assumption that
+the remote host is no longer reachable.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="2.html">Previous section: Core Services functionality</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="4.html">Next section: The module system</a></p>
+
+</body>
+</html>

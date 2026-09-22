@@ -1,0 +1,670 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services Manual - 5. Importing and exporting databases</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>5. Importing and exporting databases</h2>
+
+<p>5-1. <a href="#1">Exporting Services databases in XML format</a>
+<br>5-2. <a href="#2">Importing (merging) data from an XML file</a>
+<br>5-3. <a href="#3">Converting data from other Services-like programs</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;5-3-1. <a href="#3-1">Using the
+	<tt>convert-db</tt> program</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;5-3-2. <a href="#3-2">Notes on converting
+	databases from particular programs</a>
+
+<p align=right><font size=-1><a href=4.html>Previous section: Services command reference</a> |
+<a href=index.html>Table of Contents</a></font>
+
+<p><hr>
+
+<a name=1></a>
+<h3>5-1. Exporting Services databases in XML format</h3>
+
+<p>In order to facilitate processing of the Services databases by other
+programs, Services provides the ability to export the databases in XML
+format.  This is accomplished through the <tt>misc/xml-export</tt> module
+and, optionally, the <a href="3.html#6">HTTP server</a> built into
+Services.
+
+<p>The <tt>misc/xml-export</tt> module adds an extra command-line option,
+<tt>-export</tt>, to Services.  Since the command line is parsed before
+Services connects to the network, the module must be specified in your
+<tt>ircservices.conf</tt> file to enable this option.  The option has the
+format "<tt>-export</tt>" or "<tt>-export=<i>filename</i></tt>", where
+<tt><i>filename</i></tt> is the name of the file to write the XML data to;
+if it does not begin with a slash, it is taken to be relative to the
+Services data directory (the directory containing the database and log
+files).  If <tt><i>filename</i></tt> is not given or is a single hyphen
+("<tt>-</tt>"), the data will be printed on standard output.  When the
+export completes, Services will terminate without connecting to the IRC
+network.  This action can be performed while another copy of Services is
+running, but the output will not include changes made online since the
+last time the databases were saved to disk.  (It is also possible for the
+running copy of Services to report a "data directory locked" error if it
+tries to save the databases while the export operation is in progress.
+This is harmless; you can force the databases to be written after the
+export completes by using the OperServ
+<a href="4.html#oper.update"><tt>UPDATE</tt></a> command, but do not use
+the <tt>FORCE</tt> option while the export is still running as this may
+result in corrupted database files.)
+
+<p>Additionally, if the <tt>misc/xml-export</tt> module is loaded into
+Services, the HTTP database access module (<tt>httpd/dbaccess</tt>) will
+display an "XML database download" link.  Clicking on the link will display
+the XML data in your browser, which you can then save (for Firefox and
+Internet Explorer, select "Save as..." or "Save page as..." from the
+browser's File menu).  Alternatively, you can download the link directly
+without displaying it in your browser; in Firefox, hold the Alt key while
+clicking on the link, and in Internet Explorer, right-click on the link and
+select "Save target as..." from the pop-up menu.
+
+<p>The format of the exported XML data is described in
+<a href=b.html>Appendix B</a>.
+
+<p><b>Notes:</b> Services will not respond to any network activity while you
+are downloading the database.  If you have a large database, this can make
+Services appear to "freeze" with respect to the IRC network, and it may
+even get disconnected from the network in extreme cases.  Additionally, be
+aware that the data may change after you have downloaded it; if you want to
+avoid this, for example when exporting data to move it to another machine
+or network, use the command-line option <tt>-export</tt> (after shutting
+Services down) rather than the HTTP server interface.
+
+<p><b>Note to Internet Explorer users:</b>  Some versions of Internet
+Explorer have a bug which can prevent the XML data from being displayed or
+downloaded properly.  If you have this problem, use another browser, or add
+the following key to your registry using the Registry Editor
+(<tt>regedit</tt>), as described in Microsoft Knowledge Base article
+<a href="http://support.microsoft.com/default.aspx?scid=kb;EN-US;q239750">Q239750</a>
+<font size=-1>[<tt>support.microsoft.com</tt>]</font>:
+<div align=center><table border=0>
+<tr><td align=right>Key:<td>&nbsp;
+    <td><tt>HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Internet&nbsp;Settings</tt>
+<tr><td align=right>Value&nbsp;name:<td>&nbsp;<td><tt>IsTextPlainHonored</tt>
+<tr><td align=right>Value&nbsp;type:<td>&nbsp;<td><tt>DWORD</tt>
+<tr><td align=right>Value&nbsp;data:<td>&nbsp;<td><tt>HEX 0x1</tt>
+</table></div>
+Improper use of the Registry Editor can cause your system to malfunction,
+so be careful when making any changes.  You may also need to upgrade your
+system files as described in the Knowledge Base article linked to above
+if you are using Windows 95, Windows 98, or Windows NT 4.0.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=2></a>
+<h3>5-2. Importing (merging) data from an XML file</h3>
+
+<p>Just as it can export data in XML format, Services can also read in XML
+data and import (merge) it into its databases.  Importing is handled by the
+<tt>misc/xml-import</tt> module.  Unlike exporting, however, importing
+cannot be done via the HTTP server; it is always done through the command
+line.  For this reason, the <tt>misc/xml-import</tt> module must be loaded
+at startup if it is to be used, rather than via an OperServ
+<a href="4.html#oper.rehash"><tt>REHASH</tt></a> or a <tt>SIGHUP</tt>
+signal.
+
+<p>To import a set of data stored in XML format into Services, start
+Services with the command-line option "<tt>-import=<i>filename</i></tt>",
+where <tt><i>filename</i></tt> is the name of the file containing the data;
+if the filename does not begin with a slash, it is taken to be relative to
+the Services data directory.  Services will parse the data file, and if no
+errors are found, the data will be merged into Services' databases and the
+program will terminate.  If problems are found, they will be printed on
+standard output and the databases will not be modified.
+
+<p>Normally, if nickname or channel "collisions" occur&mdash;that is, if a
+nickname or channel in the input data is already registered in Services'
+databases&mdash;Services will skip over that nickname group or channel,
+respectively.  (For nicknames, the entire nickname group is skipped to
+prevent cases where, for example, a user's secondary nick is available but
+the primary nick is registered to someone else.)  This behavior can be
+modified by the
+<a href="a.html#misc/xml-import.OnNicknameCollision"><tt>OnNicknameCollision</tt></a> and
+<a href="a.html#misc/xml-import.OnChannelCollision"><tt>OnChannelCollision</tt></a>
+options in <tt>modules.conf</tt>.  Additionally, Services can be made to
+output a list of all data imported by setting the
+<a href="a.html#misc/xml-import.VerboseImport"><tt>VerboseImport</tt></a>
+option (which is set in the example <tt>modules.conf</tt> provided with
+Services).
+
+<p>Note that the maximum user count and OperServ
+<a href="4.html#oper.su"><tt>SU</tt></a> password will not be imported;
+news items will not be imported unless the
+<a href="a.html#misc/xml-import.ImportNews"><tt>ImportNews</tt></a> option
+(in <tt>modules.conf</tt>) is set.  Also, any autokills, autokill
+exclusions, session limit exceptions, or S-lines which collide with those
+in the database will be automatically skipped.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=3></a>
+<h3>5-3. Converting data from other Services-like programs</h3>
+
+<a name=3-1></a>
+<h4>5-3-1. Using the <tt>convert-db</tt> program</h4>
+
+<p>For users of other Services-like programs who want to switch to IRC
+Services, a program called <tt>convert-db</tt> is supplied to convert
+databases used by such programs into XML data files, which can then be
+imported into Services as described in <a href="#2">section 5-2</a> above.
+This program is installed into the Services data directory
+(<tt>/var/opt/ircservices</tt> for binary distributions,
+<tt>/usr/local/lib/ircservices</tt> by default for source distributions).
+
+<p>In its simplest form, <tt>convert-db</tt> takes the pathname of the
+directory containing the database files to convert on the command line,
+and writes the converted XML data to standard output.  A typical invocation
+might look like this:
+<blockquote>
+	<tt>convert-db /usr/local/lib/<i>someprogram</i> &gt; <i>someprogram</i>.xml</tt>
+</blockquote>
+<tt>convert-db</tt> will look at the files in the directory given and
+attempt to determine automatically what program created them; if this
+succeeds, it will proceed to read in the database files and convert them to
+XML.  If <tt>convert-db</tt> cannot determine what program created the
+files, you can tell it explicitly by adding a <tt>+<i>program-name</i></tt>
+option in front of the path name (see the full syntax description below for
+valid values for <tt><i>program-name</i></tt>).
+
+<p>Note that not all features of all programs are supported by Services,
+and some settings may be lost when you import data.  See
+<a href="#3-2">section 5-3-2</a> below for notes on particular programs,
+and <a href="#2">section 5-2</a> for information on importing the converted
+data into Services.
+
+<p>The full syntax for <tt>convert-db</tt> is as follows:
+<blockquote>
+	<tt>convert-db [-v] [+<i>program-name</i>] [<i>options</i></tt> . . . <tt>] <i>pathname</i></tt>
+</blockquote>
+The options and parameters are:
+<ul>
+<li><tt>-v</tt>: Display progress information as the data is converted.
+<li><tt>+<i>program-name</i></tt>: Explicitly indicates what program was
+	used to create the data files.  A list of possible
+	<tt><i>program-name</i></tt> values is given in table 5-1 below.
+	<tt><i>program-name</i></tt> values are not case sensitive.
+<li><tt><i>options</i></tt>: Additional options specific to each type of
+	data file controlling details of the data conversion; see below.
+<li><tt><i>pathname</i></tt>: Specifies the pathname of the directory
+	containing the database files.
+</ul>
+
+<div align=center>
+<b>Table 5-1.</b>  Values for <tt>+<i>program-name</i></tt> parameter to
+	<tt>convert-db</tt><br><br>
+<table border=1>
+<tr><th><tt><i>program-name</i></tt>
+    <th>Name&nbsp;of&nbsp;program
+    <th>Supported&nbsp;versions
+<tr><td><tt>anope</tt>
+    <td><a href="http://www.anope.org/">Anope Services</a>
+	<font size=-1>[<tt>www.anope.org</tt>]</font>
+    <td>All versions
+<tr><td><tt>auspice</tt>
+    <td>Auspice Services
+    <td>2.5 and later
+<tr><td><tt>bolivia</tt>
+    <td>Bolivia IRC Services
+    <td>1.2.0
+<tr><td><tt>cygnus</tt>
+    <td><a href="http://www.habber.net/services/index.php">Cygnus</a>
+	<font size=-1>[<tt>www.habber.net</tt>]</font>
+    <td>0.2.0
+<tr><td><tt>daylight</tt>
+    <td>Daylight
+    <td>12
+<tr><td><tt>epona</tt>
+    <td>Epona IRC Services
+    <td>1.3.0 and later
+<tr><td><tt>hybserv</tt>
+    <td><a href="http://www.hybserv.net/">HybServ</a>
+	<font size=-1>[<tt>www.hybserv.net</tt>]</font>
+    <td>All 1.x versions
+<tr><td><tt>ircs-1.2</tt>
+    <td>Internet Relay Chat Services (IRCS)
+    <td>1.2, 1.3
+<tr><td><tt>magick-1.4</tt>
+    <td>Magick IRC Services (Magick I)
+    <td>1.4
+<tr><td><tt>ptlink</tt>
+    <td><a href="http://sourceforge.net/projects/ptlinksoft/">PTlink
+	Services</a> <font size=-1>[<tt>sourceforge.net</tt>]</font>
+    <td>2.13.0 through 2.26-eol.1
+<tr><td><tt>sirv</tt>
+    <td><a href="http://www.sirv.net/">SirvNET Services</a>
+	<font size=-1>[<tt>www.sirv.net</tt>]</font>
+    <td>2.9.0 and earlier
+<tr><td><tt>trircd-4.26</tt>
+    <td>trircd IRC Services
+    <td>4.26
+<tr><td><tt>wrecked-1.2</tt>
+    <td>WreckedNet IRC Services
+    <td>1.2.0
+</table>
+</div>
+
+<p>Note that the following programs and versions are <i>not</i> supported,
+because they do not store data in standard disk files:
+<ul>
+<li>Anope 1.7.11 and later, when using MySQL databases (a standard file
+	format is still available as of version 1.7.19)
+<li>PTlink Services 3.0.0 and later
+</ul>
+
+<p>Additional options are available for the following data file types:
+
+<p><b><tt>anope</tt></b>
+<ul>
+<li><tt>-ircd=<i>protocol</i></tt>: Selects the protocol to use for
+	interpreting channel modes.  By default, only basic channel modes
+	(<tt>+i</tt>, <tt>+k</tt>, <tt>+l</tt>, <tt>+m</tt>, <tt>+n</tt>,
+	<tt>+p</tt>, <tt>+s</tt>, and <tt>+t</tt>) will be imported for
+	channel mode locks; to import extended modes provided by particular
+	specify the corresponding protocol from the following list (for
+	Anope 1.7.6 and later, use the same name as in the
+	<tt>IRCDModule</tt> configuration directive):
+	<ul>
+		<li><tt>bahamut</tt> for Bahamut
+		<li><tt>dreamforge</tt> for Dreamforge
+		<li><tt>hybrid</tt> for IRCD-Hybrid
+		<li><tt>ptlink</tt> for PTlink IRCd
+		<li><tt>ultimate2</tt> for UltimateIRCD 2.x
+		<li><tt>ultimate3</tt> for UltimateIRCD 3.x
+		<li><tt>unreal</tt> for UnrealIRCd
+		<li><tt>viagra</tt> for Viagra IRCd
+	</ul>
+<li><tt>-encryption=<i>type</i></tt>: Selects the encryption type for
+	databases from Anope 1.7.18 and later.  These versions of Anope do
+	not record the encryption type used with passwords stored in the
+	databases; in order to use such passwords, you must specify the
+	proper encryption type with this option:
+	<ul>
+		<li><tt>none</tt>: No encryption (<tt>enc_none</tt> module)
+		<li><tt>md5</tt>: MD5 encryption (<tt>enc_md5</tt>,
+			<tt>enc_old</tt> modules)
+		<li><tt>sha1</tt>: SHA-1 encryption (<tt>enc_sha1</tt>
+			module)&mdash;<i>not supported</i> by Services
+			(passwords will be converted correctly, but will
+			not be usable without a third-party module)
+	</ul>
+	<b>Note:</b> If you use this option and your database contains a
+	mix of encrypted and unencrypted passwords from Anope 1.7.17 or
+	earlier, some of the passwords will not work.
+</ul>
+
+<p><b><tt>cygnus</tt></b>
+<ul>
+<li><tt>-tzfile=<i>filename</i></tt>: Specifies an alternative time zone
+	file to use when loading nickname time zone data.  <tt>convert-db</tt>
+	defaults to the data from the <tt>cygnus.zone</tt> file distributed
+	with Cygnus 0.2.0; if you have modified this file or created your
+	own time zone list, you will need to use this option to get nickname
+	time zones converted correctly.
+<li><tt>-no-timezones</tt>: Causes all nickname time zone settings to be
+	reset to default (the time zone Services runs in).
+<li><tt>-reset-memo-limits</tt>: Causes all nickname memo limits to be reset
+	to default; see the notes on Cygnus database conversion.
+</ul>
+
+<p><b><tt>hybserv</tt></b>
+<ul>
+<li><tt>-crypt</tt>: Indicates that all passwords are encrypted.  Without
+	this option, all passwords are assumed to be in plain text.
+</ul>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=3-2></a>
+<h4>5-3-2. Notes on converting databases from particular programs</h4>
+
+<p>Note that this is not a comprehensive list of differences; only the
+major differences and types of data that cannot be converted are listed.
+
+<p><b>All programs</b>
+<ul>
+<li>The setter and reason for a forbidden nickname or channel will not be
+	imported.
+<li>Channel privilege level settings (the equivalent of the ChanServ
+	<tt>LEVELS</tt> command), on programs that support them, will not
+	be imported; all channels' privilege levels will be reset to the
+	default values.
+<li>Services does not record the setter and last used time for channel
+	access entries; this data will be lost on conversion for programs
+	that do record it.
+<li>Services does not support "bots" or a "BotServ", and all such data will
+	be lost on conversion.
+</ul>
+
+<p><b>Anope</b>
+<ul>
+<li>For version 1.7.11 and later, databases must be stored using the
+	standard ("FFF") format; MySQL databases are not supported.
+<li>Anope versions through 1.7.17 contain the MD5 encryption bug present
+	in versions of IRC Services before 4.5; as a result, encrypted
+	passwords will not work by default.  As a workaround, you can
+	enable the
+	<a href="a.html#encryption/md5.EnableAnopeWorkaround"><tt>EnableAnopeWorkaround</tt></a>
+	configuration option for the <tt>encryption/md5</tt> module in
+	<tt>modules.conf</tt>, but be aware that this may reduce the
+	security of your passwords.  There are also rare cases in which
+	passwords may be truncated in the databases; if you encounter such
+	a case, the password will have to be changed manually by a Services
+	administrator.</li>
+<li>Services does not store the following information; it will be lost when
+	the databases are converted:
+    <ul>
+	<li>ICQ number for nicknames
+	<li>Last used time for channel access entries
+    </ul>
+<li>The NickServ <tt>SET AUTOOP OFF</tt> option present in Anope 1.7.15 and
+	later is converted to <tt>SET NOOP ON</tt>; however, the behavior
+	in of <tt>NOOP</tt> in Services is slightly different, as it only
+	prevents the nickname from being added to channel access lists (the
+	nickname will still be auto-opped if it already has that privilege
+	in a channel).
+<li>Services does not allow multiple users to have Services super-user
+	privileges (except temporarily with the
+	<a href="4.html#oper.su"><tt>SU</tt></a> command); all users with
+	"root" privileges in Anope will be converted to Services
+	administrators.
+<li>Services does not distinguish between using the ChanServ <tt>OP</tt>,
+	<tt>VOICE</tt>, and related commands on oneself or on other users;
+	both operations use the same privilege level.
+<li>Services does not support the ChanServ <tt>SECUREFOUNDER</tt>,
+	<tt>SIGNKICK</tt>, or <tt>XOP</tt> settings.  (<tt>XOP</tt>-style
+	commands can be enabled for all channels by loading the
+	<tt>chanserv/access-xop</tt> module.)
+<li>Nickname requests (nicknames which have been registered but not
+	confirmed via E-mail) are discarded; users with pending nickname
+	requests will need to re-register.
+</ul>
+
+<p><b>Auspice</b>
+<ul>
+<li>The NickServ <tt>NOOP</tt> option behaves slightly differently in
+	Services: it prevents the nickname from being added to channel
+	access lists, but the nickname will still be auto-opped if it
+	already has that privilege in a channel.
+<li>The ChanServ <tt>TIMEOP</tt> feature in version 2.6 and later is not
+	supported.  Nicknames on a channel's <tt>TIMEOP</tt> list will not
+	be added to the channel's access list for Services, and thus will
+	have no privileges on the channel.
+<li>Services does not support "root" and "master" privilege levels as in
+	Auspice.  There can only be one root nickname, which is set in
+	<tt>modules.conf</tt>; all root/master settings in the data files
+	will be discarded.  (Admin/oper settings will be retained.)  Note
+	that Services admins can perform any function (except modifying the
+	admin list), including modifying Services settings and shutting
+	down Services.
+<li>NickServ <tt>AUTH</tt>, <tt>COMMENT</tt>, <tt>NOTE</tt>, <tt>LOCK</tt>,
+	<tt>MARK</tt>, <tt>SET KILL HIGH</tt>, <tt>SETFLAG AUTOJOIN</tt>,
+	and <tt>SETMLOCK</tt>, as well as ChanServ <tt>BADWORDS</tt>,
+	<tt>FREEZE</tt>, and <tt>MARK</tt>, are not supported.  Nickname
+	notes will be converted to non-expiring memos with the user
+	themselves as the sender; other data will be lost.
+<li>Services uses a different news system than Auspice; network and channel
+	news items will not be converted.
+<li>Aside from the above, Services does not store the following
+	information; it will be lost when the databases are converted:
+    <ul>
+	<li>UIN, age, and gender for nicknames
+	<li>Last <tt>GETPASS</tt> user and <tt>HOLD</tt> setter and reason
+	    for channels
+    </ul>
+<li>E-mailing of log files is not supported.
+</ul>
+
+<p><b>Bolivia</b>
+<ul>
+<li>The NickServ <tt>NOOP</tt> option behaves slightly differently in
+	Services: it prevents the nickname from being added to channel
+	access lists, but the nickname will still be auto-opped if it
+	already has that privilege in a channel.
+<li>Limiting channels to privileged users (the <tt>LEVEL</tt> command) is
+	not supported, and such restrictions will be discarded when
+	converting the databases.  However, some IRC servers (such as
+	Unreal) have channel modes allowing channels to be limited to IRC
+	operators or administrators only, and Services allows those modes
+	to be locked on with the <tt>SET MLOCK</tt> command.
+<li>ChanServ <tt>FREEZE</tt> is not supported.
+<li>ChanServ <tt>HOLD</tt> setter will be lost when converting.
+<li>E-mailing of log files is not supported.
+</ul>
+
+<p><b>Cygnus</b>
+<ul>
+<li>Services does not store the UIN, real name, age, sex, or location for
+	nicknames; this information will be lost when the databases are
+	converted.
+<li>Services does not send replies using <tt>PRIVMSG</tt>; the
+	<tt>NOTICE</tt> and <tt>PRIVMSG</tt> nickname settings will be
+	ignored.
+<li>The following options/features are not supported:
+	<ul>
+	<li>NickServ <tt>NEVEROP</tt> and <tt>NOSUCCESSOR</tt>
+	<li>ChanServ <tt>LIMITED</tt>
+	<li>MemoServ <tt>RECEIPTS</tt>
+	<li>RootServ <tt>MARK</tt>
+	</ul>
+<li>Nicknames designated as CSOPs will be converted to Services operators.
+	Note that the privileges granted by IRC Services to Services
+	operators are different from those granted by Cygnus to CSOPs.
+<li>Nicknames will retain their memo limit settings in the converted data;
+	however, they will not be affected by changes to the
+	<a href="a.html#memoserv/main.MSMaxMemos"><tt>MSMaxMemos</tt></a>
+	setting.  (Memo limits can be reset to the default, which follows
+	the <tt>MSMaxMemos</tt> setting, with the <tt>-reset-memo-limits</tt>
+	option.)
+<li>If you have modified the time zone list used by Cygnus
+	(<tt>cygnus.zone</tt>), nickname time zones will not be transferred
+	correctly by default.  Use the <tt>-tzfile=</tt> option to ensure
+	that time zones are loaded from your time zone file, or use the
+	<tt>-no-timezones</tt> option to reset all time zone settings to
+	default.
+<li>Authentication for channels is not supported; authentication codes and
+	"verify" information will be discarded.
+<li>Channel access list entries in IRC Services must always be registered
+	nicknames; <tt><i>user</i>@<i>host</i></tt> entries, and any
+	entries not matching a registered nickname, will be deleted.
+<li>While the channel topic-lock setting will be retained, the lock level
+	(founder/SOP/AOP/HOP/VOP) will be reset to the IRC Services default
+	(AOP).  If you use the <tt>LEVELS</tt> command (in the
+	<tt>chanserv/access-levels</tt> submodule), you can change the
+	level of the <tt>TOPIC</tt> command to set which users are
+	allowed to change the topic.
+<li>While not directly related to the databases, note that Services uses
+	the <a href="4.html#nick.auth"><tt>AUTH</tt></a> command, not the
+	<tt>REGISTER</tt> or <tt>SET EMAIL</tt> commands, to authenticate
+	nicknames.
+</ul>
+
+<p><b>Daylight</b>
+<ul>
+<li>Services does not support the <tt>XMANAGEMENT</tt> channel setting.
+</ul>
+
+<p><b>Epona</b>
+<ul>
+<li>Epona contains the MD5 encryption bug present in versions of IRC
+	Services before 4.5; as a result, encrypted passwords will not work
+	by default.  As a workaround, you can enable the
+	<a href="a.html#encryption/md5.EnableAnopeWorkaround"><tt>EnableAnopeWorkaround</tt></a>
+	configuration option for the <tt>encryption/md5</tt> module in
+	<tt>modules.conf</tt>, but be aware that this may reduce the
+	security of your passwords.  There are also rare cases in which
+	passwords may be truncated in the databases; if you encounter such
+	a case, the password will have to be changed manually by a Services
+	administrator.</li>
+<li>Services does not store the following information; it will be lost when
+	the databases are converted:
+    <ul>
+	<li>ICQ number for nicknames
+	<li>Last used time for channel access entries
+    </ul>
+<li>Services does not distinguish between using the ChanServ <tt>OP</tt>,
+	<tt>VOICE</tt>, and related commands on oneself or on other users.
+<li>By default, only basic channel modes (<tt>+i</tt>, <tt>+k</tt>,
+	<tt>+l</tt>, <tt>+m</tt>, <tt>+n</tt>, <tt>+p</tt>, <tt>+s</tt>,
+	and <tt>+t</tt>) will be imported for channel mode locks.  To
+	import extended modes provided by particular IRC servers, use one
+	of the following command-line options:
+	<ul>
+		<li><tt>-ircd=bahamut</tt> for Bahamut
+		<li><tt>-ircd=ultimate2</tt> for UltimateIRCD
+		<li><tt>-ircd=unreal</tt> for UnrealIRCd
+	</ul>
+</ul>
+
+<p><b>HybServ</b>
+<ul>
+<li>Services does not store GSM, phone, or ICQ number for nicknames; this
+	information will be lost when the databases are converted.
+<li>Services does not have the concept of "permanent passwords", as in
+	HybServ 1.6.1+UniBG, and such passwords will be discarded on
+	import.
+<li>Services does not support the NickServ <tt>AUTOMASK</tt>, <tt>HIDE
+	URL</tt>, <tt>NOREGISTER</tt>, or <tt>NOCHANOPS</tt> settings, or
+	the ChanServ <tt>GUARD</tt> or <tt>VERBOSE</tt> settings.
+<li>The NickServ <tt>NOOP</tt> option behaves slightly differently in
+	Services: it prevents the nickname from being added to channel
+	access lists, but the nickname will still be auto-opped if it
+	already has that privilege in a channel.
+<li>The NickServ <tt>HIDE ALL</tt> setting is treated as a combination of
+	<tt>HIDE EMAIL</tt>, <tt>HIDE USERMASK</tt>, and <tt>HIDE QUIT</tt>.
+	The nickname URL and options cannot be hidden.
+<li>Temporary forbids are imported as permanent (Services does not support
+	the notion of a "temporary" or "timed" forbid).
+<li>"Forgotten" channels are not supported, and will not be imported.
+<li>Services does not have a system of "operator modes" like HybServ, and
+	no operator mode information will be imported.
+<li>Statistics information (maximum number of users/channels/etc.) will not
+	be imported.
+<li>The founder of a channel will be removed from the channel's access list
+	(founders always have full channel privileges and do not need to be
+	added to the access list).
+<li>Channel privilege levels will be reset to the Services defaults on
+	import.  Channel access levels will also be modified to fit within
+	the -999&nbsp;.&nbsp;.&nbsp;.&nbsp;999 range used by Services, as follows:
+<p align=center><table border=1>
+<tr><th>HybServ level<th>Services level
+<tr><td align=center>-10000<td align=center>-999
+<tr><td align=center>-9999&nbsp;.&nbsp;.&nbsp;.&nbsp;-10<td align=center>-999&nbsp;.&nbsp;.&nbsp;.&nbsp;-1
+<tr><td align=center>-9&nbsp;.&nbsp;.&nbsp;.&nbsp;-1<td align=center>-1
+<tr><td align=center>0&nbsp;.&nbsp;.&nbsp;.&nbsp;5<td align=center>0&nbsp;.&nbsp;.&nbsp;.&nbsp;30
+<tr><td align=center>5&nbsp;.&nbsp;.&nbsp;.&nbsp;10<td align=center>30&nbsp;.&nbsp;.&nbsp;.&nbsp;50
+<tr><td align=center>10&nbsp;.&nbsp;.&nbsp;.&nbsp;15<td align=center>50&nbsp;.&nbsp;.&nbsp;.&nbsp;100
+<tr><td align=center>15&nbsp;.&nbsp;.&nbsp;.&nbsp;20<td align=center>100&nbsp;.&nbsp;.&nbsp;.&nbsp;110
+<tr><td align=center>20&nbsp;.&nbsp;.&nbsp;.&nbsp;200<td align=center>110&nbsp;.&nbsp;.&nbsp;.&nbsp;200
+<tr><td align=center>200&nbsp;.&nbsp;.&nbsp;.&nbsp;1000<td align=center>200&nbsp;.&nbsp;.&nbsp;.&nbsp;300
+<tr><td align=center>1000&nbsp;.&nbsp;.&nbsp;.&nbsp;9000<td align=center>300&nbsp;.&nbsp;.&nbsp;.&nbsp;900
+<tr><td align=center>9000&nbsp;.&nbsp;.&nbsp;.&nbsp;9999<td align=center>900&nbsp;.&nbsp;.&nbsp;.&nbsp;999
+<tr><td align=center>10000<td align=center>999
+</table>
+<p><b>WARNING:</b> As a result of differences in the default level settings
+between HybServ and Services, some users will have access to commands which
+they did not previously have access to.  In particular, the <tt>ACCESS</tt>
+command is available to all users with access level 40 (HybServ level 8) or
+above, and the <tt>CLEAR</tt> command is available to all users with
+access level 100 (HybServ level 15) or above.  Conversely, the
+<tt>INVITE</tt> command is available only to users with access level 50
+(HybServ level 10) or above; auto-voice users cannot use it.
+</ul>
+
+<p><b>IRCS</b>
+<ul>
+<li>By default, IRCS supports channels with names longer than 63 characters
+	(including the leading "#").  Services does not support these by
+	default, and such channels will not be imported.
+<li>Channel autoop/autovoice cannot be set for individual nicknames.  All
+	nicks with appropriate access will be opped even if ChanServ
+	<tt>SET AUTOOP OFF</tt> was used for the nick.
+<li>The numeric access level for <tt>SOP</tt> is different from that used
+	in Services, so some access levels will be altered to match the
+	default <tt>SOP</tt> level in Services.  (Channel privileges will
+	remain unchanged.)
+<li>The "senior", "junior", and "helper" OperServ access levels do not
+	exist in Services.  Users on the "senior" list will be moved to the
+	Services admin list; users on other lists will be moved to the
+	Services operator list.  <b>WARNING:</b> As a result of the above,
+	users on the "senior" list will be given access to the
+	<tt>JUPE</tt> and <tt>LISTIGNORE</tt> commands.
+</ul>
+
+<p><b>Magick I 1.4</b>
+<ul>
+<li>Services does not send replies using <tt>PRIVMSG</tt>; the
+	<tt>NI_PRIVMSG</tt> nickname setting will be ignored.
+<li>Services does not have a "channel news" system like Magick, and all
+	channel news items will be discarded.
+</ul>
+
+<p><b>PTlink</b>
+<ul>
+<li>PTlink supports several encryption methods; of these, the "JP2" method
+	is not supported by Services, and any passwords encrypted with this
+	method will be reset to the respective nick or channel name.
+<li>Services does not store the following information; it will be lost when
+	the databases are converted:
+    <ul>
+	<li>ICQ number, location, birthdate, time of last identify, and
+	    authentication code (2.22.0 and later) for nicknames
+        <li>maximum number of users and time of maximum for channels
+    </ul>
+<li>An apparent bug in PTlink causes the successor field of some channels
+	to be corrupted; this will result in warnings when loading the
+	channel database.
+<li>What PTlink refers to as "SXlines" are known as "SGlines" in Services;
+	SXline database records (in versions of PTlink that support it)
+	will be converted to SGline records.
+</ul>
+
+<p><b>SirvNET</b>
+<ul>
+<li>The NickServ <tt>NOOP</tt> option behaves slightly differently in
+	Services: it prevents the nickname from being added to channel
+	access lists, but the nickname will still be auto-opped if it
+	already has that privilege in a channel.
+<li>Limiting channels to priviliged users (the <tt>LEVEL</tt> command) is
+	not supported, and such restrictions will be discarded when
+	converting the databases.  However, some IRC servers (such as
+	Unreal) have channel modes allowing channels to be limited to IRC
+	operators or administrators only, and Services allows those modes
+	to be locked on with the <tt>SET MLOCK</tt> command.
+<li>NickServ <tt>AUTH</tt> and ChanServ <tt>FREEZE</tt> are not supported.
+<li>ChanServ <tt>HOLD</tt> setter and reason will be lost when converting.
+<li>E-mailing of log files is not supported.
+</ul>
+
+<p><b>trircd</b>
+<ul>
+<li><tt>SET EXCEPTION</tt>, <tt>SET INVITES</tt>, <tt>HIDE OPTIONS</tt>,
+	and <tt>HIDE DESC</tt> channel settings are not supported.
+</ul>
+
+<p><b>Wrecked 1.2.0</b>
+<ul>
+<li>Services does not send replies using <tt>PRIVMSG</tt>; the
+	<tt>NI_PRIVMSG</tt> nickname setting will be ignored.
+<li>The <tt>VOPALL</tt> channel setting is not supported.
+</ul>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<p align=right><font size=-1><a href=4.html>Previous section: Services command reference</a> |
+<a href=index.html>Table of Contents</a></font>
+
+</body>
+</html>

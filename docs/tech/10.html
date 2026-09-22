@@ -1,0 +1,884 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 10. Compilation</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">10. Compilation</h2>
+
+<p class="section-toc">
+     10-1. <a href="#s1">Compilation overview</a>
+<br/>10-2. <a href="#s2">The <tt>configure</tt> script</a>
+<br/>10-3. <a href="#s3">The compilation process</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;10-3-1. <a href="#s3-1">Core source files</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;10-3-2. <a href="#s3-2">Modules</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;10-3-3. <a href="#s3-3">Language files</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;10-3-4. <a href="#s3-4">The <tt>tools</tt> and <tt>data</tt> directories</a>
+<br/>10-4. <a href="#s4">Installation</a>
+<br/>10-5. <a href="#s5">Assumptions</a>
+</p>
+
+<p class="backlink"><a href="9.html">Previous section: The database conversion tool</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="11.html">Next section: Future work</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">10-1. Compilation overview</h3>
+
+<p>Services uses the common <tt>configure; make; make install</tt> method
+for compilation.  The <tt>configure</tt> script in the top directory tests
+the system compiler and environment to ensure Services can be compiled and
+to compensate for differences between systems, such as broken or missing
+implementations of system library functions; once it has run, the source
+files are compiled using the <tt>make</tt> tool.  Once compilation is
+complete, the command <tt>make install</tt> will install the executable
+and data files to their final location on the system as specified by
+parameters to the <tt>configure</tt> script (or using the defaults from
+that script).</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">10-2. The <tt>configure</tt> script</h3>
+
+<p>Before the source code can be compiled, certain features of the compiler
+and environment need to be checked, and appropriate settings made; this is
+performed by the <tt>configure</tt> script present in the top directory.
+The script performs the following operations:</p>
+
+<ul>
+
+<li class="spaced">Defines miscellaneous utility functions.</li>
+
+<li class="spaced">Creates a temporary directory, for storing files used in
+the tests.  The directory name is defined to be "conf-tmp" at the top of
+the script.  If the directory already exists (because a previous
+<tt>configure</tt> run was aborted, for example), that directory is
+used.</li>
+
+<li class="spaced">Initializes configuration and command-line option
+variables.</li>
+
+<li class="spaced">Parses command-line options.  See
+<a href="../2.html#table2-2">table 2-2</a> in section 2 of the main
+manual for a list of all recognized options.</li>
+
+<li class="spaced">Loads the results of any previous run from the cache
+file, <tt>config.cache</tt>, unless the <tt>-ignore-cache</tt> option is
+given.  If the cache was created by an earlier version of the script,
+appropriate adjustments are made to the cached results (usually clearing
+the affected variable or variables so that the modified test is run
+again).  Note that the loading is done via a <tt>source</tt> command,
+executing the commands in the cache file directly, which can lead to
+security problems if the user is tricked into storing a malicious cache
+file in the Services directory.</li>
+
+<li class="spaced">Determines installation directories for executable files
+(variable <tt>BINDEST</tt>) and data files (variable <tt>DATDEST</tt>),
+either from the <tt>-prefix</tt>, <tt>-bindest</tt>, and <tt>-datdest</tt>
+options, or from the defaults included in the script, as follows:
+<ul>
+<li>If the <tt>-prefix</tt> option is given with a parameter
+<tt><i>PATH</i></tt>, then the executable directory is set to
+<tt><i>PATH</i>/sbin</tt> and the data directory is set to
+<tt><i>PATH</i>/lib/<i>PROGRAM</i></tt>, where <tt><i>PROGRAM</i></tt> is
+the program name given to the <tt>-program</tt> option (or the default of
+"<tt>ircservices</tt>" if the <tt>-program</tt> option is not given).</li>
+<li>If the <tt>-prefix</tt> option is not given and the <tt>-bindest</tt>
+option is given, then the executable directory is set to the path given by
+the <tt>-bindest</tt> option.</li>
+<li>If neither of the <tt>-prefix</tt> or <tt>-bindest</tt> options are
+given, then the executable directory is set to the cached value of the
+<tt>BINDEST</tt> variable if present; otherwise, the default of
+<tt>/usr/local/sbin</tt> is used.</li>
+<li>If the <tt>-prefix</tt> option is not given and the <tt>-datdest</tt>
+option is present, then the data directory is set to the path given by the
+<tt>-datdest</tt> option.</li>
+<li>If neither of the <tt>-prefix</tt> or <tt>-datdest</tt> options are
+given, but the <tt>-bindest</tt> option is given, then the data directory
+is set to a path derived from the executable directory, by either replacing
+a trailing <tt>/sbin</tt> or <tt>/bin</tt> with <tt>/lib/<i>PROGRAM</i></tt>
+or appending <tt>/lib</tt> if the executable directory does not end in
+<tt>/sbin</tt> or <tt>/bin</tt>.</li>
+<li>If none of the <tt>-prefix</tt>, <tt>-bindest</tt>, or <tt>-datdest</tt>
+options are given, then the data directory is set to the cached value of
+the <tt>DATDEST</tt> variable if present; otherwise, the default of
+<tt>/usr/local/lib/<i>PROGRAM</i></tt> is used.</li>
+</ul>
+Note that the current Services architecture does not allow data files to be
+stored in multiple separate locations.</li>
+
+<li class="spaced">Opens the log file (<tt>configure.log</tt>).
+Significant commands run by the script, and the results of all tests, are
+logged to this file to aid diagnosis in case of problems.  Each test is
+given a distinctive name, written at the beginning of each line in the log;
+these names are given in the descriptions below.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_test_nt</span>)
+Checks whether the shell's built-in <tt>test</tt> command, if any, or the
+system <tt>/bin/test</tt> or <tt>/usr/bin/test</tt> command supports the
+<tt>-nt</tt> option for testing whether one file is newer than another.
+Some shells, such as <tt>/bin/sh</tt> on at least some versions of the
+Solaris operating system, do not support the <tt>-nt</tt> test.  This test
+is required for module compilation
+(see <a href="#s3-2">section 10-3-2</a>).</li>
+
+<li class="spaced">(<span class="configure-test-name">find_cc</span>)
+Determines the program to use to compile source files.  This program is
+assumed to be able to link object files into an executable as well.  If the
+<tt>-cc</tt> option or a cached result is available, they are used in that
+order of preference, and subsequent compiler checks are bypassed.
+Otherwise, the commands <tt>gcc</tt>, <tt>icc</tt>, and <tt>cc</tt> are
+checked in that order, and the first one that is able to compile a short
+test program is used as the C compiler.  (However, if <tt>gcc</tt> is
+chosen and the version cannot be confirmed to be at least 3.2, the script
+aborts; likewise, if another compiler is chosen and it is unable to compile
+ANSI C programs, the script aborts.)  Finally, the chosen compiler is
+tested to ensure that it understands variadic-argument macros and the
+<tt>va_copy</tt> function, C99 features that Services makes use of.</li>
+
+<li class="spaced">(<span class="configure-test-name">find_ccopts</span>)
+Determines the command-line options to use with the C compiler for
+compiling source code.  If the <tt>-cflags</tt> option is given, the
+specified option string is used; if <tt>-cflags</tt> is not given and the
+cached result for the C compiler program name was chosen, the cached option
+string is used; otherwise, a default option string is chosen by the
+<tt>def_cc_flags</tt> function.  In the latter case, the compiler is
+checked for the presence of the GCC
+<a href="http://www.research.ibm.com/trl/projects/security/ssp/">stack-protector
+extension</a> <span class="remotehost">[www.research.ibm.com]</span>; at
+least some versions of this extension have a bug which causes incorrect
+code to be generated, and if the extension is present and this bug is
+detected, <tt>-fno-stack-protector</tt> is added to the default option
+string to disable this extension.  A test is made with the default flags to
+ensure that the compiler accepts them, and if the test fails, an empty
+option string is used instead.
+<br/><br/>
+Regardless of the method used to find the flags, a final test is made to
+ensure that the compilation with the selected flag set does not cause the
+stack-protector bug to appear.  (This bug relates to the GCC
+<tt>__builtin_apply</tt> and <tt>__builtin_return</tt> facility for passing
+a function call through to a different function, used in Services to handle
+imported functions in the <tt>database/version4</tt> module.  There have
+been other bugs in the implementation of this facility as well, so the test
+is carefully written to avoid triggering them.)</li>
+
+<li class="spaced">(<span class="configure-test-name">check_gcc_builtin</span>)
+Checks for bugs in the implementation of the GCC <tt>__builtin_apply</tt>
+and <tt>__builtin_return</tt> facility, if understood by the compiler.  At
+least three bugs are present in various versions of GCC, noted in the GCC
+Bugzilla tracker as bugs
+<a href="http://gcc.gnu.org/bugzilla/show_bug.cgi?id=8028">8028</a>,
+<a href="http://gcc.gnu.org/bugzilla/show_bug.cgi?id=11151">11151</a>, and
+<a href="http://gcc.gnu.org/bugzilla/show_bug.cgi?id=20076">20076</a>
+<span class="remotehost">[gcc.gnu.org]</span>.  Bug 20076 is not relevant
+to Services, but if one of the other bugs is detected, the script will
+activate assembly-language workarounds for i386, Sparc, and PowerPC CPUs,
+and abort on other processors since no workaround is available.
+</li>
+
+<li class="spaced">(<span class="configure-test-name">find_lflags</span>)
+Determines what options to use when linking executables.  Uses the option
+string given with the <tt>-lflags</tt> option, the previous cached result,
+or an empty string, in that order of preference.</li>
+
+<li class="spaced">(<span class="configure-test-name">find_exe_suffix</span>)
+Checks what filename extension, if any, is appended to executable
+filenames by the compiler/linker.</li>
+
+<li class="spaced">(<span class="configure-test-name">find_libs</span>)
+Determines what additional libraries need to be specified on the link
+command line.  Checks are made for <tt>-lm</tt>, <tt>-lsocket</tt>,
+<tt>-lresolv</tt>, <tt>-lnsl</tt>, and <tt>-lcrypt</tt>; if relevant
+functions from these libraries cannot be called without the corresponding
+<tt>-l</tt> option, the option is added to the library option string.  If
+the <tt>-libs</tt> option is passed to the script, its parameter is
+appended to the library option string after all library checks are done.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_shared</span>)
+Checks whether dynamic (shared-object) modules can be used.  If the
+<tt>-use-static-modules</tt> option is given, dynamic modules are disabled;
+if not, and if a cached result is available, that result is used.
+Otherwise, a check is first made for the presence of the <tt>dlfcn.h</tt>
+header file, using the <tt>test_include</tt> function (see the
+<tt>check_stdint</tt> test below).  If this file is present, the script
+proceeds to check whether <tt>-ldl</tt> is needed to access the dynamic
+loader functions and ensure that <tt>-rdynamic</tt> and <tt>-shared</tt>
+can be used with the compiler.  A check is then made that attempts to open
+shared objects with unresolved symbols fail, and that shared objects with
+no unresolved symbols can in fact be used properly.  If these tests
+succeed, a final check is made to determine whether symbol lookups require
+an underscore prepended to the symbol name or not.  If any test fails,
+dynamic modules are disabled.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_ranlib</span>)
+Checks whether the <tt>ranlib</tt> program exists on the system.  If a
+cached result is not available, a dummy file is created, and the
+<tt>ar</tt> program is used to add it to a dummy archive (if <tt>ar</tt> is
+not available, the script aborts).  <tt>ranlib</tt> is then run on this
+archive, and the success or failure of the command is recorded.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_stdint</span>)
+Checks for the presence of the <tt>stdint.h</tt> header.  This is done by
+calling the <tt>test_include</tt> function, which first checks whether the
+given file exists in /usr/include, then, if the file is not found, checks
+whether a test program that includes the file with <tt>#include</tt> can be
+compiled.  The variable <tt>HAVE_<i>header_name</i></tt>, where
+<tt><i>header_name</i></tt> is the header filename converted to upper case
+with non-alphanumeric characters replaced by underscores, is then set to 1
+or 0 if the test succeeded or failed, respectively.  The return value of
+the function itself is the success or failure of the test.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_strings</span>)
+Checks for the presence of the <tt>strings.h</tt> header.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_sysselect</span>)
+Checks for the presence of the <tt>sys/select.h</tt> header.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_sysproto</span>)
+Checks for the presence of the <tt>sys/proto.h</tt> header.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_int8</span>)
+Determines what type can be used for 8-bit integers.  The <tt>char</tt>
+type, and the <tt>int8_t</tt> type if the <tt>stdint.h</tt> header is
+present, are checked first, giving preference to <tt>int8_t</tt> if
+available; if neither is an 8-bit type, a <tt>byte</tt> type is checked for
+next.  If that type does not exist or is not 8 bits wide, the script
+aborts.  The selected type is used to declare the <tt>int8</tt> and
+<tt>uint8</tt> types.  (As described in <a href="11.html#s1">section
+11-1</a>, Services development was started before <tt>stdint.h</tt> and
+the sized integer types were standardized, hence the use of nonstandard
+type names.)</li>
+
+<li class="spaced">(<span class="configure-test-name">check_int16</span>)
+Determines what type can be used for 16-bit integers, selecting among
+<tt>int16_t</tt> (if present), <tt>int</tt>, and <tt>short</tt> in that
+order.  The selected type is used to declare the <tt>int16</tt> and
+<tt>uint16</tt> types.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_int32</span>)
+Determines what type can be used for 32-bit integers, selecting among
+<tt>int32_t</tt> (if present), <tt>int</tt>, and <tt>long</tt> in that
+order.  The selected type is used to declare the <tt>int32</tt> and
+<tt>uint32</tt> types.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_int_size</span>)
+Finds the size of the <tt>int</tt> type.  If the <tt>int</tt> type is less
+than 16 bits wide (a violation of the C standard), the script aborts.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_long_size</span>)
+Finds the size of the <tt>long</tt> type.  If the <tt>long</tt> type is less
+than 32 bits wide (a violation of the C standard), the script aborts.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_ptr_size</span>)
+Finds the size of pointer types.  If pointers are smaller than integers,
+the script aborts (see <a href="#s5">section 10-5</a> regarding this
+assumption).</li>
+
+<li class="spaced">(<span class="configure-test-name">check_time_t</span>)
+Finds the size of the <tt>time_t</tt> type.  If the <tt>time_t</tt> type is
+less than 32 bits wide, the script aborts.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_gid_t</span>)
+Checks for the presence of the <tt>gid_t</tt> type and finds its size.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_socklen_t</span>)
+Checks for the presence of the <tt>socklen_t</tt> type.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_aix_intNN</span>)
+Checks whether system headers define the <tt>int16</tt> and <tt>int32</tt>
+types, which clash with type names used in Services.  The
+<tt>sys/systypes.h</tt> header in at least some versions of the AIX
+operating system seems to define these.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_strerror</span>)
+Checks for how system error numbers can be converted to descriptive
+strings.  The <tt>strerror()</tt> function is used preferentially if
+present; if not, a compatibility function in <tt>compat.c</tt> implements
+<tt>strerror()</tt>, using either the system's <tt>sys_errlist[]</tt> array
+if present, or a built-in message list if not.  However, if the
+<tt>-use-local-funcs</tt> option was given, this test is skipped and the
+compatibility function (assuming no <tt>sys_errlist[]</tt>) is used.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_compat</span>)
+Checks for compatibility functions that need to be enabled.  At this stage,
+the <tt>-use-local-funcs</tt> option is checked and, if present,
+compatibility functions for all functions below through <tt>strsignal()</tt>
+are enabled.  If not, and cached results are available for all functions,
+those results are used.  If not, testing proceeds to each individual
+function test.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_hstrerror</span>)
+Checks for the presence of the <tt>check_hstrerror()</tt> function.  This
+is done by calling the <tt>test_function</tt> function, which attempts to
+compile a test program which calls the function (the contents of the test
+program are specified by the called).  If the compilation succeeds and the
+test program returns a successful exit code (0), the function is assumed to
+exist.  As with <tt>test_include</tt>, the variable
+<tt>HAVE_<i>function_name</i></tt> (where <tt><i>function_name</i></tt> is
+the function name in upper-case) and return value are set according to the
+test result.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_snprintf</span>)
+Checks for the presence and behavior of the <tt>snprintf()</tt> function
+(if found, the <tt>vsnprintf()</tt> function is assumed to also exist).
+Services ignores the possibility of string truncation&mdash;which is
+probably a security issue in some cases; see also
+<a href="11.html#s1">section 11-1</a>&mdash;and expects <tt>snprintf()</tt>
+to return the number of characters actually written into the buffer.  If
+<tt>snprintf()</tt> is available but uses a different return value scheme,
+a compatibility function translates the return value to what Services
+expects.  If <tt>snprintf()</tt> is not available at all, the version
+included in <tt>vsnprintf.c</tt> is used.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_strtok</span>)
+Checks for the presence and behavior of the <tt>strtok()</tt> function.
+Some system library implementations of <tt>strtok()</tt> have been found to
+contain bugs, which are checked for by this test.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_stricmp</span>)
+Checks for the presence of the <tt>stricmp()</tt> function.  This is
+equivalent to the POSIX <tt>strcasecmp()</tt> function, but has a more
+concise and clearer name (I always have to stop and remember that the
+"case" in <tt>strcasecmp</tt> means that case is <i>ignored</i> rather
+than that it is compared).  If <tt>stricmp()</tt> is not available but
+<tt>strcasecmp()</tt> is available, the former is made an alias for the
+latter via <tt>#define</tt>.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_strdup</span>)
+Checks for the presence of the <tt>strdup()</tt> function.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_strspn</span>)
+Checks for the presence of the <tt>strspn()</tt> and <tt>strcspn()</tt>
+functions (the variable set is <tt>HAVE_STRSPN</tt>).</li>
+
+<li class="spaced">(<span class="configure-test-name">check_strsignal</span>)
+Checks for the presence of the <tt>strsignal()</tt> function.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_gettimeofday</span>)
+Checks for the presence of the <tt>gettimeofday()</tt> function.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_setgrent</span>)
+Checks for the presence of the <tt>setgrent()</tt> function.  However, if
+the <tt>gid_t</tt> type does not exist, the test is not executed and the
+function is assumed to not exist.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_setregid</span>)
+Checks for the presence of the <tt>setregid()</tt> function.  However, if
+the <tt>gid_t</tt> type does not exist, the test is not executed and the
+function is assumed to not exist.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_umask</span>)
+Checks for the presence of the <tt>umask()</tt> function.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_fork</span>)
+Checks for the presence of the <tt>fork()</tt> function.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_gethostbyname</span>)
+Checks for the presence of the <tt>gethostbyname()</tt> function.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_getsetrlimit</span>)
+Checks for the presence of the <tt>getrlimit()</tt> and <tt>setrlimit()</tt>
+functions.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_crypt</span>)
+Checks for the presence of the <tt>crypt()</tt> function.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_install</span>)
+Checks whether a working <tt>install</tt> program exists on the system.  If
+not, the <tt>install-script</tt> script included in the top source
+directory is used instead.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_install-d</span>)
+Checks whether <tt>install -d</tt> can be used to create directories.  If
+not, <tt>mkdir</tt> is tried as a workaround, falling back to the
+<tt>install-script</tt> script if necessary.</li>
+
+<li class="spaced">(<span class="configure-test-name">check_copy_recurse</span>)
+Determines what command should be used to copy entire directories.  The
+default command is <tt>cp -dpr</tt> in Linux and Cygwin environments, and
+<tt>cp -pr</tt> in other environments.  If this command does not work, the
+<tt>tar</tt> command is used as a substitute if possible (see the
+<tt>cp-recursive</tt> script in the top source directory).  If <tt>tar</tt>
+cannot be used either, the script aborts.</li>
+
+<li class="spaced">Creates the file <tt>config.h</tt>, containing the
+results of configuration relevant to the source code (such as compilation
+options and required compatibility functions) as <tt>#define</tt>
+preprocessor macros.  If the <tt>config.h</tt> file already exists and the
+content of the new <tt>config.h</tt> to be written is unchanged from that
+in the existing file, the existing file is left untouched, so as not to
+cause an unneeded recompile of all source files if <tt>configure</tt> is
+re-run with identical parameters.</li>
+
+<li class="spaced">Creates the file <tt>Makefile.inc</tt>, containing the
+results of configuration relevant to compilation commands (such as the
+compiler command and options and installation directories) as <tt>make</tt>
+variables.  As above, if <tt>Makefile.inc</tt> already exists and its
+content has not changed, the old file is left alone.</li>
+
+<li class="spaced">Creates the cache file <tt>config.cache</tt>, saving the
+results of configuration so that a subsequent run of the <tt>configure</tt>
+script will execute faster.  The file is written as a sequence of shell
+commands, so that it can simply be sourced at runtime rather than parsing
+each line individually.</li>
+
+</ul>
+
+<p>Note that a deliberate decision was made to not use the GNU
+<tt>autoconf</tt>/<tt>automake</tt>/<tt>libtool</tt> suite of tools, as
+they are overly complex for the range of systems Services is expected to be
+used on.  (I have seen far too many programs where running the
+autoconf-generated <tt>configure</tt> script takes longer than compiling
+the program itself.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">10-3. The compilation process</h3>
+
+<p>Overall compilation is controlled by the <tt>Makefile</tt> in the top
+source directory.  When run with no target specified, the default target
+<tt>all</tt> is used, which first checks that the <tt>configure</tt> script
+has been run (aborting with a notice to the user if not), then proceeds to
+actual compilation with the <tt>myall</tt> target.  This target compiles
+the main program (<tt>ircservices</tt> or <tt>ircservices.exe</tt>), then
+generates the language files and creates the <tt>convert-db</tt> and
+<tt>ircservices-chk</tt> tools.</p>
+
+<p>Additional targets available are: <tt>install</tt>, which installs
+program and data files to the appropriate directories (see
+<a href="#s4">section 10-4</a>); <tt>clean</tt>, which removes most
+generated files, such as object and executable files; and
+<tt>spotless</tt>, or <tt>distclean</tt> in the GNU style, which removes
+<i>all</i> generated files (including <tt>config.cache</tt>).  All of these
+targets are called recursively for the <tt>modules</tt>, <tt>lang</tt>, and
+<tt>tools</tt> directories.</p>
+
+<p>The main Makefile also includes two rules, for <tt>services.h</tt> and
+<tt>language.h</tt>, which cause those files to be <tt>touch</tt>ed (the
+file timestamp updated) whenever any sub-header file changes.  This is
+done because it is considered easier than ensuring that every dependency
+list stays up to date with all sub-header files.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-1">10-3-1. Core source files</h4>
+
+<p>Compilation of the main executable starts with compilation of the core
+source files, stored in the top source directory.  The object files to be
+created are listed in alphabetical order in the <tt>$(OBJS)</tt> variable.
+The options used for compilation are <tt>-DSTATIC_MODULES</tt> if using
+static modules, followed by the options selected by the <tt>configure</tt>
+script (in the <tt>$(BASE_CFLAGS)</tt> variable), followed by the options
+in the <tt>$(MORE_CFLAGS)</tt> variable (defined at the top of the
+Makefile, intended for users to add or change extra options on the fly).</p>
+
+<p>After compiling all of the core source files, compilation proceeds to
+the modules, as described below; finally, a <tt>version.c</tt> file is
+generated by the <tt>version.sh</tt> script, containing the program version
+number and a build number (extracted from the previous contents of
+<tt>version.c</tt>) which is incremented by one each build, and this file
+is compiled and linked with the rest of the main source files, as well as
+the modules when compiling modules statically, to produce the main
+executable.</p>
+
+<p>Note that one core header file, <tt>langstrs.h</tt>, is copied from the
+language file subdirectory, where it is first generated if necessary; see
+<a href="#s3-3">section 10-3-3</a> below for details.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-2">10-3-2. Modules</h4>
+
+<p>Compilation of modules is handled by <tt>modules/Makefile</tt> and its
+auxiliary file, <tt>modules/Makerules</tt>.  The top directory's Makefile
+calls one of two targets in <tt>modules/Makefile</tt> to compile all
+available modules: <tt>all-dynamic</tt> if dynamic linking is in use,
+<tt>all-static</tt> for static linking.  Both of these targets perform the
+same basic function: search for all subdirectories of the <tt>modules</tt>
+directory that contain Makefiles, and call the <tt>all-dynamic</tt> or
+<tt>all-static</tt> target in each subdirectory's Makefile.</p>
+
+<p>Since the subdirectory search is performed at compilation time, it is
+possible to add new modules to Services by simply copying the directory
+containing the module source code and Makefile into the <tt>modules</tt>
+directory.  This is in fact the recommended method for installing
+third-party modules, and the module compilation system was designed with
+this aim in mind.</p>
+
+<p>Of the two main targets in <tt>modules/Makefile</tt>, the
+<tt>all-dynamic</tt> target is the simpler of the two.  It loops through
+all subdirectories, calling the <tt>all-dynamic</tt> target in each, then
+updates a dummy <tt>.stamp</tt> file if the subdirectory's <tt>.stamp</tt>
+file was updated.  This file is used by the main Makefile to determine
+whether <tt>version.c</tt> should be regenerated.</p>
+
+<p>For static modules, the process is slightly more complicated, since a
+list of all modules and exported symbols must be provided to the core
+module manager.  In addition to calling each subdirectory's
+<tt>all-static</tt> target, the <tt>.modext-*</tt>, <tt>.modsyms-*</tt>,
+and <tt>.modlist-*</tt> files in each subdirectory are concatenated to
+form module and symbol lists; these are then compiled into an additional
+object file, <tt>modlist.o</tt>, and an archive (<tt>modules.a</tt>) is
+created containing this file and all module object files.  This archive is
+then linked into the final executable.</p>
+
+<p>The compilation of individual modules is handled by the
+<tt>modules/Makerules</tt> file, which is included by each subdirectory's
+Makefile.  This file is designed so that individual module Makefiles need
+only set up some variables with lists of files to be compiled and include
+the <tt>Makerules</tt> file.  However, due in part to limitations of the
+GNU <tt>make</tt> program, the actual implementation is quite complex, and
+as a side effect it takes <tt>make</tt> considerable time to process the
+module subdirectories even when no files need to be recompiled.</p>
+
+<p>The limitation in <tt>make</tt> which I found no easy way around during
+development is that there is (or was; see <a href="11.html#s1-gmake">the
+relevant note in section 11-1</a> for a method that works with newer
+versions of GNU <tt>make</tt>) no way to specify a rule in which the name
+of a variable specifying a dependency varies with the target name.  For
+example, suppose a subdirectory contains two modules, <tt>module1</tt> and
+<tt>module2</tt>.  If each module consists of only one source file and has
+no other dependencies, the rule is simple (assuming dynamic modules, and
+assuming the presence of a <tt>%.o: %.c</tt> compilation rule):</p>
+
+<div class="code">%.so: %.o
+	$(CC_SHARED) $^ -o $@</div>
+
+<p>However, suppose that <tt>module1</tt> depends on file <tt>aux1.o</tt>
+and <tt>module2</tt> depends on files <tt>aux2.o</tt> and <tt>aux3.o</tt>.
+If these are specified in <tt>$(OBJECTS-module1.so)</tt> and
+<tt>$(OBJECTS-module2.so)</tt>, one might then be tempted to write:</p>
+
+<div class="code">%.so: %.o $(OBJECTS-%.so)
+	$(CC_SHARED) $^ -o $@</div>
+
+<p>Unfortunately, this does not substitute <tt>module1</tt> or
+<tt>module2</tt> in the <tt>$(OBJECTS-%.so)</tt> reference, but uses the
+value of the variable literally named <tt>OBJECTS-%.so</tt>.  Nor does it
+work to use <tt>$@</tt> instead of <tt>%.so</tt> in the variable name:</p>
+
+<div class="code">%.so: OBJECTS = $(OBJECTS-$@)
+%.so: %.o $(OBJECTS)
+	$(CC_SHARED) $^ -o $@</div>
+
+<p>Here, <tt>$(OBJECTS)</tt> is only defined for commands inside the
+pattern rule, so it cannot be used in the dependency list.  Likewise,
+<tt>$@</tt> is only defined for the command list, so specifying
+<tt>$(OBJECTS-$@)</tt> in the dependency list also does not work.</p>
+
+<p>The upshot of all this is that in order to have a dependency list that
+varies with the target, it is necessary to call <tt>make</tt> recursively.
+The bulk of the <tt>Makerules</tt> file is dedicated to handling this
+recursive calling and setting variables appropriately for each target.</p>
+
+<p>The Makefile for a module directory typically consists only of variable
+definitions followed by the line "<tt>include ../Makerules</tt>".  Chief
+among the variables required is the <tt>$(MODULES)</tt> variable, which
+lists the modules contained in the directory; each module is specified with
+a <tt>.so</tt> extension (static modules are compiled to <tt>.a</tt>
+archives, but the filename translation is handled transparently by the
+<tt>Makerules</tt> file), and is assumed to be compiled from a source file
+of the same name with a <tt>.c</tt> extension.  If any additional object
+files are required by the module, they are specified in a variable named
+<tt>$(OBJECTS-<i>module</i>.so)</tt>, where <tt><i>module</i></tt> is
+replaced by the module name.  Header file dependencies can be specified
+through the <tt>$(INCLUDE)</tt> variable for dependencies common to all
+object files, and <tt>$(INCLUDE-<i>object</i>.o)</tt> for a particular
+object file.  If any object requires a special rule for compilation, that
+rule can be written in the Makefile, but rules are not needed for the
+ordinary case of compiling a <tt>.c</tt> source file to a <tt>.o</tt>
+object file.</p>
+
+<p>When the subdirectory's <tt>all-dynamic</tt> or <tt>all-static</tt> rule
+is first invoked, the script first checks, via pattern rules, that no
+modules have names ending in <tt>_static</tt> (which would conflict with
+the static module compilation procedure, as described below) or beginning
+with a period (which would conflict with the temporary files created during
+compilation).  Then, for each module, <tt>make</tt> is called recursively
+with the <tt>$(TARGET)</tt> variable set to the target module name (with
+no filename extension), <tt>$(OBJECTS)</tt> variable set to the contents of
+the particular module's object list (<tt>$(OBJECTS-<i>module</i>.so)</tt>),
+and <tt>$(REALLY_COMPILE)</tt>, the recursion level variable, set to 1.</p>
+
+<p>When called with <tt>$(REALLY_COMPILE)</tt> equal to 1,
+<tt>Makerules</tt> instead defines a rule for the target file,
+<tt>$(TARGET).so</tt> or <tt>$(TARGET).a</tt>  For dynamic modules, this
+simply involves compiling the relevant files and linking them into a
+shared object; for static modules, however, the objects will eventually be
+archived into a single <tt>modules.a</tt> archive, so no <tt>.a</tt> file
+for the individual module is actually needed.  What the rule does instead
+is to record each object file's name in the <tt>.$(DIRNAME).lst</tt> file,
+which is then used by the <tt>all-static</tt> rule to link all object files
+in the directory into a single object <tt>$(DIRNAME).o</tt> for storing in
+the <tt>modules.a</tt> archive.  (A dummy <tt>$(TARGET).a</tt> file is also
+created so that <tt>make</tt> can perform its file timestamp checks.)  In
+addition, since the static module manager requires a list of names and
+pointers for all variables and functions exported by each module, the
+static module compilation rule searches through all source files&mdash;each
+object file is assumed to correspond to a single source file with the same
+name and a <tt>.c</tt> extension, and no header files are checked&mdash;for
+<tt>EXPORT_VAR()</tt>, <tt>EXPORT_ARRAY()</tt>, and <tt>EXPORT_FUNC()</tt>
+macro invocations.  The export information given to these macros, along
+with declarations for the implicitly exported variables
+<tt>_this_module_ptr</tt> and <tt>module_version</tt>, array
+<tt>module_config[]</tt>, and functions <tt>init_module()</tt> and
+<tt>exit_module()</tt>, are written to two temporary files:
+<tt>.modext-<i>module</i>.h</tt>, containing <tt>extern</tt> declarations,
+and <tt>.modsyms-<i>module</i>.c</tt>, containing the actual symbol
+entries.  A line with the module name and symbol array pointer is also
+written to <tt>.modlist-<i>module</i>.c</tt> for later inclusion in the
+overall module list.</p>
+
+<p>For each individual object file, <tt>Makerules</tt> first (at recursion
+level 1) generates a rule for compiling the object file that calls
+<tt>make</tt> recursively, with <tt>$(TARGET)</tt> now set to the object
+file's base filename (with the <tt>.o</tt> extension stripped),
+<tt>$(INCLUDES2)</tt> set to the particular object file's dependency list
+from <tt>$(INCLUDES-<i>object</i>.o)</tt>, <tt>-DMODULE</tt> and
+<tt>-DMODULE_ID=<i>module-id</i></tt> appended to <tt>$(CFLAGS)</tt>
+(<tt><i>module-id</i></tt> is a C-style identifier derived from the
+directory and module name, used to make common module identifiers unique),
+and <tt>$(REALLY_COMPILE)</tt> set to 2.  In addition, for the main file
+of a module (the source file with the same name as the module),
+<tt>-DMODULE_MAIN_FILE</tt> is also appended to <tt>$(CFLAGS)</tt>.</p>
+
+<p>In this second recursion level, the actual source file compilation is
+performed.  The <tt><i>object</i>.o</tt> rule does not perform the actual
+compilation, but depends on a <tt>.compiled-<i>object</i>.o</tt> dummy file
+whose rule performs the compilation and on a dummy <tt>FRC</tt> (force)
+rule; this hack prevents <tt>make</tt> from outputting "nothing to do"
+messages for every unchanged object file.  The compilation command itself
+is similar to that used for the core source code, but the command is
+prefixed by a <tt>cd</tt> to the top directory, so that the relative path
+to the source file is saved in the object file's debug information.  This
+allows debuggers to easily find the proper source file, even if multiple
+module subdirectories have identically-named source files.</p>
+
+<p>For static modules, a slight change is made for the module's main source
+file: rather than compiling the source file to <tt><i>module</i>.o</tt>,
+the object file is given the filename <tt><i>module</i>_static.o</tt>, and
+the five implicitly exported variables/functions (<tt>init_module()</tt>,
+etc.) are renamed via <tt>-D</tt> options to names containing the
+<tt><i>module-id</i></tt> so that they do not cause symbol conflicts with
+other modules at link time.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-3">10-3-3. Language files</h4>
+
+<p>The language files, stored in the <tt>lang</tt> directory, are
+precompiled into binary format to speed the startup of Services, as
+described in <a href="2.html#s8-4">section 2-8-4</a>.  This precompilation
+is performed by the <tt>langcomp</tt> program, compiled from
+<tt>langcomp.c</tt>.  When called with the <tt>all</tt> target, the
+Makefile first compiles <tt>langcomp</tt>, then runs it on each language
+source file to generate the corresponding precompiled binary file.  In the
+special case of the Japanese language files (<tt>ja_*.l</tt>), which
+correspond to the various encodings common on Japanese computer systems,
+the EUC file (<tt>ja_euc.l</tt>) is treated as canonical, and when it
+changes, the <tt>jconv.pl</tt> script is automatically run to regenerate
+the <tt>ja_sjis.l</tt> file before compiling it to binary format.  (There
+was also a JIS-encoded file, <tt>ja_jis.l</tt>, in the past, but this was
+dropped because of extra % characters in the text causing <tt>printf()</tt>
+functions to break.)</p>
+
+<p>The list of standard language strings is taken from the English language
+file, <tt>en_us.l</tt>; a simple <tt>grep</tt> is used to extract the
+string names to the <tt>index</tt> file, and this file is then used to
+generate <tt>langstrs.h</tt>, which contains the string names both as
+preprocessor (<tt>#define</tt>) constants and as a string array, available
+if <tt>LANGSTR_ARRAY</tt> is defined.  The core source file
+<tt>language.c</tt> uses this array for looking up string names when
+loading external language files at runtime.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-4">10-3-4. The <tt>tools</tt> and <tt>data</tt> directories</h4>
+
+<p>The <tt>tools</tt> directory contains two additional programs:
+<tt>convert-db</tt>, the database conversion tool discussed in
+<a href="9.html">section 9</a>, and <tt>ircservices-chk</tt>, a simple
+script designed to run from a periodic execution utility such as
+<tt>cron</tt> to ensure that Services is restarted if it should stop for
+any reason (such as a crash).</p>
+
+<p>In addition to the main source file <tt>convert-db</tt> and the
+<tt>convert-*.c</tt> source files that handle particular database types,
+<tt>convert-db</tt> makes use of three source files from the main source
+code: <tt>compat.c</tt>, containing compatibility functions;
+<tt>modules/database/fileutil.c</tt>, containing routines to read and write
+data in binary database files; and <tt>modules/misc/xml-export.c</tt>,
+containing routines to generate an XML file from loaded data.  These three
+files are compiled using special rules, which include the
+<tt>-DCONVERT_DB</tt> compiler option to trigger special handling in the
+source files for the <tt>convert-db</tt> tool.</p>
+
+<p>The "compilation" of <tt>ircservices-chk</tt> consists of simply
+replacing the <tt>@PROGRAM@</tt>, <tt>@BINDEST@</tt> and <tt>@DATDEST@</tt>
+fields in the template file <tt>ircservices-chk.in</tt> with the actual
+file/pathnames, writing the output to the file <tt>ircservices-chk</tt>
+(more precisely, <tt>$(PROGRAM)-chk</tt>, where <tt>$(PROGRAM)</tt> is the
+value of the <tt>-program</tt> option given to the <tt>configure</tt>
+script), and marking that file executable with <tt>chmod</tt>.</p>
+
+<p>Likewise, the two sample configuration files
+(<tt>example-ircservices.conf</tt> and <tt>example-modules.conf</tt>) in
+the <tt>data</tt> subdirectory are generated from template files, replacing
+occurrences of <tt>@PROGRAM@</tt> with the actual program name to give
+appropriate defaults for various file names.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s4">10-4. Installation</h3>
+
+<p>The <tt>install</tt> target, which like <tt>all</tt> defers actual work
+to the <tt>myinstall</tt> target, first creates the target directories,
+<tt>$(BINDEST)</tt> and <tt>$(DATDEST)</tt>, if they do not exist; copies
+the main executable file to the <tt>$(BINDEST)</tt> directory; and calls
+the <tt>install</tt> target in the <tt>modules</tt>, <tt>lang</tt>,
+<tt>tools</tt>, and <tt>data</tt> directories.  However, when static
+modules are being used, the module install is skipped (since the module
+objects are linked directly into the executable, there is nothing to
+install).</p>
+
+<p>The module installation consists of calling the <tt>install</tt> target
+in each module subdirectory; this target, declared in the
+<tt>modules/Makerules</tt> file, creates a subdirectory of the same name
+inside the <tt>modules</tt> directory under <tt>$(DATDEST)</tt>, then
+copies all module shared-object files into that directory.</p>
+
+<p>The language installation first creates a <tt>language</tt> directory
+under <tt>$(DATDEST)</tt>; the precompiled language files are then copied
+into that directory.</p>
+
+<p>The tool installation copies the <tt>ircservices-chk</tt> script to
+<tt>$(BINDEST)</tt>, and the <tt>convert-db</tt> program to
+<tt>$(DATDEST)</tt>.  The latter is not copied to the executable file
+directory to avoid the possibility that the executable file name conflicts
+with another program installed on the system.  (A better solution might be
+to rename the program to something like <tt>ircservices-convert</tt>.)</p>
+
+<p>The data file installation copies the example configuration files,
+<tt>example-ircservices.conf</tt> and <tt>example-modules.conf</tt>, to
+<tt>$(DATDEST)</tt>; <tt>example-ircservices.conf</tt> is renamed at this
+time to <tt>example-$(PROGRAM).conf</tt>.  If the <tt>helpfiles</tt>
+directory does not exist under <tt>$(DATDEST)</tt>, it is copied from the
+<tt>helpfiles</tt> subdirectory of the <tt>data</tt> directory.</p>
+
+<p>Since the <tt>install</tt> target depends on the <tt>all</tt> (or more
+precisely, the <tt>myall</tt>) target, it is also possible to perform
+compilation and installation in one step by simply executing <tt>make
+install</tt>.</p>
+
+<p>If the variable <tt>INSTALL_PREFIX</tt> is set, its value is prepended
+to all pathnames used for installation; for example, the
+<tt>ircservices</tt> executable file is installed to
+<tt>$(INSTALL_PREFIX)$(BINDEST)/ircservices</tt>.  This allows Services to
+be installed to an alternate root directory, such as when preparing a
+chroot'd environment or a distribution image.  This variable is not set by
+any of the Makefiles, but can be set on the <tt>make</tt> command line.
+(Note that there is no slash after <tt>$(INSTALL_PREFIX)</tt>; inserting
+one would have the side effect of prefixing <tt>$(BINDEST)</tt> and
+<tt>$(DATDEST)</tt> with a slash when no prefix was given, which could
+potentially have undesired side effects.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s5">10-5. Assumptions</h3>
+
+<p>Finally, it is worth noting a few assumptions made by the source code.
+These are all believed to hold on any system Services is likely to be used
+on, and some are double-checked by the <tt>configure</tt> script.</p>
+
+<ul>
+<li class="spaced"><b>Pointer values are at least as large as <tt>int</tt>
+values.</b>  The module system uses <tt>void&nbsp;*</tt> as type
+placeholders for module callbacks, as described in
+<a href="4.html#s5-3">section 4-5-3</a>, and some database management
+routines, such as in the OperServ news and autokill modules (see
+<a href="7.html#s2-2-1">section 7-2-2-1</a>, for example) store integer
+values in pointer fields.  While these are admittedly very crocky ways of
+doing things, they do require that pointers be at least large enough to
+hold values that may be stored in them.  The <tt>configure</tt> script
+checks that pointers are at least as large as <tt>int</tt>s, and aborts if
+not.</li>
+
+<li class="spaced"><b>Character values are exactly 8 bits.</b>  More
+precisely, a <tt>char</tt> variable is exactly one byte in size (whatever
+size a byte may be).  This is not checked by the <tt>configure</tt> script,
+but it is mandated by the C standard and should not be a problem.</li>
+
+<li class="spaced"><b>Unprototyped routines can accept up to five arguments
+regardless of type.</b>  Or to be more accurate, all of the first five
+arguments to a routine are stored in same-size locations regardless of
+type.  This requirement is a side effect of the module callback calling
+method mentioned above, and holds on at least x86 (where everything except
+<tt>long long</tt> is 32 bits) and x86-64 (where the first five arguments
+are all passed in registers).  Note that this is not checked by the
+<tt>configure</tt> script.</li>
+
+<li class="spaced"><b>Pointer aliasing (type-punning) is allowed.</b>  The
+C standard disallows "aliasing" of pointers of different types (C99 6.5 (7));
+in other words, if you have a pointer variable <tt>struct foostruct
+*foo</tt>, you may not assign the value of <tt>foo</tt> to <tt>struct
+barstruct *bar</tt> and then modify the contents of <tt>*bar</tt>.  This
+sounds like a good idea on the surface, but it turns out to be quite
+inconvenient in practice; in particular, it prevents the use of "derived
+structures", where the first member of one structure is a second structure
+(similar to a derived class in object-oriented languages).  It would in
+theory be possible, if unduly verbose, to rewrite the code to obey the
+aliasing rules; but for convenience, Services simply assumes that this sort
+of aliasing is permitted.  The <tt>configure</tt> script does not check for
+this directly, since any effect would be compiler-dependent and difficult
+(if not impossible) to detect reliably, but the script does enable the
+<tt>-fno-strict-aliasing</tt> option when compiling with GCC, which
+disables optimizations that rely on this aliasing rule.</li>
+
+<li class="spaced"><b>The <tt>NULL</tt> pointer is bitwise zero for all
+pointer types.</b>  For the sake of efficiency (and concise source code),
+arrays or structures containing pointers are often cleared by using
+<tt>calloc()</tt> to allocate precleared memory or <tt>memset()</tt> to
+fill the memory region with the byte value 0, and it is assumed that these
+operation are equivalent to individually assigning the <tt>NULL</tt> value
+to each pointer.  The C standard does not require that <tt>NULL</tt> be
+stored in memory as the value zero, only that it compare equal to zero, but
+every system I have used so far uses bitwise zero for <tt>NULL</tt>, so I
+have not made an effort to write "correct" code.  Note that the
+<tt>configure</tt> script does not check for this.</li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="9.html">Previous section: The database conversion tool</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="11.html">Next section: Future work</a></p>
+
+</body>
+</html>

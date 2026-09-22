@@ -1,0 +1,3629 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services Manual - 4. Services command reference</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>4. Services command reference</h2>
+<p>4-1. <a href="#1">NickServ commands</a>
+<p>4-2. <a href="#2">ChanServ commands</a>
+<p>4-3. <a href="#3">MemoServ commands</a>
+<p>4-4. <a href="#4">OperServ commands</a>
+<p>4-5. <a href="#5">StatServ commands</a>
+<p>4-6. <a href="#6">Command index</a>
+
+<p><b>Note:</b> This section is based on the help messages included in IRC
+Services itself, which can be accessed by typing
+"<tt>/msg <i>pseudoclient-name</i> HELP</tt>" in IRC.
+
+<p align=right><font size=-1><a href=3.html>Previous section: Overview of Services features</a> |
+<a href=index.html>Table of Contents</a> |
+<a href=5.html>Next section: Importing and exporting databases</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=1></a>
+<h3>4-1. NickServ commands</h3>
+
+<p align=center><hr width="50%">
+
+<a name="nick.register"></a>
+<p><b>REGISTER</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>REGISTER <i>password</i> [<i>E-mail</i>]</b></tt>
+</dl>
+<p>
+Registers your nickname in the NickServ database.  Once
+your nickname is registered, you can use the <a href="#nick.set"><tt>SET</tt></a>
+and <a href="#nick.access"><tt>ACCESS</tt></a>
+commands to configure your nickname's settings as you like
+them.  Make sure you remember the password you use when
+registering; you'll need it to make changes to your nickname
+later.  (Note that <b>case matters!</b>  <tt>FIDO</tt>, <tt>Fido</tt>, and <tt>fido</tt>
+are all different passwords!)
+<p>
+You may include an E-mail address when registering your
+nickname; you may also set one later using the
+<a href="#nick.set_email"><tt>SET EMAIL</tt></a>
+command.  (If the <a href="a.html#nickserv/main.NSRequireEmail"><tt>NSRequireEmail</tt></a>
+is set, the E-mail address is mandatory.)
+<p>
+Guidelines on choosing passwords:
+<p>
+Passwords should not be easily guessable.  For example,
+using your real name as a password is a bad idea.  Using
+your nickname as a password is a much worse idea and,
+in fact, NickServ will not allow it.  Also, short
+passwords are vulnerable to trial-and-error searches, so
+you should choose a password at least 5 characters long.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.identify"></a>
+<p><b>IDENTIFY</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>IDENTIFY <i>password</i></b></tt>
+</dl>
+<p>
+Tells NickServ that you are really the owner of this
+nickname.  Many commands require you to authenticate yourself
+with this command before you use them.  The password
+should be the same one you sent with the
+<a href="#nick.register"><tt>REGISTER</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.drop"></a>
+<p><b>DROP</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>DROP <i>password</i></b></tt>
+</dl>
+<p>
+De-registers (drops) your nickname from the NickServ
+database.  A nickname that has been dropped is free for anyone
+to re-register.
+<p>
+Note that when you drop a nickname, <b>all nicknames linked to it will
+be dropped as well</b>.  To remove a single linked nickname, use
+the <a href="#nick.unlink"><tt>UNLINK</tt></a> command.
+<p>
+To prevent accidental use of this command, you must enter
+your password in order to drop your nickname.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.dropnick"></a>
+<p><b>DROPNICK</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>DROPNICK <i>nickname</i></b></tt>
+</dl>
+<p>
+Drops the given nickname from the NickServ database, as well
+as any linked nicknames.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.dropemail"></a>
+<p><b>DROPEMAIL</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>DROPEMAIL <i>pattern</i></b></tt>
+<br><tt><b>DROPEMAIL-CONFIRM <i>pattern</i></b></tt>
+</dl>
+<p>
+Drops all nicknames with an E-mail address matching the
+given <tt><i>pattern</i></tt>.  If <tt><i>pattern</i></tt> is the single character
+"<tt>-</tt>", drops all nicknames without an E-mail address.
+<p>
+To prevent accidentally dropping nicknames via this command,
+it must be given twice: first using the <tt>DROPEMAIL</tt> command
+name, then using <tt>DROPEMAIL-CONFIRM</tt> with the same pattern.
+The <tt>DROPEMAIL-CONFIRM</tt> command must be given within 10 minutes of
+(by default, changeable via the
+<a href="a.html#nickserv/main.NSDropEmailExpire"><tt>NSDropEmailExpire</tt></a>
+option in <tt>modules.conf</tt>)
+and by the same person who gave the <tt>DROPEMAIL</tt> command.
+If more than 4 <tt>DROPEMAIL</tt> commands are given in a row, the
+oldest will be discarded and no longer recognized for a
+<tt>DROPEMAIL-CONFIRM</tt> command.
+<p>
+Limited to <b>Services admins.</b>
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.auth"></a>
+<p><b>AUTH</b> (requires the <tt>nickserv/mail-auth</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>AUTH <i>code</i></b></tt>
+</dl>
+<p>
+Authenticates registration or change of E-mail for a nickname.
+To ensure that your E-mail address is correct, NickServ will
+send an message containing an authentication code to the
+E-mail address given when you register your nickname or
+change your E-mail address with the <a href="#nick.set_email"><tt>SET EMAIL</tt></a> command.  This
+command allows you to confirm that you have received the
+message and continue using your nickname normally.  Replace
+<tt><i>code</i></tt> in the command with the nine-digit authentication code
+given in the E-mail message.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.sendauth"></a>
+<p><b>SENDAUTH</b> (requires the <tt>nickserv/mail-auth</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SENDAUTH</b></tt>
+</dl>
+<p>
+Sends you a copy of the authentication code for your nickname
+after a <a href="#nick.register"><tt>REGISTER</tt></a> or
+<a href="#nick.set_email"><tt>SET EMAIL</tt></a>.  If you accidentally delete
+or otherwise lose the message with the authentication code,
+you can use this command to have an extra copy sent to you.
+<p>
+To prevent abuse, this command may only be used once every
+24 hours.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.reauth"></a>
+<p><b>REAUTH</b> (requires the <tt>nickserv/mail-auth</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>REAUTH</b></tt>
+</dl>
+<p>
+Sets an authentication code which you can use to identify
+for your nickname.  If you forget your nickname password,
+use this command to generate a new authentication code, then
+give that code (which will be mailed to you) with the <a href="#nick.auth"><tt>AUTH</tt></a>
+command to identify for your nickname; you can then change
+your password with the <a href="#nick.set_password"><tt>SET PASSWORD</tt></a>
+command as usual.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.restoremail"></a>
+<p><b>RESTOREMAIL</b> (requires the <tt>nickserv/mail-auth</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>RESTOREMAIL <i>password</i></b></tt>
+</dl>
+<p>
+Restores the last authenticated E-mail address for your
+nickname.  If you accidentally use the wrong E-mail address
+in a <a href="#nick.set_email"><tt>SET EMAIL</tt></a> command, you can use this command to restore
+the previous E-mail address and clear the authentication
+code for your nickname, allowing you to identify for the
+nickname again.  You must give your nickname's password with
+this command.
+<p>
+<tt>RESTOREMAIL</tt> can only be used after <tt>SET EMAIL</tt> and before
+entering the new authorization code with the <a href="#nick.auth"><tt>AUTH</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.setauth"></a>
+<p><b>SETAUTH</b> (requires the <tt>nickserv/mail-auth</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SETAUTH <i>nickname</i></b></tt>
+</dl>
+<p>
+Sets a new authentication code for the given nickname.  The
+nickname's owner will have to use the <a href="#nick.auth"><tt>AUTH</tt></a>
+command for the nickname before being allowed to identify again.  If the
+nickname is currently in use, a notice will be sent to the
+user of the nickname and they will no longer be treated as
+identified for the nickname.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.getauth"></a>
+<p><b>GETAUTH</b> (requires the <tt>nickserv/mail-auth</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>GETAUTH <i>nickname</i></b></tt>
+</dl>
+<p>
+Retrieves the authentication code associated with <tt><i>nickname</i></tt>,
+if one exists.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.clearauth"></a>
+<p><b>CLEARAUTH</b> (requires the <tt>nickserv/mail-auth</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>CLEARAUTH <i>nickname</i></b></tt>
+</dl>
+<p>
+Clears any authentication code associated with <tt><i>nickname</i></tt>,
+allowing the nickname to be used normally.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.link"></a>
+<p><b>LINK</b> (requires the <tt>nickserv/link</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>LINK <i>nickname</i></b></tt>
+</dl>
+<p>
+Links a new nickname to the nickname you are currently using,
+creating a new "alias" for your nick.  The new nick will be
+equivalent to your current nick in terms of access
+privileges and memos; for example, you can read memos sent
+to one of your linked nicks from any other one, and if one
+of your nicks has auto-op privileges in a channel, you will
+get auto-opped no matter which linked nick you use.
+<p>
+To cancel a link, use the <a href="#nick.unlink"><tt>UNLINK</tt></a> command.
+<p>
+In order to use this command, you must identify for your
+current nickname (using the <a href="#nick.identify"><tt>IDENTIFY</tt></a>
+command), and the nickname to be linked must not currently be in use.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.unlink"></a>
+<p><b>UNLINK</b> (requires the <tt>nickserv/link</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>UNLINK <i>nickname</i> [FORCE]</b></tt>
+</dl>
+<p>
+Removes a link (alias) to your nickname created with the
+<a href="#nick.link"><tt>LINK</tt></a> command.  You cannot unlink the
+nickname you are currently using; change to another linked nick first
+before using this command.
+<p>
+If you unlink the "main nickname" you have selected using the
+<a href="#nick.set_mainnick"><tt>SET MAINNICK</tt></a> command, your
+current nickname will automatically be selected as the main nickname.
+<p>
+Services admins may add the <tt>FORCE</tt> option, which allows
+removal of a link to a nickname other than their own.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.listlinks"></a>
+<p><b>LISTLINKS</b> (requires the <tt>nickserv/link</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>LISTLINKS</b></tt>
+</dl>
+<p>
+Lists all nicknames which are linked to your nick.  The main
+nickname for the group of linked nicks will be indicated by a
+"<tt>*</tt>" to the left of the nick.
+<p>
+Services operators may list links for any nick by specifying the nick
+in the command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.access"></a>
+<p><b>ACCESS</b> (requires the <tt>nickserv/access</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>ACCESS ADD <i>mask</i></b></tt>
+<br><tt><b>ACCESS DEL <i>mask</i></b></tt>
+<br><tt><b>ACCESS LIST</b></tt>
+</dl>
+<p>
+Modifies or displays the access list for your nickname.  This is
+the list of <tt><i>user</i>@<i>host</i></tt> addresses which will be
+automatically recognized by NickServ as allowed to use the nickname.
+If you connect to IRC with an address on this list, you will not be
+affected by the nick's <a href="#nick.set_kill"><tt>SET KILL</tt></a>
+setting, and if the <a href="#nick.set_secure"><tt>SET SECURE</tt></a>
+option is disabled, you will be able to receive auto-op and other
+privileges in channels without using the
+<a href="#nick.identify"><tt>IDENTIFY</tt></a> command.
+<p>
+The mask given to the <tt>ADD</tt> and <tt>DEL</tt>commands may contain
+wildcards (<tt>*</tt> or <tt>?</tt>).
+<p>
+Examples:
+<dl>
+<dt>
+<tt>    <b>ACCESS ADD achurch@*.dragonfire.net</b></tt>
+<dd>
+        Allows access to user <tt>achurch</tt> from any machine in
+        the <tt>dragonfire.net</tt> domain.
+<dt>
+<tt>    <b>ACCESS DEL achurch@*.dragonfire.net</b></tt>
+<dd>
+        Reverses the previous command.
+<dt>
+<tt>    <b>ACCESS LIST</b></tt>
+<dd>
+        Displays the current access list.
+</dl>
+<p>
+Services admins may give a nickname parameter to the LIST
+command to display the access list for any nickname.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.ajoin"></a>
+<p><b>AJOIN</b> (requires the <tt>nickserv/autojoin</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>AJOIN ADD <i>channel</i></b></tt>
+<br><tt><b>AJOIN DEL <i>channel</i></b></tt>
+<br><tt><b>AJOIN LIST</b></tt>
+</dl>
+<p>
+Modifies or displays the autojoin list for your nickname.  This
+is the list of channels that you would like to automatically
+join, and takes effect whenever you identify to NickServ.
+You may only put channel names starting with "<tt>#</tt>" in the
+autojoin list (local channels cannot be added).
+<p>
+Note that the IRC server may prohibit you from entering some
+channels on the autojoin list, such as channels that have a
+channel key set (mode <tt>+k</tt>) or are invite-only (mode <tt>+i</tt>).
+However, if you have access to the ChanServ
+<tt><a href="#chan.invite">INVITE</a></tt> command on a registered channel,
+NickServ will automatically invite you into the channel.
+<p>
+Services admins can list the autojoin list for any nickname
+with the format <tt>LIST <i>nickname</i></tt>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set"></a>
+<p><b>SET</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>option</i> <i>parameters</i></b></tt>
+</dl>
+<p>
+Sets various nickname options.  <tt><i>option</i></tt> can be one of:
+<p>
+<dl>
+<dt><tt><b><a href="#nick.set_password">PASSWORD</a></b></tt>
+	<dd>Set your nickname password
+<dt><tt><b><a href="#nick.set_language">LANGUAGE</a></b></tt>
+	<dd>Set the language Services will use when
+                   sending messages to you
+<dt><tt><b><a href="#nick.set_url">URL</a></b></tt>
+	<dd>Associate a URL with your nickname
+<dt><tt><b><a href="#nick.set_email">EMAIL</a></b></tt>
+	<dd>Associate an E-mail address with your nickname
+<dt><tt><b><a href="#nick.set_info">INFO</a></b></tt>
+	<dd>Set text to be displayed with the <tt><a href="#nick.info">INFO</a></tt> command
+<dt><tt><b><a href="#nick.set_kill">KILL</a></b></tt>
+	<dd>Turn kill protection on or off
+<dt><tt><b><a href="#nick.set_secure">SECURE</a></b></tt>
+	<dd>Turn nickname security on or off
+<dt><tt><b><a href="#nick.set_private">PRIVATE</a></b></tt>
+	<dd>Prevent your nickname from appearing in a
+                   <tt>/msg NickServ LIST</tt>
+<dt><tt><b><a href="#nick.set_noop">NOOP</a></b></tt>
+	<dd>Prevent your nickname from being added to channel access lists
+<dt><tt><b><a href="#nick.set_hide">HIDE</a></b></tt>
+	<dd>Hide certain pieces of nickname information
+<dt><tt><b><a href="#nick.set_timezone">TIMEZONE</a></b></tt>
+	<dd>Set the time zone to use for displaying times
+<dt><tt><b><a href="#nick.set_mainnick">MAINNICK</a></b></tt>
+	<dd>Set the nickname shown in channel access lists
+</dl>
+<p>
+In order to use this command, you must first identify
+with your password (<tt><a href="#nick.identify">/msg NickServ HELP IDENTIFY</a></tt> for more
+information).
+<p>
+Services admins can also set the option <a href="#nick.set_noexpire"><tt>NOEXPIRE</tt></a>, with
+which nicknames can be prevented from expiring.
+Additionally, Services admins can set options for any
+nickname without entering a password, using the format
+<tt>SET !<i>nickname</i> <i>option</i> <i>parameters</i></tt>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_password"></a>
+<p><b>SET PASSWORD</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET PASSWORD <i>new-password</i></b></tt>
+</dl>
+<p>
+Changes the password used to identify you as the nickname's
+owner.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_language"></a>
+<p><b>SET LANGUAGE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET LANGUAGE <i>number</i></b></tt>
+</dl>
+<p>
+Changes the language Services uses when sending messages to
+you (for example, when responding to a command you send).
+<tt><i>number</i></tt> should be chosen from the list of
+supported languages displayed with
+<tt>/msg NickServ HELP SET LANGUAGE</tt>.
+<p>
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_url"></a>
+<p><b>SET URL</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET URL <i>url</i></b></tt>
+</dl>
+<p>
+Associates the given URL with your nickname.  This URL
+will be displayed whenever someone requests information
+on your nickname with the <a href="#nick.info"><tt>INFO</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_email"></a>
+<p><b>SET EMAIL</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET EMAIL <i>address</i></b></tt>
+</dl>
+<p>
+Associates the given E-mail address with your nickname.
+This address will be displayed whenever someone requests
+information on your nickname with the <a href="#nick.info"><tt>INFO</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_info"></a>
+<p><b>SET INFO</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET INFO <i>test</i></b></tt>
+</dl>
+<p>
+Associates the given text with your nickname; it will be
+displayed whenever someone requests information on your nickname
+with the <a href="#nick.info"><tt>INFO</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_kill"></a>
+<p><b>SET KILL</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET KILL {ON | QUICK | IMMED | OFF}</b></tt>
+</dl>
+<p>
+Turns the automatic kill protection option for your nickname
+on or off.  With kill protection on, if another user
+tries to take your nick, they will be given one minute to
+change to another nick, after which they will be forcibly
+removed from IRC by NickServ.
+<p>
+If you select <tt>QUICK</tt>, the user will be given only 20 seconds
+to change their nickname instead of the usual 60.  If you select
+<tt>IMMED</tt>, the user will be killed immediately <b>without</b> being
+warned first or given a chance to change their nick; please
+do not use this option unless necessary.  (<tt>IMMED</tt> can be disabled;
+see the <a href="a.html#nickserv/main.NSAllowKillImmed"><tt>NSAllowKillImmed</tt></a>
+option in <tt>modules.conf</tt>.)
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_secure"></a>
+<p><b>SET SECURE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET SECURE {ON | OFF}</b></tt>
+</dl>
+<p>
+Turns NickServ's security features on or off for your
+nickname.  With <tt>SECURE</tt> set, you must enter your password
+before you will be recognized as the owner of the nick,
+regardless of whether your address is on the access
+list.  However, if you are on the access list, NickServ
+will not auto-kill you regardless of the setting of the
+<a href="#nick.set_kill"><tt>KILL</tt></a> option.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_private"></a>
+<p><b>SET PRIVATE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET PRIVATE {ON | OFF}</b></tt>
+</dl>
+<p>
+Turns NickServ's privacy option on or off for your nickname.
+With <tt>PRIVATE</tt> set, your nickname will not appear in
+nickname lists generated with NickServ's <a href="#nick.list"><tt>LIST</tt></a> command.
+(However, anyone who knows your nickname can still get
+information on it using the <a href="#nick.info"><tt>INFO</tt></a> command.)
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_noop"></a>
+<p><b>SET NOOP</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET NOOP {ON | OFF}</b></tt>
+</dl>
+<p>
+Turns NickServ's no-op option on or off for your nickname.
+Setting the <tt>NOOP</tt> option prevents your nickname from being
+added to channel access lists.  However, if your nickname is
+already on a channel's access list, it will not be removed
+even if you turn this option on.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_hide"></a>
+<p><b>SET HIDE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET HIDE {EMAIL | USERMASK | QUIT} {ON | OFF}</b></tt>
+</dl>
+<p>
+Allows you to prevent certain pieces of information from
+being displayed when someone does a NickServ <a href="#nick.info"><tt>INFO</tt></a> on your
+nickname.  You can hide your E-mail address (<tt>EMAIL</tt>), last seen
+<tt><i>user</i>@<i>host</i></tt> mask (<tt>USERMASK</tt>), and last quit message (<tt>QUIT</tt>).
+The second parameter specifies whether the information should
+be displayed (<tt>OFF</tt>) or hidden (<tt>ON</tt>).
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_timezone"></a>
+<p><b>SET TIMEZONE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET TIMEZONE {<i>UTC-offset</i> | <i>time-zone</i> | DEFAULT}</b></tt>
+</dl>
+<p>
+Sets the time zone to use for displaying times (such as a
+nickname or channel's last used time), instead of using the
+time zone Services is operating in; the <tt>DEFAULT</tt> setting can
+be used to return to Services' time zone.  The time zone can
+be specified in one of two ways:
+<p>
+<ul>
+<li>As a <b>UTC offset</b>, the time difference between your local
+     time and UTC (Universal Coordinated Time, also known as
+     GMT, Greenwich Mean Time).  The offset is given as a
+     "+" or "-" to indicate ahead of (east) or behind (west)
+     UTC, followed by either a whole number of hours or a
+     string in the form "<tt><i>hh</i>:<i>mm</i></tt>".
+</ul>
+<ul>
+<li>As a <b>time zone name</b>, such as "GMT" or "EDT".  Not all
+     time zone names are supported by Services, and some
+     countries' time zones have the same names, so if you
+     get an error or the time displayed by Services is
+     wrong, use a UTC offset instead.
+</ul>
+Note that Services will not automatically adjust for
+daylight savings time (summer time); you will have to adjust
+the time zone manually.
+<p>
+Examples:
+<dl>
+<dt>
+<tt>    <b>SET TIMEZONE -5</b></tt>
+<dd>
+        Set the time zone to 5 hours behind UTC.
+<dt>
+<tt>    <b>SET TIMEZONE +3:30</b></tt>
+<dd>
+        Set the time zone to 3 hours, 30 minutes ahead of UTC.
+<dt>
+<tt>    <b>SET TIMEZONE JST</b></tt>
+<dd>
+	Set the time zone to Japan Standard Time (UTC+9:00).
+</dl>
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_mainnick"></a>
+<p><b>SET MAINNICK</b> (requires the <tt>nickserv/link</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET MAINNICK <i>nickname</i></b></tt>
+</dl>
+<p>
+When you have several nicknames linked together, allows you to
+select which one is displayed in channel access lists.  If
+you later unlink this nick, then a different one will be
+selected automatically.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.set_noexpire"></a>
+<p><b>SET NOEXPIRE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET [<i>nickname</i>] NOEXPIRE {ON | OFF}</b></tt>
+</dl>
+<p>
+Sets whether the given nickname will expire.  Setting this
+to <tt>ON</tt> prevents the nickname from expiring.  If no
+nickname is given, sets the no-expire flag for your nick.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.unset"></a>
+<p><b>UNSET</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>UNSET {URL | EMAIL | INFO}</b></tt>
+</dl>
+<p>
+Allows you to clear the URL (<tt>URL</tt>), E-mail address (<tt>EMAIL</tt>),
+or information text (<tt>INFO</tt>) associated with your nickname.
+<p>
+If the <a href="a.html#nickserv/main.NSRequireEmail"><tt>NSRequireEmail</tt></a>
+option is set in <tt>modules.conf</tt>, then the E-mail address cannot be
+cleared (<tt>UNSET EMAIL</tt> will generate an error).
+<p>
+Services admins may use the <tt>UNSET</tt> command on any nickname by
+adding "<tt>!<i>nickname</i></tt>" before the option name, as with the
+<tt>SET</tt> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.recover"></a>
+<p><b>RECOVER</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>RECOVER <i>nickname</i> [<i>password</i>]</b></tt>
+</dl>
+<p>
+Allows you to recover your nickname if someone else has
+taken it; this does the same thing that NickServ does
+automatically if someone tries to use a kill-protected
+nickname.
+<p>
+When you give this command, NickServ will bring a fake
+user online with the same nickname as the user you're
+trying to recover your nick from, causing the IRC servers
+to disconnect the other user.  This fake user will remain
+online for one minute (by default, changeable with the
+<a href="a.html#nickserv/main.NSReleaseTimeout"><tt>NSReleaseTimeout</tt></a>
+option in <tt>modules.conf</tt>) to ensure that the other user does
+not immediately reconnect; after that time, you can
+reclaim your nick.  Alternatively, use the <a href="#nick.release"><tt>RELEASE</tt></a>
+command to get the nick back sooner.
+<p>
+In order to use the <tt>RECOVER</tt> command for a nickname, you must
+supply the correct password for the nickname, or you must
+already have identified to a nick linked to the given nick.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.release"></a>
+<p><b>RELEASE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>RELEASE <i>nickname</i> [<i>password</i>]</b></tt>
+</dl>
+<p>
+Instructs NickServ to remove any hold on your nickname
+caused by automatic kill protection or use of the <a href="#nick.recover"><tt>RECOVER</tt></a>
+command.  By default, such holds last for one minute
+(changeable with the <a href="a.html#nickserv/main.NSReleaseTimeout"><tt>NSReleaseTimeout</tt></a>
+option in <tt>modules.conf</tt>); this command gets rid of them sooner.
+<p>
+In order to use the <tt>RELEASE</tt> command for a nickname, you must
+supply the correct password for the nickname, or you must
+already have identified to a nick linked to the given nick.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.ghost"></a>
+<p><b>GHOST</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>GHOST <i>nickname</i> [<i>password</i>]</b></tt>
+</dl>
+<p>
+Terminates a "ghost" IRC session using your nickname.  A
+"ghost" session is one which is not actually connected,
+but which the IRC server believes is still online for one
+reason or another.  Typically, this happens if your
+computer crashes or your Internet or modem connection
+goes down while you're on IRC.
+<p>
+In order to use the <tt>GHOST</tt> command for a nickname, you must
+supply the correct password for the nickname, or you must
+already have identified to a nick linked to the given nick.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.info"></a>
+<p><b>INFO</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>INFO <i>nickname</i> [ALL]</b></tt>
+</dl>
+<p>
+Displays information about the given nickname, such as
+the nickname's owner, last seen address and time, and
+options. If you are identified for the nick you're
+getting information for and <tt>ALL</tt> is specified, you will
+be shown all the information, regardless of whether
+it's hidden or not.
+<p>
+When the <tt>nickserv/mail-auth</tt> module is in use, if the
+nickname's E-mail address has not yet been confirmed with the
+<tt>AUTH</tt> command, it will not be shown to anyone except the
+nickname owner and Services administrators, regardless of the
+nickname's <tt>SET HIDE EMAIL</tt> setting.
+<p>
+Services admins may use the <tt>ALL</tt> parameter with any nickname.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.listchans"></a>
+<p><b>LISTCHANS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>LISTCHANS</b></tt>
+</dl>
+<p>
+Lists the names and the total number of channels you have
+registered under your nickname.
+<p>
+Services admins may list channels for any nickname by
+giving the nickname with the command (for example,
+<tt>/msg NickServ LISTCHANS OtherNick</tt>).
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.list"></a>
+<p><b>LIST</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>LIST [+<i>start</i>] <i>pattern</i> [FORBIDDEN] [NOEXPIRE] [SUSPENDED] [NOAUTH]</b></tt>
+</dl>
+<p>
+Lists all registered nicknames for which either the nickname
+itself or the last seen address (in <tt><i>user</i>@<i>host</i></tt> format) match
+the given pattern.  Nicks with the <a href="#nick.set_private"><tt>PRIVATE</tt></a>
+option set will only be displayed to Services admins.  For
+Services admins, nicks with the <a href="#nick.set_noexpire"><tt>NOEXPIRE</tt></a> option set will
+have a <tt>!</tt> prepended to the nickname, those that are
+suspended will be prepended by a <tt>*</tt>, and those that have not
+yet been authenticated (with the <a href="#nick.auth"><tt>AUTH</tt></a> command)
+will be prepended by a <tt>?</tt>.
+<p>
+If the <tt><i>start</i></tt> parameter is given, it specifies how many
+matches to skip before displaying results (for example, <tt>+50</tt>
+would cause the first 50 matches to be skipped).
+<p>
+If the <tt>FORBIDDEN</tt>, <tt>SUSPENDED</tt>, <tt>NOEXPIRE</tt>, or <tt>NOAUTH</tt>
+options are given, only nicks which, respectively, are forbidden, suspended,
+have the <tt>NOEXPIRE</tt> option set, or have not yet been authenticated will be
+displayed.  The options can be used in any order and in any combination.
+These options are limited to <b>Services admins</b>.  (Note that the <tt>NOAUTH</tt>
+option is not available unless the <tt>nickserv/mail-auth</tt> module is
+loaded.)
+<p>
+If the <a href="a.html#nickserv/main.NSListOpersOnly"><tt>NSListOpersOnly</tt></a>
+option is given in <tt>modules.conf</tt>, only IRC operators will be allowed
+to use this command.
+<p>
+Examples:
+<dl>
+<dt>
+<tt>    <b>LIST joeuser@foo.com</b></tt>
+<dd>
+        Lists all registered nicknames last used by <tt>joeuser@foo.com</tt>.
+<dt>
+<tt>    <b>LIST *Bot*</b></tt>
+<dd>
+        Lists all registered nicknames with <tt>Bot</tt> in their
+        names (case insensitive).
+<dt>
+<tt>    <b>LIST * NOEXPIRE</b></tt>
+<dd>
+        Lists all registered nicknames which have been set to
+        not expire.
+</dl>
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.listemail"></a>
+<p><b>LISTEMAIL</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>LISTEMAIL [+<i>start</i>] <i>pattern</i> [FORBIDDEN] [NOEXPIRE] [SUSPENDED] [NOAUTH]</b></tt>
+</dl>
+<p>
+Lists registered nicknames like the <a href="#nick.list"><tt>LIST</tt></a>
+command, but matches on E-mail addresses instead of <tt><i>user</i>@<i>host</i></tt> addresses.
+See the <a href="#nick.list"><tt>LIST</tt></a> command help for more information.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.status"></a>
+<p><b>STATUS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>STATUS <i>nickname</i>...</b></tt>
+</dl>
+<p>
+Returns whether the user using the given nickname is
+recognized as the owner of the nickname.  The response has
+this format:
+<blockquote>
+    <tt><i>nickname</i> <i>status-code</i></tt>
+</blockquote>
+where <tt><i>nickname</i></tt> is the nickname sent with the command, and
+<tt><i>status-code</i></tt> is one of the following:
+<p>
+<dl>
+<dt><tt><b>0</b></tt>
+	<dd>no such user online <b>or</b> nickname not registered
+<dt><tt><b>1</b></tt>
+	<dd>user not recognized as nickname's owner
+<dt><tt><b>2</b></tt>
+	<dd>user recognized as owner via access list only
+<dt><tt><b>3</b></tt>
+	<dd>user recognized as owner via password identification
+</dl>
+Up to sixteen nicknames may be sent with each command; the
+rest will be ignored.  No error message is generated if no
+nickname is given.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.getpass"></a>
+<p><b>GETPASS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>GETPASS <i>nickname</i></b></tt>
+</dl>
+<p>
+Returns the password for the given nickname.  <b>Note</b> that
+whenever this command is used, a message including the
+person who issued the command and the nickname it was used
+on will be logged.
+<p>
+If encryption (see <a href="3.html#7">section 3-7</a>) is in use,
+this command may not be available depending on the type of encryption used.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.forbid"></a>
+<p><b>FORBID</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>FORBID <i>nickname</i></b></tt>
+</dl>
+<p>
+Disallows a nickname from being registered or used by
+anyone.  May be cancelled by dropping the nickname.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.suspend"></a>
+<p><b>SUSPEND</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SUSPEND [+<i>expiry</i>] <i>nickname</i> <i>reason</i></b></tt>
+</dl>
+<p>
+Prevents a nickname, and all nicknames linked to it, from
+being used or identified for by anyone.  A nickname can be
+unsuspended with the <tt>UNSUSPEND</tt> command, which will allow it
+to be used as before.  The <tt><i>expiry</i></tt> parameter is interpreted
+in the same manner as for the OperServ <a href="#oper.akill"><tt>AKILL</tt></a> command.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="nick.unsuspend"></a>
+<p><b>UNSUSPEND</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>UNSUSPEND <i>nickname</i></b></tt>
+</dl>
+<p>
+Allows people to use and identify for a previously
+suspended nickname.
+<p>
+Limited to <b>Services admins</b>.
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=2></a>
+<h3>4-2. ChanServ commands</h3>
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.register"></a>
+<p><b>REGISTER</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>REGISTER <i>channel</i> <i>password</i> <i>description</i></b></tt>
+</dl>
+<p>
+Registers a channel in the ChanServ database.  In order
+to use this command, you must first be a channel operator
+on the channel you're trying to register.  The password
+is used with the <a href="#chan.identify"><tt>IDENTIFY</tt></a> command to allow you to
+make changes to the channel settings at a later time.
+The last parameter, which <b>must</b> be included, is a
+general description of the channel's purpose.
+<p>
+When you register a channel, you are recorded as the
+"founder" of the channel.  The channel founder is allowed
+to change all of the channel settings for the channel;
+ChanServ will also automatically give the founder
+channel-operator privileges when s/he enters the channel.
+See the <a href="#chan.access"><tt>ACCESS</tt></a> command (<tt><a href="#chan.access">/msg ChanServ HELP ACCESS</a></tt>) for
+information on giving a subset of these privileges to
+other channel users.
+<p>
+NOTICE: In order to register a channel, you must have
+first registered and identified for your nickname.  If you
+haven't, <tt>/msg NickServ HELP</tt> for information on how to do so.
+<p>
+<p>Non-Services admins may be prevented from registering channels by unsetting the
+<a href="a.html#chanserv/main.CSEnableRegister"><tt>CSEnableRegister</tt></a>
+option (enabled by default) in <tt>modules.conf</tt>
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.identify"></a>
+<p><b>IDENTIFY</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>IDENTIFY <i>channel</i> <i>password</i></b></tt>
+</dl>
+<p>
+Authenticates you to ChanServ as the founder of the given
+channel.  Many commands require you to use this command
+before using them.  The password should be the same one
+you sent with the <a href="#chan.register"><tt>REGISTER</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.drop"></a>
+<p><b>DROP</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>DROP <i>channel</i></b></tt>
+</dl>
+<p>
+Unregisters the named channel.  Can only be used by
+<b>channel founder</b>, who must use the <a href="#chan.identify"><tt>IDENTIFY</tt></a> command first.
+(However, Services admins may drop any channel without identifying for the channel.)
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set"></a>
+<p><b>SET</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> <i>option</i> <i>parameters</i></b></tt>
+</dl>
+<p>
+Allows the channel founder to set various channel options
+and other information.  The founder must use the <a href="#chan.identify"><tt>IDENTIFY</tt></a>
+command before using <tt>SET</tt>.
+<p>
+Available options:
+<p>
+<dl>
+<dt><tt><b><a href="#chan.set_founder">FOUNDER</a></b></tt>
+	<dd>Set the founder of a channel
+<dt><tt><b><a href="#chan.set_successor">SUCCESSOR</a></b></tt>
+	<dd>Set the successor for a channel
+<dt><tt><b><a href="#chan.set_password">PASSWORD</a></b></tt>
+	<dd>Set the founder password
+<dt><tt><b><a href="#chan.set_desc">DESC</a></b></tt>
+	<dd>Set the channel description
+<dt><tt><b><a href="#chan.set_url">URL</a></b></tt>
+	<dd>Associate a URL with the channel
+<dt><tt><b><a href="#chan.set_email">EMAIL</a></b></tt>
+	<dd>Associate an E-mail address with the channel
+<dt><tt><b><a href="#chan.set_entrymsg">ENTRYMSG</a></b></tt>
+	<dd>Set a message to be sent to users when they enter the channel
+<dt><tt><b><a href="#chan.set_keeptopic">KEEPTOPIC</a></b></tt>
+	<dd>Retain topic when channel is not in use
+<dt><tt><b><a href="#chan.set_topiclock">TOPICLOCK</a></b></tt>
+	<dd>Topic can only be changed with TOPIC
+<dt><tt><b><a href="#chan.set_mlock">MLOCK</a></b></tt>
+	<dd>Lock channel modes on or off
+<dt><tt><b><a href="#chan.set_private">PRIVATE</a></b></tt>
+	<dd>Hide channel from LIST command
+<dt><tt><b><a href="#chan.set_restricted">RESTRICTED</a></b></tt>
+	<dd>Restrict access to the channel
+<dt><tt><b><a href="#chan.set_secure">SECURE</a></b></tt>
+	<dd>Activate ChanServ security features
+<dt><tt><b><a href="#chan.set_secureops">SECUREOPS</a></b></tt>
+	<dd>Stricter control of chanop status
+<dt><tt><b><a href="#chan.set_leaveops">LEAVEOPS</a></b></tt>
+	<dd>Do not de-op users on channel entry
+<dt><tt><b><a href="#chan.set_opnotice">OPNOTICE</a></b></tt>
+	<dd>Send a notice when OP/VOICE commands are used
+<dt><tt><b><a href="#chan.set_enforce">ENFORCE</a></b></tt>
+	<dd>Enforce auto-op, auto-voice status
+<dt><tt><b><a href="#chan.set_memo_restricted">MEMO-RESTRICTED</a></b></tt>
+	<dd>Limit who can send memos to the channel
+</dl>
+<p>
+Services admins can also set the option <a href="#chan.set_noexpire"><tt>NOEXPIRE</tt></a>, with
+which channels can be prevented from expiring.
+Additionally, Services admins can set options for any
+channel without identifying by password for the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_founder"></a>
+<p><b>SET FOUNDER</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> FOUNDER <i>nickname</i></b></tt>
+</dl>
+<p>
+Changes the founder of a channel.  The new nickname must
+be a registered one.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_successor"></a>
+<p><b>SET SUCCESSOR</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> SUCCESSOR <i>nickname</i></b></tt>
+</dl>
+<p>
+Changes the successor of a channel.  If the founder's
+nickname expires or is dropped while the channel is still
+registered, the successor will become the new founder of the
+channel.  However, if the successor already has too many
+channels registered (20 by default, changeable with the
+<a href="a.html#chanserv/main.CSMaxReg"><tt>CSMaxReg</tt></a> directive
+in <tt>modules.conf</tt>), the channel will be dropped
+instead, just as if no successor had been set.  The
+nickname must be a registered one.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_password"></a>
+<p><b>SET PASSWORD</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> PASSWORD <i>password</i></b></tt>
+</dl>
+<p>
+Sets the password used to identify as the founder of the
+channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_desc"></a>
+<p><b>SET DESC</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> DESC <i>description</i></b></tt>
+</dl>
+<p>
+Sets the description for the channel, which shows up with
+the <a href="#chan.list"><tt>LIST</tt></a> and <a href="#chan.info"><tt>INFO</tt></a> commands.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_url"></a>
+<p><b>SET URL</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> URL <i>url</i></b></tt>
+</dl>
+<p>
+Associates the given URL with the channel.  This URL will
+be displayed whenever someone requests information on the
+channel with the <a href="#chan.info"><tt>INFO</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_email"></a>
+<p><b>SET EMAIL</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> EMAIL <i>address</i></b></tt>
+</dl>
+<p>
+Associates the given E-mail address with the channel.
+This address will be displayed whenever someone requests
+information on the channel with the <a href="#chan.info"><tt>INFO</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_entrymsg"></a>
+<p><b>SET ENTRYMSG</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> ENTRYMSG <i>message</i></b></tt>
+</dl>
+<p>
+Sets the message which will be sent via <tt>/NOTICE</tt> to users
+when they enter the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_keeptopic"></a>
+<p><b>SET KEEPTOPIC</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> KEEPTOPIC {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables the <b>topic retention</b> option for a
+channel.  When <b>topic retention</b> is set, the topic for the
+channel will be remembered by ChanServ even after the
+last user leaves the channel, and will be restored the
+next time the channel is created.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_topiclock"></a>
+<p><b>SET TOPICLOCK</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> TOPICLOCK {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables the <b>topic lock</b> option for a channel.
+When <b>topic lock</b> is set, ChanServ will not allow the
+channel topic to be changed except via the <a href="#chan.topic"><tt>TOPIC</tt></a>
+command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_mlock"></a>
+<p><b>SET MLOCK</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> MLOCK <i>modes</i></b></tt>
+</dl>
+<p>
+Sets the mode-lock parameter for the channel.  ChanServ
+allows you to define certain channel modes to be always
+on (or off).  All binary modes (<tt>n</tt>, <tt>s</tt>, <tt>t</tt>, <tt>k</tt>, <tt>l</tt>, and so on)
+can be locked; each mode can be locked on, locked off, or
+not locked.  The <tt><i>modes</i></tt> parameter is constructed exactly
+the same way as a <b><tt>/MODE</tt></b> command; that is, modes followed by
+a <tt>+</tt> are locked on, and modes followed by a <tt>-</tt> are locked off.
+<p>
+<b>Warning:</b>  If you set a mode-locked key, as in the second
+example below, you should also set the <a href="#chan.set_restricted"><tt>RESTRICTED</tt></a>
+option for the channel, or anyone entering
+the channel when it is empty will be able to see the key!
+<tt>MLOCK +i</tt> will likewise not prevent users from entering the
+channel when it is empty without being invited.
+<p>
+<dl><dt>Examples:
+<dd><dl>
+<dt>
+<tt>    <b>SET #channel MLOCK +nt-ikl</b></tt>
+<dd>
+        Forces modes <tt>n</tt> and <tt>t</tt> on, and modes <tt>i</tt>, <tt>k</tt>, and <tt>l</tt> off.
+        All other modes are left free to be either on or off.
+<dt>
+<tt>    <b>SET #channel MLOCK +knst-ilmp my-key</b></tt>
+<dd>
+        Forces modes <tt>k</tt>, <tt>n</tt>, <tt>s</tt>, and <tt>t</tt> on, and modes <tt>i</tt>, <tt>l</tt>, <tt>m</tt>,
+        and <tt>p</tt> off.  Also forces the channel key to be
+        "<tt>my-key</tt>".
+<dt>
+<tt>    <b>SET #channel MLOCK +</b></tt>
+<dd>
+        Removes the mode lock; all channel modes are free
+        to be either on or off.
+</dl>
+</dl>
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_hide"></a>
+<p><b>SET HIDE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> HIDE {EMAIL | TOPIC | MLOCK} {ON | OFF}</b></tt>
+</dl>
+<p>
+Allows you to prevent certain pieces of information from
+being displayed when someone does a ChanServ <a href="#chan.info"><tt>INFO</tt></a> on the
+given channel.  You can hide the channel's E-mail address
+(<tt>EMAIL</tt>), last topic (<tt>TOPIC</tt>), and mode lock (<tt>MLOCK</tt>).
+The second parameter specifies whether the information should
+be displayed (<tt>OFF</tt>) or hidden (<tt>ON</tt>).
+<p>
+Note that the topic will always be hidden if the channel is
+mode-locked <tt>+p</tt> or <tt>+s</tt>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_private"></a>
+<p><b>SET PRIVATE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> PRIVATE {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables the <b>private</b> option for a channel.
+When <b>private</b> is set, a <tt>/msg ChanServ LIST</tt> will not
+include the channel in any lists.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_restricted"></a>
+<p><b>SET RESTRICTED</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> RESTRICTED {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables the <b>restricted access</b> option for a
+channel.  When <b>restricted access</b> is set, users who are not
+on the access list or who would normally be disallowed from
+having channel operator privileges will be kicked and banned
+from the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_secure"></a>
+<p><b>SET SECURE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> SECURE {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables ChanServ's security features for a
+channel. When <tt>SECURE</tt> is set, only users who have registered
+their nicknames with NickServ and <tt>IDENTIFY</tt>'d with their
+password will be given privileges on the channel as
+controlled by the access list.  If the <tt>RESTRICTED</tt> option is
+also set, users will not be able to join the channel until
+they identify to NickServ.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_secureops"></a>
+<p><b>SET SECUREOPS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> SECUREOPS {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables the <b>secure ops</b> option for a channel.
+When <b>secure ops</b> is set, users who are not on the access list
+will not be allowed chanop status.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_leaveops"></a>
+<p><b>SET LEAVEOPS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> LEAVEOPS {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables the <b>leave ops</b> option for a channel.
+When <b>leave ops</b> is set, ChanServ will leave server ops (<tt>+o</tt> for
+the first person in the channel) in place even if the user
+would not normally get auto-opped.  The SECUREOPS option will still
+be enforced.
+<b>Notice:</b>  This can allow users to "steal" ops during a netsplit.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_opnotice"></a>
+<p><b>SET OPNOTICE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> OPNOTICE {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables the <b>op-notice</b> option for a channel.
+When <b>op-notice</b> is set, ChanServ will send a notice to the
+channel whenever the <a href="#chan.op"><tt>OP</tt></a>,
+<a href="#chan.voice"><tt>VOICE</tt></a>, or related commands are used
+for a user in the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_enforce"></a>
+<p><b>SET ENFORCE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> ENFORCE {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables the <b>enforce</b> option for a channel.
+When <b>enforce</b> is set, ChanServ will enforce the auto-op and
+auto-voice levels for all users.  For example, if a user
+with auto-op privileges is deopped, ChanServ will
+automatically op the user again, and ChanServ will also
+not allow the <a href="#chan.deop"><tt>DEOP</tt></a> command to be used on that user.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_memo_restricted"></a>
+<p><b>SET MEMO-RESTRICTED</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> MEMO-RESTRICTED {ON | OFF}</b></tt>
+</dl>
+<p>
+Enables or disables the <b>memo restriction</b> option for a
+channel.  When <b>memo restriction</b> is set, only users with
+privileges to receive channel memos will be able to send
+memos to the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.set_noexpire"></a>
+<p><b>SET NOEXPIRE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>channel</i> NOEXPIRE {ON | OFF}</b></tt>
+</dl>
+<p>
+Sets whether the given channel will expire.  Setting this
+to <tt>ON</tt> prevents the channel from expiring.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.unset"></a>
+<p><b>UNSET</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>UNSET <i>channel</i> {SUCCESSOR | URL | EMAIL | ENTRYMSG}</b></tt>
+</dl>
+<p>
+Clears the given setting for a channel.
+<p>
+As with the <a href="#chan.set"><tt>SET</tt></a> command, Services admins can clear settings
+for any channel without identifying for the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.sop"></a>
+<p><b>SOP</b> (requires the <tt>chanserv/access-xop</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SOP <i>channel</i> ADD <i>nickname</i></b></tt>
+<br><tt><b>SOP <i>channel</i> DEL <i>nickname</i></b></tt>
+<br><tt><b>SOP <i>channel</i> LIST [+<i>start</i>] [<i>mask</i>]</b></tt>
+<br><tt><b>SOP <i>channel</i> COUNT</b></tt>
+</dl>
+<p>
+Maintains the <b>SuperOp</b> (SOP) list for a channel.  Users with
+<b>SOP</b> status are automatically opped (set mode <tt>+o</tt>) and
+protected (mode <tt>+a</tt>), if supported by the IRC server) when they join
+the channel.
+<p>
+An SOP can modify the AOP, HOP (if the IRC server supports halfops),
+VOP, and NOP lists.  Only a channel's founder can modify the SOP list.
+<p>
+The <tt>ADD</tt>, <tt>DEL</tt>, <tt>LIST</tt>, and <tt>COUNT</tt>
+subcommands function the same way as for the
+<a href="#chan.aop"><tt>AOP</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.aop"></a>
+<p><b>AOP</b> (requires the <tt>chanserv/access-xop</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>AOP <i>channel</i> ADD <i>nickname</i></b></tt>
+<br><tt><b>AOP <i>channel</i> DEL <i>nickname</i></b></tt>
+<br><tt><b>AOP <i>channel</i> LIST [+<i>start</i>] [<i>mask</i>]</b></tt>
+<br><tt><b>AOP <i>channel</i> COUNT</b></tt>
+</dl>
+<p>
+Maintains the <b>AutoOp</b> (AOP) list for a channel.  Users with
+<b>AOP</b> status are automatically opped (set mode <tt>+o</tt>) when they
+join the channel.
+<p>
+An AOP can modify the HOP (if the IRC server supports halfops), VOP, and
+NOP lists; SOPs can modify the AOP list.
+<p>
+The <tt>AOP ADD</tt> command adds a user to the AOP list, and the
+<tt>AOP DEL</tt> command removes a user from the AOP list.  Note that
+a user can only be on one channel access list at once; if
+the user given in an <tt>AOP ADD</tt> command is already on another
+channel access list, such as the VOP list, they will be
+removed from that list first.  (If you would not be allowed
+to modify that list&mdash;for example, if the user is already on
+the SOP list and you are not the channel founder&mdash;then the
+<tt>AOP ADD</tt> command will fail.)
+<p>
+The <tt>AOP LIST</tt> command displays the AOP list.  If a wildcard
+mask is given, only those entries matching the mask are
+displayed.  If the <tt><i>start</i></tt> parameter is given, it
+specifies how many matches to skip before displaying results
+(for example, <tt>+50</tt> would cause the first 50 matches to be
+skipped).
+<p>
+The <tt>AOP COUNT</tt> command shows the number of entries there are
+are on the AOP list.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.hop"></a>
+<p><b>HOP</b> (requires the <tt>chanserv/access-xop</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>HOP <i>channel</i> ADD <i>nickname</i></b></tt>
+<br><tt><b>HOP <i>channel</i> DEL <i>nickname</i></b></tt>
+<br><tt><b>HOP <i>channel</i> LIST [+<i>start</i>] [<i>mask</i>]</b></tt>
+<br><tt><b>HOP <i>channel</i> COUNT</b></tt>
+</dl>
+<p>
+Maintains the <b>HalfOp</b> (HOP) list for a channel.  Users with
+<b>HOP</b> status are automatically halfopped (set mode <tt>+h</tt>) when
+they join the channel.
+<p>
+An HOP can modify the VOP and NOP lists; SOPs and AOPs can modify the
+HOP list.
+<p>
+The <tt>ADD</tt>, <tt>DEL</tt>, <tt>LIST</tt>, and <tt>COUNT</tt>
+subcommands function the same way as for the
+<a href="#chan.aop"><tt>AOP</tt></a> command.
+<p>
+Note that this command is only available if the IRC server in use
+supports halfops.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.vop"></a>
+<p><b>VOP</b> (requires the <tt>chanserv/access-xop</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>VOP <i>channel</i> ADD <i>nickname</i></b></tt>
+<br><tt><b>VOP <i>channel</i> DEL <i>nickname</i></b></tt>
+<br><tt><b>VOP <i>channel</i> LIST [+<i>start</i>] [<i>mask</i>]</b></tt>
+<br><tt><b>VOP <i>channel</i> COUNT</b></tt>
+</dl>
+<p>
+Maintains the <b>VoiceOp</b> (VOP) list for a channel.  Users with
+<b>VOP</b> status are automatically voiced (set mode <tt>+v</tt>) when they
+join the channel.
+<p>
+The <tt>ADD</tt>, <tt>DEL</tt>, <tt>LIST</tt>, and <tt>COUNT</tt>
+subcommands function the same way as for the
+<a href="#chan.aop"><tt>AOP</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.nop"></a>
+<p><b>NOP</b> (requires the <tt>chanserv/access-xop</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>NOP <i>channel</i> ADD <i>nickname</i></b></tt>
+<br><tt><b>NOP <i>channel</i> DEL <i>nickname</i></b></tt>
+<br><tt><b>NOP <i>channel</i> LIST [+<i>start</i>] [<i>mask</i>]</b></tt>
+<br><tt><b>NOP <i>channel</i> COUNT</b></tt>
+</dl>
+<p>
+Maintains the <b>NeverOp</b> (NOP) list for a channel.  Users with
+<b>NOP</b> status are not permitted to be given channel operator
+(mode <tt>+o</tt>) status, and ChanServ will remove mode <tt>+o</tt> from such
+users whenever it is given to them.
+<p>
+The <tt>ADD</tt>, <tt>DEL</tt>, <tt>LIST</tt>, and <tt>COUNT</tt>
+subcommands function the same way as for the
+<a href="#chan.aop"><tt>AOP</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.access"></a>
+<p><tt>ACCESS</tt> (requires the <tt>chanserv/access-levels</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>ACCESS <i>channel</i> ADD <i>nickname</i> <i>level</i></b></tt>
+<br><tt><b>ACCESS <i>channel</i> DEL <i>nickname</i></b></tt>
+<br><tt><b>ACCESS <i>channel</i> LIST [+<i>start</i>] [<i>mask</i>]</b></tt>
+<br><tt><b>ACCESS <i>channel</i> LISTLEVEL [+<i>start</i>] <i>level</i></b></tt>
+<br><tt><b>ACCESS <i>channel</i> COUNT</b></tt>
+</dl>
+<p>
+Maintains the <b>access list</b> for a channel.  The access
+list specifies which users are allowed chanop status or
+access to ChanServ commands on the channel.  Different
+user levels allow for access to different subsets of
+privileges; <tt>/msg ChanServ HELP ACCESS LEVELS</tt> for more
+specific information.  Any nickname not on the access list has
+a user level of 0.
+<p>
+The <tt>ACCESS ADD</tt> command adds the given nickname to the
+access list with the given user level; if the nick is
+already present on the list, its access level is changed to
+the level specified in the command.  The <tt><i>level</i></tt> specified
+must be less than that of the user giving the command, and
+if the nick is already on the access list, the current
+access level of that nick must be less than the access level
+of the user giving the command.
+<p>
+The <tt>ACCESS DEL</tt> command removes the given nickname from the
+access list.
+<p>
+The <tt>ACCESS LIST</tt> command displays the access list.  If
+a wildcard mask is given, only those entries matching the
+mask are displayed.  If the <tt><i>start</i></tt> parameter is given, it
+specifies how many matches to skip before displaying results
+(for example, <tt>+50</tt> would cause the first 50 matches to be
+skipped).
+<p>
+The <tt>ACCESS LISTLEVEL</tt> command is similar to <tt>ACCESS LIST</tt>, but
+displays only entries with the given access level.  The
+level can be specified as a range: <tt>LISTLEVEL 50-100</tt>, for
+example, lists all users with access levels between 50 and 100
+inclusive.
+<p>
+The <tt>ACCESS COUNT</tt> command returns the number of entries
+there are on the access list.
+<p>
+Note that the access list may also be manipulated with the
+<a href="#chan.sop"><tt>SOP</tt></a>, <a href="#chan.aop"><tt>AOP</tt></a>,
+<a href="#chan.hop"><tt>HOP</tt></a>, <a href="#chan.vop"><tt>VOP</tt></a>,
+and <a href="#chan.nop"><tt>NOP</tt></a> commands, which correspond to
+levels of 100, 50, 40, 30, and -1 respectively, if the
+<tt>chanserv/access-xop</tt> module is also loaded.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.levels"></a>
+<p><b>LEVELS</b> (requires the <tt>chanserv/access-levels</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>LEVELS <i>channel</i> SET <i>type</i> <i>level</i></b></tt>
+<br><tt><b>LEVELS <i>channel</i> {DIS | DISABLE} <i>type</i></b></tt>
+<br><tt><b>LEVELS <i>channel</i> LIST</b></tt>
+<br><tt><b>LEVELS <i>channel</i> RESET</b></tt>
+</dl>
+<p>
+The <tt>LEVELS</tt> command allows fine control over the meaning of
+the numeric access levels used by the <a href="#chan.access"><tt>ACCESS</tt></a> command.  With
+this command, you can define the access level required for
+most of ChanServ's functions.  (The <a href="#chan.set_founder"><tt>SET FOUNDER</tt></a> and <a href="#chan.set_password"><tt>SET PASSWORD</tt></a>
+commands, as well as this command, are always restricted to
+the channel founder.)
+<p>
+<b>Caution:</b>  This command is for advanced users only!  Changing
+level settings with this command may cause the <tt>SOP</tt>, <tt>AOP</tt>,
+<tt>HOP</tt>, <tt>VOP</tt>, and <tt>NOP</tt> commands to stop working
+correctly.
+<p>
+<tt>LEVELS SET</tt> allows the access level for a function or group of
+functions to be changed.  <tt>LEVELS DISABLE</tt> (or <tt>DIS</tt> for short)
+disables an automatic feature or disallows access to a
+function by anyone other than the channel founder.
+<tt>LEVELS LIST</tt> shows the current levels for each function or
+group of functions.  <tt>LEVELS RESET</tt> resets the levels to the
+default levels of a newly-created channel (see <tt>HELP ACCESS LEVELS</tt>).
+<p>
+For a list of the features and functions whose levels can be
+set, see <tt>HELP LEVELS DESC</tt>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.akick"></a>
+<p><b>AKICK</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>AKICK <i>channel</i> ADD <i>mask</i> [<i>reason</i>]</b></tt>
+<br><tt><b>AKICK <i>channel</i> DEL <i>mask</i></b></tt>
+<br><tt><b>AKICK <i>channel</i> LIST [+<i>start</i>] [<i>mask</i>]</b></tt>
+<br><tt><b>AKICK <i>channel</i> VIEW [+<i>start</i>] [<i>mask</i>]</b></tt>
+<br><tt><b>AKICK <i>channel</i> COUNT</b></tt>
+<br><tt><b>AKICK <i>channel</i> ENFORCE</b></tt>
+</dl>
+<p>
+Maintains the <b>autokick list</b> for a channel.  If a user
+on the autokick list attempts to join the channel,
+ChanServ will ban that user from the channel, then kick
+the user.
+<p>
+The <tt>AKICK ADD</tt> command adds the given <tt><i>user</i>@<i>host</i></tt> or
+<tt><i>nickname</i>!<i>user</i>@<i>host</i></tt> mask to the autokick list.
+If a <tt><i>reason</i></tt> is given with the command, that reason will be
+used in the kick message when the user is kicked.
+<p>
+The <tt>AKICK DEL</tt> command removes the given mask
+from the autokick list.  It does not, however, remove any
+bans placed by an autokick; those must be removed
+manually.
+<p>
+The <tt>AKICK LIST</tt> command displays the autokick list, or
+optionally only those autokick entries which match the
+given mask.  <tt>AKICK VIEW</tt> is similar, but shows more details.
+If the <tt><i>start</i></tt> parameter is given to either command, it
+specifies how many matches to skip before displaying results
+(for example, <tt>+50</tt> would cause the first 50 matches to be
+skipped).
+<p>
+The <tt>AKICK COUNT</tt> command shows how many entries there
+are on the autokick list.
+<p>
+The <tt>AKICK ENFORCE</tt> command causes ChanServ to enforce the
+current autokick list by removing those users who match an
+autokick mask.
+<p>
+By default, limited to users with level 100 (SOP) access and
+above on the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.info"></a>
+<p><b>INFO</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>INFO <i>channel</i> [ALL]</b></tt>
+</dl>
+<p>
+Lists information about the named registered channel,
+including its founder, time of registration, last time
+used, description, and mode lock, if any.  If you are
+identified as the founder of the channel you're getting
+information for and <tt>ALL</tt> is specified, the entry message
+and successor will also be displayed.
+<p>
+Services admins can use the <tt>ALL</tt> parameter with any channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.list"></a>
+<p><b>LIST</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>LIST [+<i>start</i>] <i>pattern</i></b></tt>
+</dl>
+<p>
+Lists all registered channels matching the given pattern.
+Channels with the <a href="#chan.set_private"><tt>PRIVATE</tt></a> option set will only be displayed
+to Services admins.  Channels with the <a href="#chan.set_noexpire"><tt>NOEXPIRE</tt></a> option set
+will have a <tt>!</tt> prepended to the channel name for Services
+admins.
+<p>
+If the <tt><i>start</i></tt> parameter is given, it specifies how many
+matches to skip before displaying results (for example, <tt>+50</tt>
+would cause the first 50 matches to be skipped).
+<p>
+If the <tt>FORBIDDEN</tt>, <tt>SUSPENDED</tt> or <tt>NOEXPIRE</tt> options are given,
+only channels which, respectively, are forbidden, suspended or
+have the <tt>NOEXPIRE</tt> flag set will be displayed. The options can
+be used in any order and in any combination. These options
+are limited to <tt>Services admins</tt>.
+<p>
+If the <a href="a.html#chanserv/main.CSListOpersOnly"><tt>CSListOpersOnly</tt></a>
+option is given in <tt>modules.conf</tt>, only IRC operators will be allowed
+to use this command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.op"></a>
+<p><b>OP</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>OP <i>#channel</i> [<i>nickname</i>]</b></tt>
+</dl>
+<p>
+Ops a selected nickname on a channel.  If <tt><i>nickname</i></tt> is not given, ops
+you.  By default, limited to users with level 50 (AOP) access and
+above on the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.deop"></a>
+<p><b>DEOP</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>DEOP <i>#channel</i> [<i>nickname</i>]</b></tt>
+</dl>
+<p>
+Deops a selected nickname on a channel.  If <tt><i>nickname</i></tt> is not given,
+deops you.  By default, limited to users with level 50 (AOP) access
+and above on the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.voice"></a>
+<p><b>VOICE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>VOICE <i>#channel</i> [<i>nickname</i>]</b></tt>
+</dl>
+<p>
+Voices a selected nickname on a channel.  If <tt><i>nickname</i></tt> is not given,
+voices you.  By default, limited to users with level 30 (VOP) access
+and above on the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.devoice"></a>
+<p><b>DEVOICE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>DEVOICE <i>#channel</i> [<i>nickname</i>]</b></tt>
+</dl>
+<p>
+Devoices a selected nickname on a channel.  If <tt><i>nickname</i></tt> is not given,
+devoices you.  By default, limited to users with level 30 (VOP)
+access and above on the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.halfop"></a>
+<p><b>HALFOP</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>HALFOP <i>#channel</i> [<i>nickname</i>]</b></tt>
+</dl>
+<p>
+Gives halfop access to a selected nickname on a channel.  If
+<tt><i>nickname</i></tt> is not given, gives you halfop access.  By default,
+limited to users with level 40 (HOP) access and above on the
+channel.  Only available with IRC servers which support halfops.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.dehalfop"></a>
+<p><b>DEHALFOP</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>DEHALFOP <i>#channel</i> [<i>nickname</i>]</b></tt>
+</dl>
+<p>
+Removes halfop access from a selected nickname on a channel.  If
+<tt><i>nickname</i></tt> is not given, removes halfop access from you.  By
+default, limited to users with level 40 (HOP) access and above on
+the channel.  Only available with IRC servers which support halfops.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.protect"></a>
+<p><b>PROTECT</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>PROTECT <i>#channel</i> [<i>nickname</i>]</b></tt>
+</dl>
+<p>
+Gives channel protection (mode <tt>+a</tt>) to a selected nickname on a
+channel.  If <tt><i>nickname</i></tt> is not given, gives channel protection to
+you.  By default, limited to users with level 100 (SOP) access and
+above on the channel.  Only available with IRC servers which
+support this mode.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.deprotect"></a>
+<p><b>DEPROTECT</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>DEPROTECT <i>#channel</i> [<i>nickname</i>]</b></tt>
+</dl>
+<p>
+Removes channel protection (mode <tt>+a</tt>) from a selected nickname
+on a channel.  If <tt><i>nickname</i></tt> is not given, removes channel
+protection from you.  By default, limited to users with
+level 100 (SOP) access and above on the channel.  Only available with IRC
+servers which support this mode.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.invite"></a>
+<p><b>INVITE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>INVITE <i>channel</i></b></tt>
+</dl>
+<p>
+Tells ChanServ to invite you into the given channel.  By
+default, limited to users with level 50 (AOP) access and
+above on the channel.
+<p>
+Note: If you get a message saying that the channel is not in
+use, it means that the channel is empty, and you can join it
+freely without needing to use this command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.unban"></a>
+<p><b>UNBAN</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>UNBAN <i>channel</i></b></tt>
+</dl>
+<p>
+Tells ChanServ to remove all bans preventing you from
+entering the given channel.  By default, limited to users
+with level 50 (AOP) access and above on the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.kick"></a>
+<p><b>KICK</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>KICK <i>channel</i> <i>nickname</i> [<i>reason</i>]</b></tt>
+</dl>
+<p>
+Tells ChanServ to kick the given nickname from the given
+channel.  The message included in the kick will show who
+used the <tt>KICK</tt> command, as well as the reason given with the
+command, if any.  By default, limited to users with level
+50 (AOP) access and above on the channel.
+<p>
+Note that protected (<tt>+a</tt>) users and IRC operators with
+Services operator privileges cannot be kicked with this command,
+even by the channel founder.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.topic"></a>
+<p><b>TOPIC</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>TOPIC <i>channel</i> <i>topic</i></b></tt>
+</dl>
+<p>
+Causes ChanServ to set the channel topic to the one
+specified.  This command is most useful in conjunction
+with <a href="#chan.set_topiclock"><tt>SET TOPICLOCK</tt></a>.
+By default, limited to users with level 50 (AOP) access and
+above on the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.clear"></a>
+<p><b>CLEAR</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>CLEAR <i>channel</i> <i>what</i></b></tt>
+</dl>
+<p>
+Tells ChanServ to clear certain settings on a channel.  <tt><i>what</i></tt>
+can be any of the following:
+<p>
+<dl>
+<dt><tt><b>MODES</b></tt>
+	<dd>Clears all modes on the channel except those
+	    set in the channel's mode lock.
+<dt><tt><b>BANS</b></tt>
+	<dd>Clears all bans on the channel.
+<dt><tt><b>EXCEPTIONS</b></tt>
+	<dd>Clears all exceptions on the channel (only available if the IRC server supports ban exceptions).
+<dt><tt><b>INVITES</b></tt>
+	<dd>Clears all invite masks on the channel (only available if the IRC server supports invite masks).
+<dt><tt><b>OPS</b></tt>
+	<dd>Removes channel-operator status (mode <tt>+o</tt>) from
+	    all users.
+<dt><tt><b>HALFOPS</b></tt>
+	<dd>Removes halfop status (mode <tt>+h</tt>) from all users (only available if the IRC server supports halfops).
+<dt><tt><b>VOICES</b></tt>
+	<dd>Removes "voice" status (mode <tt>+v</tt>) from all users.
+<dt><tt><b>USERS</b></tt>
+	<dd>Removes (kicks) all users from the channel.
+</dl>
+<p>
+By default, limited to users with level 100 (SOP) access and
+above on the channel.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.status"></a>
+<p><b>STATUS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>STATUS <i>channel</i> <i>nickname</i></b></tt>
+</dl>
+<p>
+Returns the current access level of the given nickname on the
+given channel.  The reply is of the form:
+<p>
+<blockquote>
+    <tt>STATUS <i>channel</i> <i>nickname</i> <i>access-level</i></tt>
+</blockquote>
+If an error occurs, the reply will be in the form:
+<p>
+<blockquote>
+    <tt>STATUS <i>channel</i> <i>nickname</i> ERROR <i>error-message</i></tt>
+</blockquote>
+By default, limited to users with level 100 (SOP) access and
+above on the channel.
+<p>
+The format of the <tt><i>access-level</i></tt> response parameter depends
+on which access-level modules are loaded, as follows:
+<div align=center><table border=1>
+<tr><th><tt>access-levels</tt><br>module
+    <th><tt>access-xop</tt><br>module
+    <th>Format
+<tr><td align=center>Loaded
+    <td align=center>Not loaded
+    <td><tt><i>numeric-level</i></tt>
+<tr><td align=center>Loaded
+    <td align=center>Loaded
+    <td><tt><i>numeric-level</i> (<i>XOP-level</i>)</tt>
+<tr><td align=center>Not loaded
+    <td align=center>Loaded
+    <td><tt><i>XOP-level</i></tt>
+</table></div>
+<p>In the table, <tt><i>numeric-level</i></tt> is the numeric access level,
+while <tt><i>XOP-level</i></tt> is one of "<tt>Founder</tt>",
+"<tt>SOP</tt>", "<tt>AOP</tt>", "<tt>HOP</tt>" (if the IRC server supports
+halfops), "<tt>VOP</tt>", "<tt>NOP</tt>", or "<tt>---</tt>" (meaning no
+privileges).  These strings do not change regardless of the user's
+NickServ language setting.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.getpass"></a>
+<p><b>GETPASS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>GETPASS <i>channel</i></b></tt>
+</dl>
+<p>
+Returns the password for the given channel.  <b>Note</b> that
+whenever this command is used, a message including the
+person who issued the command and the channel it was used
+on will be logged.
+<p>
+If encryption (see <a href="3.html#7">section 3-7</a>) is in use,
+encryption may not be available depending on the type of encryption used.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.forbid"></a>
+<p><b>FORBID</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>FORBID <i>channel</i></b></tt>
+</dl>
+<p>
+Disallows anyone from registering or using the given
+channel.  May be cancelled by dropping the channel.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.suspend"></a>
+<p><b>SUSPEND</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SUSPEND [+<i>expiry</i>] <i>channel</i> <i>reason</i></b></tt>
+</dl>
+<p>
+Prevents a channel from being used or identified for
+by anyone.  The channel can be unsuspended with the
+<a href="#chan.unsuspend"><tt>UNSUSPEND</tt></a> command,
+which will allow it to be used as before.
+The <tt><i>expiry</i></tt> parameter is interpreted in the same manner
+as for the OperServ <a href="#oper.akill"><tt>AKILL</tt></a> command.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="chan.unsuspend"></a>
+<p><b>UNSUSPEND</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>UNSUSPEND <i>channel</i></b></tt>
+</dl>
+<p>
+Allows users to use and identify for a previously suspended channel.
+<p>
+Limited to <b>Services admins</b>.
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=3></a>
+<h3>4-3. MemoServ commands</h3>
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.send"></a>
+<p><b>SEND</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SEND {<i>nickname</i> | <i>channel</i>} <i>memo-text</i></b></tt>
+</dl>
+<p>
+Sends the named <tt><i>nickname</i></tt> or <tt><i>channel</i></tt> a memo containing
+<tt><i>memo-text</i></tt>.  When sending to a nickname, the recipient will
+receive a notice that he/she has a new memo.  The target
+nickname/channel must be registered.
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.list"></a>
+<p><b>LIST</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>LIST [<i>channel</i>] [<i>num</i> | <i>list</i> | NEW]</b></tt>
+</dl>
+<p>
+Lists any memos you currently have.  With <tt>NEW</tt>, lists only
+new (unread) memos.  Unread memos are marked with a "<tt>*</tt>" to
+the left of the memo number; memos that will not expire are
+marked with a "<tt>+</tt>".  You can also specify a list of
+numbers, as in the example below:
+<dl>
+<dt><tt><b>LIST 2-5,7-9</b></tt>
+	<dd>Lists memos numbered 2 through 5 and 7 through 9.
+</dl>
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.read"></a>
+<p><b>READ</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>READ [<i>channel</i>] {<i>num</i> | <i>list</i> | LAST | NEW}</b></tt>
+</dl>
+<p>
+Sends you the text of the memos specified.  If LAST is
+given, sends you the memo you most recently received.  If
+NEW is given, sends you all of your new memos.  Otherwise,
+sends you memo number <tt><i>num</i></tt>.  You can also give a list of
+numbers, as with the <a href="#memo.list"><tt>LIST</tt></a> command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.save"></a>
+<p><b>SAVE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SAVE [<i>channel</i>] {<i>num</i> | <i>list</i>}</b></tt>
+</dl>
+<p>
+Marks the given memo or memos as non-expiring.  You can give
+either a single memo number or, as with the <a href="#memo.list"><tt>LIST</tt></a> command, a
+list of memos.
+<p>
+Note that this command will not be available if the
+<a href="a.html#memoserv/main.MSExpire"><tt>MSExpire</tt></a> option is
+not set (since there would be no point in using it).  However, all memos
+received while <tt>MSExpire</tt> is unset will be treated as if SAVE had
+been used for them, and they will not expire even if <tt>MSExpire</tt> is
+later enabled.
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.del"></a>
+<p><b>DEL</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>DEL [<i>channel</i>] {<i>num</i> | <i>list</i> | ALL}</b></tt>
+</dl>
+<p>
+Deletes the specified memo or memos.  You can supply
+multiple memo numbers or ranges of numbers instead of a
+single number, as with the <a href="#memo.list"><tt>LIST</tt></a> command; you can also give
+the word <tt>ALL</tt>, which causes all of your memos to be
+deleted.
+<p>
+<b>Warning</b>: Once a memo is deleted, it cannot be recovered!
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.renumber"></a>
+<p><b>RENUMBER</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>RENUMBER</b></tt>
+</dl>
+<p>
+Renumbers your memo list, removing "holes" in the number
+sequence resulting from deleted memos.
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.set"></a>
+<p><b>SET</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>option</i> <i>parameters</i></b></tt>
+</dl>
+<p>
+Sets various memo options.  <tt><i>option</i></tt> can be one of:
+<p>
+<dl>
+<dt><tt><b>NOTIFY</b></tt>
+	<dd>Changes when you will be notified about
+	    new memos (only for nicknames)
+<dt><tt><b>LIMIT</b></tt>
+	<dd>Sets the maximum number of memos you can
+	    receive
+<dt><tt><b>FORWARD</b></tt>
+	<dd>Sets whether memos are automatically
+	    forwarded to you
+</dl>
+<p>
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.set_notify"></a>
+<p><b>SET NOTIFY</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET NOTIFY {ON | LOGON | NEW | OFF}</b></tt>
+</dl>
+<p>
+Changes when you will be notified about new memos:
+<p>
+<dl>
+<dt><tt><b>ON</b></tt>
+	<dd>You will be notified of memos when you log on,
+	    when you unset <tt>/AWAY</tt>, and when they are sent
+	    to you.
+<dt><tt><b>LOGON</b></tt>
+	<dd>You will only be notified of memos when you log
+	    on or when you unset <tt>/AWAY</tt>.
+<dt><tt><b>NEW</b></tt>
+	<dd>You will only be notified of memos when they
+	    are sent to you.
+<dt><tt><b>OFF</b></tt>
+	<dd>You will not receive any notification of memos.
+</dl>
+<tt>ON</tt> is equivalent to <tt>LOGON</tt> and <tt>NEW</tt> combined.
+<p>
+Note that if your nickname has the "secure" setting on, you
+will only be notified of new memos (for <tt>LOGON</tt> or <tt>ON</tt>) after
+you identify to NickServ.
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.set_limit"></a>
+<p><b>SET LIMIT</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET LIMIT [<i>nickname</i> | <i>channel</i>] {<i>limit</i> | NONE | DEFAULT} [HARD]</b></tt>
+</dl>
+<p>
+Sets the maximum number of memos a nickname (or channel) is
+allowed to have.  Setting the limit to 0 prevents the nick
+from receiving any memos; setting it to <tt>NONE</tt> allows the nick
+to receive and keep as many memos as they want; and setting
+it to <tt>DEFAULT</tt> restores the limit to the default value
+(<a href="a.html#memoserv/main.MSMaxMemos"><tt>MSMaxMemos</tt></a>
+in <tt>modules.conf</tt>, 20 by default).
+If you do not give a nickname or channel, your own limit is set.
+<p>
+Adding <tt>HARD</tt> prevents the user from changing the limit.  Not
+adding <tt>HARD</tt> has the opposite effect, allowing the user to
+change the limit (even if a previous limit was set with
+<tt>HARD</tt>).
+<p>
+This use of the <a href="#memo.set_limit"><b>SET LIMIT</b></a> command is limited to <b>Services
+admins</b>.  Other users may only enter a limit for themselves
+or a channel on which they have such privileges, may not
+remove their limit or set their limit to the default, may
+not set a limit above the default limit, and may not set a hard limit.
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.info"></a>
+<p><b>INFO</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>INFO [<i>nickname</i> | <i>channel</i>]</b></tt>
+</dl>
+<p>
+Without a parameter, displays information on the number of
+memos you have, how many of them are unread, how many
+total memos you can receive and when you are notified of
+new ones.
+<p>
+With a channel parameter, displays the same information for
+the given channel.
+<p>
+With a nickname parameter, displays the same information
+for the given nickname.  This use limited to <b>Services
+admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.forward"></a>
+<p><b>FORWARD</b> (requires the <tt>memoserv/forward</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>FORWARD {<i>num</i> | <i>list</i> | ALL}</b></tt>
+</dl>
+<p>
+Forwards one or more of your memos to your E-mail address.
+You must have a valid E-mail address set for your nickname
+in order to use this command.  Channel memos cannot be
+forwarded.
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.set_forward"></a>
+<p><b>SET FORWARD</b> (requires the <tt>memoserv/forward</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET FORWARD {ON | COPY | OFF}</b></tt>
+</dl>
+<p>
+Sets whether MemoServ automatically forwards to your E-mail
+address memos sent to you.  When set to <tt>ON</tt>, memos sent to
+your nickname will instead be forwarded to the E-mail
+address registered with your nickname.  <tt>COPY</tt> is similar, but
+also causes MemoServ to save a copy of the memo to read
+online.  When set to <tt>OFF</tt>, your memos will be stored online
+as usual.  Even if you set this option to <tt>ON</tt>, you may still
+receive memos online if Services is unable to forward them
+to you.
+<p>
+Note that when this option is set to <tt>COPY</tt> and you have
+received the maximum number of memos you are allowed to, you
+will not be able to receive any new memos (including by
+E-mail) until you delete some old memos using the <a href="#memo.del"><tt>DEL</tt></a>
+command.
+
+<p>
+<hr align=center width="50%">
+
+<a name="memo.ignore"></a>
+<p><b>IGNORE</b> (requires the <tt>memoserv/ignore</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>IGNORE {ADD | DEL | LIST} [<i>nickname</i> | <i>mask</i>]</b></tt>
+</dl>
+<p>
+Controls the list of "ignored" users; users whose nickname
+or user@host mask match an entry on this list are not
+allowed to send you memos.  <tt>ADD</tt> adds the given nickname or
+user@host mask to your ignore list, and <tt>DEL</tt> removes the
+given nickname or mask from the list; <tt>LIST</tt> displays your
+current ignore list.
+<p>
+Note that the nickname or mask given to the <tt>ADD</tt> command may
+contain "*" or "?" wildcards, and is not case-sensitive; for
+example, "*Evil*" matches "EvilNick", "AN_EVIL_USER" and
+"devil".
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=4></a>
+<h3>4-4. OperServ commands</h3>
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.global"></a>
+<p><b>GLOBAL</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>GLOBAL <i>message</i></b></tt>
+</dl>
+<p>
+Allows IRCops to send messages to all users on the network.
+The message will be sent from the nickname "Global" (which
+can be changed with the
+<a href="a.html#operserv/main.GlobalName"><tt>GlobalName</tt></a>
+option in <tt>modules.conf</tt>).
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.stats"></a>
+<p><b>STATS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>STATS [RESET | NETWORK | AKILL | ALL]</b></tt>
+</dl>
+<p>
+Without any option, shows the current number of users and
+IRCops online (excluding Services), the highest number of
+users online since Services was started, and the length of
+time Services has been running.
+<p>
+With the <tt>RESET</tt> option, resets the maximum user count to
+the number of users currently online.
+<p>
+With the <tt>NETWORK</tt> option, shows the amount of data sent
+to and received from the remote server, and the amount of
+memory used by network send/receive buffers.  The ratio of
+the current buffer memory usage to the buffer size limit is
+also displayed as a percentage if a limit is configured (via
+<a href="a.html#NetBufferSize"><tt>NetBufferSize</tt></a> in
+<tt>ircservices.conf</tt>).
+<p>
+With the <tt>AKILL</tt> option, displays the current size of the
+AKILL list and the current default expiry time.
+<p>
+The <tt>ALL</tt> option is available only to Services admins, and
+displays information on Services' memory usage.  Using this
+option can freeze Services for a short period of time on
+large networks, so don't overuse it!
+<p>
+<tt>UPTIME</tt> may be used as a synonym for <tt>STATS</tt>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.servermap"></a>
+<p><b>SERVERMAP</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SERVERMAP</b></tt>
+</dl>
+<p>
+Displays a map of servers connected to the network, from the
+viewpoint of Services.  "Fake" servers&mdash;Services itself and
+any servers jupitered with the <a href="#oper.jupe"><tt>JUPE</tt></a>
+command&mdash;have "<tt>(*)</tt>" displayed after the sever name.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.oper"></a>
+<p><b>OPER</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>OPER ADD <i>nickname</i></b></tt>
+<br><tt><b>OPER DEL <i>nickname</i></b></tt>
+<br><tt><b>OPER LIST</b></tt>
+</dl>
+<p>
+Allows Services admins to add or remove nicknames to or from
+the Services operator list.  A user whose nickname is on the
+Services operator list and who has identified to NickServ
+will be able to access Services operator commands.
+<p>
+Any IRC operator may use the <tt>OPER LIST</tt> form of the command.
+All other use limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.admin"></a>
+<p><b>ADMIN</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>ADMIN ADD <i>nickname</i></b></tt>
+<br><tt><b>ADMIN DEL <i>nickname</i></b></tt>
+<br><tt><b>ADMIN LIST</b></tt>
+</dl>
+<p>
+Allows the Services super-user to add or remove nicknames
+to or from the Services admin list.  A user whose nickname
+is on the Services admin list and who has identified to
+NickServ will be able to access Services admin commands.
+<p>
+Any IRC operator may use the <tt>ADMIN LIST</tt> form of the command.
+All other use limited to <b>Services super-user</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.getkey"></a>
+<p><b>GETKEY</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>GETKEY <i>channel</i></b></tt>
+</dl>
+<p>
+Returns the channel key set on the given channel, if any.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.mode"></a>
+<p><b>MODE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>MODE <i>channel</i> <i>modes</i></b></tt>
+</dl>
+<p>
+Allows Services operators to set channel modes for any
+channel.  Parameters are the same as for the standard <tt>/MODE</tt>
+command.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.clearmodes"></a>
+<p><b>CLEARMODES</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>CLEARMODES <i>channel</i> [ALL]</b></tt>
+</dl>
+<p>
+Clears all channel modes (<tt>n</tt>, <tt>s</tt>, <tt>t</tt>, <tt>k</tt>,
+<tt>l</tt>, <tt>b</tt>, and so on) from a channel.  If <b>ALL</b> is given,
+also clears all user modes (like <tt>+o</tt> and <tt>+v</tt>) from the
+channel.  However, if the channel is registered, its mode lock will still
+take effect.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.clearchan"></a>
+<p><b>CLEARCHAN</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>CLEARCHAN <i>channel</i></b></tt>
+</dl>
+<p>
+Removes all users from a channel (masskick).
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.kick"></a>
+<p><b>KICK</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>KICK <i>channel</i> <i>user</i> <i>reason</i></b></tt>
+</dl>
+<p>
+Allows IRCops to kick a user from any channel.
+Parameters are the same as for the standard <tt>/KICK</tt>
+command.  The kick message will have the nickname of the
+IRCop sending the <tt>KICK</tt> command prepended; for example:
+<p>
+<tt>*** SpamMan has been kicked off channel #my_channel by OperServ (Alcan (Flood))</tt>
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.akill"></a>
+<p><b>AKILL</b> (requires the <tt>operserv/akill</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>AKILL ADD [+<i>expiry</i>] <i>mask</i> <i>reason</i></b></tt>
+<br><tt><b>AKILL DEL <i>mask</i></b></tt>
+<br><tt><b>AKILL CLEAR ALL</b></tt>
+<br><tt><b>AKILL LIST [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>AKILL VIEW [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>AKILL CHECK <i>mask</i></b></tt>
+<br><tt><b>AKILL COUNT</b></tt>
+</dl>
+<p>
+Allows Services operators to manipulate the autokill (AKILL)
+list.  If a user matching an autokill mask attempts to
+connect, Services will issue a KILL for that user and, on
+supported server types, will instruct all servers to add a
+ban (K-line) for the mask which the user matched.
+<p>
+<tt>AKILL ADD</tt> adds the given <tt><i>user</i>@<i>host</i></tt> mask to the autokill
+list.  The <tt><i>reason</i></tt> should describe why the entry is being
+added; depending on how Services is configured, it may also
+be displayed to users in KILL messages.  An expiry time can
+also be specified, as described below.
+<p>
+<tt>AKILL DEL</tt> removes the given mask from the autokill list if
+it is present.
+<p>
+<tt>AKILL CLEAR</tt> clears (removes) all masks from the autokill
+list.  The <tt>ALL</tt> parameter is mandatory, to avoid accidental
+use of this command.
+<p>
+<tt>AKILL LIST</tt> shows all current autokills; if the optional pattern
+is given, the list is limited to those AKILLs matching the
+pattern.  If the <tt><i>start</i></tt> parameter is given, it specifies how
+many matches to skip before displaying results (for example,
+<tt>+50</tt> would cause the first 50 matches to be skipped).
+Additionally, <tt>NOEXPIRE</tt> can be used to limit the list to
+autokills that do not expire.
+<p>
+<tt>AKILL VIEW</tt> is a more verbose version of <tt>AKILL LIST</tt>, and will
+show who added an autokill, the date it was added, and when
+it expires, as well as the <tt><i>user</i>@<i>host</i></tt> mask and reason.
+<p>
+<tt>AKILL CHECK</tt> will display any entries on the autokill list
+which the given <tt><i>user</i>@<i>host</i></tt> mask would match; this can be used
+to determine which autokill caused a particular user to be
+killed.
+<p>
+<tt>AKILL COUNT</tt> simply returns the number of autokills in the
+autokill list.
+<p>
+Optionally, an expiry time can be given with the <tt>AKILL ADD</tt>
+command.  The expiry time precedes the <tt><i>user</i>@<i>host</i></tt> mask, and
+is specified as an integer followed by one of "<tt>d</tt>" (days),
+"<tt>h</tt>" (hours), or "<tt>m</tt>" (minutes).  Combinations (such as <tt>1h30m</tt>)
+are also permitted.  If a unit specifier is not included,
+the default is days (so <tt>+30</tt> by itself means 30 days).  To
+add an autokill which does not expire, use <tt>+0</tt>.  If the
+usermask to be added starts with a <tt>+</tt>, an expiry time must
+be given, even if it is the same as the default (specified with the
+<a href="a.html#operserv/akill.AutokillExpiry"><tt>AutokillExpiry</tt></a>
+option in <tt>modules.conf</tt>).
+<p>
+If the <a href="a.html#operserv/akill.OperMaxExpiry"><tt>OperMaxExpiry</tt></a>
+option is set in <tt>modules.conf</tt>, Services operators may only set an
+expiry time up to that limit; otherwise, they may set any expiry time.
+Services administrators can always set any expiry time.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.exclude"></a>
+<p><b>AKILLCHAN</b> (requires the <tt>operserv/akill</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>AKILLCHAN [KILL] [+<i>expiry</i>] <i>channel</i> <i>reason</i></b></tt>
+</dl>
+<p>
+Adds autokills for all users except IRC operators in a given <tt><i>channel</i></tt>, and optionally
+(if <tt>KILL</tt> is given) removes them from the network.  The <tt><i>reason</i></tt> will be stored with
+each autokill, and may be displayed in kill messages
+depending on how Services is configured.  <tt><i>expiry</i></tt> takes the
+same format as in the <a href="#oper.akill"><tt>AKILL ADD</tt></a> command;
+if not given, it defaults to the value given in the
+<a href="a.html#operserv/akill.AkillChanExpiry"><tt>AkillChanExpiry</tt></a>
+directive in <tt>modules.conf</tt>.
+<p>
+Autokills added by this command will have the form
+<tt>*@<i>hostname</i></tt>, for each hostname used by a client in the
+channel.  If such an autokill already exists for a hostname,
+it will not be modified; this may cause the number of
+autokills added to be less than the number of users
+affected.  Also, these autokills will automatically
+be sent to the IRC network regardless of the status of the
+<a href="a.html#operserv/akill.ImmediatelySendAutokill"><tt>ImmediatelySendAutokill</tt></a> setting.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.exclude"></a>
+<p><b>EXCLUDE</b> (requires the <tt>operserv/akill</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>EXCLUDE ADD [+<i>expiry</i>] <i>mask</i> <i>reason</i></b></tt>
+<br><tt><b>EXCLUDE DEL <i>mask</i></b></tt>
+<br><tt><b>EXCLUDE CLEAR ALL</b></tt>
+<br><tt><b>EXCLUDE LIST [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>EXCLUDE VIEW [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>EXCLUDE CHECK <i>mask</i></b></tt>
+<br><tt><b>EXCLUDE COUNT</b></tt>
+</dl>
+<p>
+Allows Services operators to manipulate the autokill
+exclusion list.  When a user matching an autokill exclusion
+mask connects to the network, Services will not issue a <tt>KILL</tt>
+for that user even if the user would otherwise match an
+autokill mask.  This is useful if you have wide autokill
+masks, and still want specific hosts or users that match
+those masks to be able to connect.
+<p>
+The <tt>ADD</tt>, <tt>DEL</tt>, <tt>CLEAR</tt>, <tt>LIST</tt>, <tt>VIEW</tt>,
+<tt>CHECK</tt>, and <tt>COUNT</tt> subcommands function the
+same way as the subcommands for the <a href="#oper.akill"><tt>AKILL</tt></a> command; see
+the <tt>AKILL</tt> help for more information.  (Note that autokill
+exclusions are not affected by the state of the
+<a href="a.html#operserv/akill.ImmediatelySendAutokill"><tt>ImmediatelySendAutokill</tt></a>
+setting, and are always immediately sent to the server.)
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.sgline"></a>
+<p><b>SGLINE</b> (requires the <tt>operserv/sline</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SGLINE ADD [+<i>expiry</i>] <i>mask</i> <i>reason</i></b></tt>
+<br><tt><b>SGLINE DEL <i>mask</i></b></tt>
+<br><tt><b>SGLINE CLEAR ALL</b></tt>
+<br><tt><b>SGLINE LIST [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>SGLINE VIEW [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>SGLINE CHECK <i>mask</i></b></tt>
+<br><tt><b>SGLINE COUNT</b></tt>
+</dl>
+<p>
+Allows Services operators to manipulate the SGLINE list.  If
+a user whose "real name" matches an SGLINE mask attempts to
+connect, Services will issue a KILL for that user and, on
+supported server types, will instruct all servers to add a
+ban (server G-line) for the mask which the user matched.
+<p>
+<tt>SGLINE ADD</tt> adds the given real name mask to the SGLINE list.
+The <tt><i>reason</i></tt> should describe why the entry is being added;
+depending on how Services is configured, it may also be
+displayed to users in KILL messages.
+<p>
+<tt>SGLINE DEL</tt> removes the given mask from the SGLINE list if it
+is present.
+<p>
+<tt>SGLINE CLEAR</tt> clears (removes) all masks from the SGLINE
+list.  The <tt>ALL</tt> parameter is mandatory, to avoid accidental
+use of this command.
+<p>
+<tt>SGLINE LIST</tt> shows all SGLINE entries; if the optional pattern
+is given, the list is limited to those entries matching the
+pattern.  If the <tt><i>start</i></tt> parameter is given, it specifies how
+many matches to skip before displaying results (for example,
+<tt>+50</tt> would cause the first 50 matches to be skipped).
+Additionally, <tt>NOEXPIRE</tt> can be used to limit the list to
+entries that do not expire.
+<p>
+<tt>SGLINE VIEW</tt> is a more verbose version of SGLINE LIST, and
+will show who added each SGLINE entry, the date it was
+added, when it was last used, and when it expires, as well
+as the mask and reason.
+<p>
+<tt>SGLINE CHECK</tt> will display any entries on the SGLINE list
+which the given user@host mask would match; this can be used
+to determine which SGLINE caused a particular user to be
+killed.
+<p>
+<tt>SGLINE COUNT</tt> simply returns the number of entries in the
+SGLINE list.
+<p>
+The <tt><i>mask</i></tt> parameter may be enclosed in double quotes, and
+must be when the mask contains spaces; for example:
+<blockquote>
+    <tt>/msg OperServ SGLINE ADD +0 "bad name" This is a bad name.</tt>
+</blockquote>
+<p>
+Optionally, an expiry time can be given with the <tt>SGLINE ADD</tt>
+command.  The expiry time precedes the user@host mask, and
+is specified as an integer followed by one of "<tt>d</tt>" (days),
+"<tt>h</tt>" (hours), or "<tt>m</tt>" (minutes).  Combinations (such as <tt>1h30m</tt>)
+are also permitted.  If a unit specifier is not included,
+the default is days (so <tt>+30</tt> by itself means 30 days).  To
+add an entry which does not expire, use <tt>+0</tt>.  If the
+mask to be added starts with a <tt>+</tt> and no expiry time is
+given, the mask must be enclosed in double quotes, as
+described above.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.sqline"></a>
+<p><b>SQLINE</b> (requires the <tt>operserv/sline</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SQLINE ADD [+<i>expiry</i>] <i>mask</i> <i>reason</i></b></tt>
+<br><tt><b>SQLINE DEL <i>mask</i></b></tt>
+<br><tt><b>SQLINE CLEAR ALL</b></tt>
+<br><tt><b>SQLINE LIST [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>SQLINE VIEW [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>SQLINE CHECK <i>mask</i></b></tt>
+<br><tt><b>SQLINE COUNT</b></tt>
+</dl>
+<p>
+Allows Services operators to manipulate the SQLINE list.  If
+a user whose nickname matches an SQLINE mask attempts to
+connect, Services will either (1) if the
+<a href="a.html#operserv/sline.SQlineKill"><tt>SQlineKill</tt></a> option
+is set in <tt>modules.conf</tt> or the IRC server type in use does not
+support forced nick changing, issue a KILL for that user; or (2) change
+the user's nickname to a "guest" nickname, and send the user a message
+that will normally cause the user's IRC client to request a new nickname.
+On supported server types, Services will also instruct all servers to add
+a ban (server Q-line) for the mask which the user matched.
+<p>
+If the <a href="a.html#operserv/sline.SQlineIgnoreOpers"><tt>SQlineIgnoreOpers</tt></a>
+option is set in <tt>modules.conf</tt>, then IRC operators will not be
+affected by SQlines.
+<p>
+The <tt>ADD</tt>, <tt>DEL</tt>, <tt>CLEAR</tt>, <tt>LIST</tt>, <tt>VIEW</tt>, <tt>CHECK</tt>, and <tt>COUNT</tt> subcommands
+function the same way as the subcommands for the <a href="#oper.sgline"><tt>SGLINE</tt></a>
+command; see the <tt>SGLINE</tt> help for more information.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.szline"></a>
+<p><b>SZLINE</b> (requires the <tt>operserv/sline</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SZLINE ADD [+<i>expiry</i>] <i>mask</i> <i>reason</i></b></tt>
+<br><tt><b>SZLINE DEL <i>mask</i></b></tt>
+<br><tt><b>SZLINE CLEAR ALL</b></tt>
+<br><tt><b>SZLINE LIST [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>SZLINE VIEW [+<i>start</i>] [<i>pattern</i>] [NOEXPIRE]</b></tt>
+<br><tt><b>SZLINE CHECK <i>mask</i></b></tt>
+<br><tt><b>SZLINE COUNT</b></tt>
+</dl>
+<p>
+Allows Services operators to manipulate the SZLINE list.  If
+a user whose IP address matches an SZLINE mask attempts to
+connect, Services will issue a <tt>KILL</tt> for that user and, on
+supported server types, will instruct all servers to add a
+ban (server Z-line) for the mask which the user matched.
+<p>
+The <tt>ADD</tt>, <tt>DEL</tt>, <tt>CLEAR</tt>, <tt>LIST</tt>, <tt>VIEW</tt>, <tt>CHECK</tt>, and <tt>COUNT</tt> subcommands
+function the same way as the subcommands for the <a href="#oper.sgline"><tt>SGLINE</tt></a>
+command; see the <tt>SGLINE</tt> help for more information.
+<p>
+Note that SZLINEs are not supported by all IRC servers, and
+this command will not be available when using a server
+without SZLINE support.  Some servers may require the
+<tt>ImmediatelySendSline</tt> option in <tt>modules.conf</tt>
+to be set in order to use SZLINEs.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.exception"></a>
+<p><b>EXCEPTION</b> (requires the <tt>operserv/sessions</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>EXCEPTION ADD [<i>+expiry</i>] <i>mask</i> <i>limit</i> <i>reason</i></b></tt>
+<br><tt><b>EXCEPTION DEL {<i>mask</i> | <i>list</i>}</b></tt>
+<br><tt><b>EXCEPTION CLEAR ALL</b></tt>
+<br><tt><b>EXCEPTION MOVE <i>num</i> <i>newnum</i></b></tt>
+<br><tt><b>EXCEPTION LIST [[+<i>start</i>] <i>pattern</i> | <i>list</i>]</b></tt>
+<br><tt><b>EXCEPTION VIEW [[+<i>start</i>] <i>pattern</i> | <i>list</i>]</b></tt>
+<br><tt><b>EXCEPTION CHECK <i>hostname</i></b></tt>
+<br><tt><b>EXCEPTION COUNT</b></tt>
+</dl>
+<p>
+Allows Services operators to manipulate the list of hosts that
+have specific session limits, allowing certain machines,
+such as shell servers, to carry more than the default number
+of clients at a time. Once a host reaches its session limit,
+all clients attempting to connect from that host will be
+killed.  Before the user is killed, they are notified, via a
+<tt>/NOTICE</tt> from OperServ, of a source of help regarding session
+limiting.  The content of this notice is a configuration setting
+(<a href="a.html#operserv/sessions.SessionLimitExceeded"><tt>SessionLimitExceeded</tt></a> and
+<a href="a.html#operserv/sessions.SessionLimitDetailsLoc"><tt>SessionLimitDetailsLoc</tt></a>
+in <tt>modules.conf</tt>).
+<p>
+<tt>EXCEPTION ADD</tt> adds the given host mask to the exception list.
+Note that <tt><i>nick</i>!<i>user</i>@<i>host</i></tt> and <tt><i>user</i>@<i>host</i></tt> masks are invalid!
+Only real host masks, such as <tt>box.host.dom</tt> and <tt>*.host.dom</tt>,
+are allowed because sessions limiting does not take nick or
+user names into account.  <tt><i>limit</i></tt> must be a number greater than
+or equal to zero; this determines how many sessions this host
+may carry at a time (a value of zero means the host has an
+unlimited session limit).
+<p>
+Optionally, an expiry time can be given with the <tt>EXCEPTION
+ADD</tt> command.  The expiry time precedes the host mask, and
+is specified as an integer followed by one of "<tt>d</tt>" (days),
+"<tt>h</tt>" (hours), or "<tt>m</tt>" (minutes).  Combinations (such as <tt>1h30m</tt>)
+are also permitted.  If a unit specifier is not included,
+the default is days (so <tt>+30</tt> by itself means 30 days).  To
+add an entry which does not expire, use <tt>+0</tt>.  If the
+mask to be added starts with a <tt>+</tt>, an expiry time must
+be given, even if it is the same as the default.
+<p>
+<tt>EXCEPTION DEL</tt> removes the given mask or numbered entry or
+entries from the exception list (entry numbers can be found
+with <tt>VIEW</tt> or <tt>LIST</tt>).
+<p>
+<tt>EXCEPTION CLEAR</tt> clears (removes) all masks from the autokill exclusion
+list.  The <tt>ALL</tt> parameter is mandatory, to avoid accidental
+use of this command.
+<p>
+<tt>EXCEPTION MOVE</tt> moves exception <tt><i>num</i></tt> to <tt><i>newnum</i></tt>.  If <tt><i>newnum</i></tt>
+is already used by another exception, its number will be
+increased to make room.
+<p>
+<tt>EXCEPTION LIST</tt> and <tt>EXCEPTION VIEW</tt> show all current
+exceptions.  If a pattern is given, the display is limited to
+entries matching the pattern (with the optional <tt><i>start</i></tt> parameter
+giving the number of entries to skip before displaying
+results); if a number list is given, only entries in the
+list will be displayed.  The difference between the two
+commands is that <tt>EXCEPTION VIEW</tt>
+is more verbose, displaying the name of the person who added
+the exception, its session limit, reason, host mask and the
+expiry date and time, as well as the last time the exception
+was "used", <i>i.e.</i> the last time a user connected who matched
+the exception's mask.
+<p>
+<tt>EXCEPTION CHECK</tt> will display any entries on the exception
+list which the given hostname would match; this can be used to
+determine which exception, if any, is applied to a particular
+user.
+<p>
+<tt>EXCEPTION COUNT</tt> displays the number of entries on the
+exception list.
+<p>
+Note that when a client connects, the first matching
+exception found will be applied to that client.  Large
+exception lists and widely matching exception masks are
+likely to degrade Services' performance.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.session"></a>
+<p><b>SESSION</b> (requires the <tt>operserv/sessions</tt> module)
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SESSION LIST <i>threshold</i></b></tt>
+<br><tt><b>SESSION VIEW <i>host</i></b></tt>
+</dl>
+<p>
+Allows Services operators to view the session list.
+<p>
+<tt>SESSION LIST</tt> lists hosts with at least <tt><i>threshold</i></tt> sessions.
+The threshold must be a number greater than 1, to prevent
+accidental listing of the large number of single session
+hosts.
+<p>
+<tt>SESSION VIEW</tt> displays detailed information about a specific
+host, including the current session count and session limit.
+The <tt><i>host</i></tt> value may not include wildcards.
+<p>
+See the <a href="#oper.exception"><tt>EXCEPTION</tt></a> help for more information about session
+limiting and how to set session limits specific to certain
+hosts and groups thereof.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.su"></a>
+<p><b>SU</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SU <i>password</i></b></tt>
+</dl>
+<p>
+Allows access to functions which require Services super-user
+privileges.  The password is the same as that set with the
+<a href="#oper.set_supass"><tt>SET SUPASS</tt></a> command; note that the password must be set once
+before using this command.  Super-user privileges last until
+you quit IRC.
+<p>
+<b>WARNING:</b> If you enter an incorrect password, Services will
+broadcast a warning message to all IRC operators.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.set"></a>
+<p><b>SET</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET <i>option</i> <i>setting</i></b></tt>
+</dl>
+<p>
+Sets various global Services options.  Option names
+currently defined are:
+<dl>
+<dt><tt><b>READONLY</b></tt>
+	<dd>Set read-only or read-write mode
+<dt><tt><b>DEBUG</b></tt>
+	<dd>Activate or deactivate debug mode
+<dt><tt><b>SUPASS</b></tt>
+	<dd>Set password for <a href="#oper.su"><tt>SU</tt></a> command (super-user)
+</dl>
+<p>
+Limited to <b>Services admins</b>; the <tt>SUPASS</tt> option may only be
+set by the <b>Services super-user</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.set_readonly"></a>
+<p><b>SET READONLY</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET READONLY {ON | OFF}</b></tt>
+</dl>
+<p>
+Sets read-only mode on or off.  In read-only mode, normal
+users will not be allowed to modify any Services data,
+including channel and nickname access lists, etc.  IRCops
+with sufficient Services privileges will be able to modify
+Services' AKILL list and drop or forbid nicknames and
+channels, but any such changes will not be saved unless
+read-only mode is deactivated before Services is terminated
+or restarted.
+<p>
+This option is equivalent to the command-line option
+<tt>-readonly</tt>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.set_debug"></a>
+<p><b>SET DEBUG</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET DEBUG {ON | OFF | <i>num</i>}</b></tt>
+</dl>
+<p>
+Sets debug mode on or off.  In debug mode, all data sent to
+and from Services as well as a number of other debugging
+messages are written to the log file.  If <tt><i>num</i></tt> is
+given, debug mode is activated, with the debugging level set
+to <tt><i>num</i></tt>.
+<p>
+This option is equivalent to the command-line option
+<tt>-debug</tt>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.set_supass"></a>
+<p><b>SET SUPASS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SET SUPASS [<i>password</i>]</b></tt>
+</dl>
+<p>
+Sets the password to be used for the <a href="#oper.su"><tt>SU</tt></a> command.  The
+password must be set once before using the SU command for
+the first time.  If no password is given, the SU command
+will be unavailable.
+<p>
+This option may only be set by the <b>Services super-user</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.jupe"></a>
+<p><b>JUPE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>JUPE <i>server</i> [<i>reason</i>]</b></tt>
+</dl>
+<p>
+Tells Services to jupiter a server&mdash;that is, to create
+a fake "server" connected to Services which prevents
+the real server of that name from connecting.  The jupe
+may be removed using a standard <tt>/SQUIT</tt>.  If a reason is
+given, it is placed in the server information field;
+otherwise, the server information field will contain the
+text "<tt>Jupitered by <i>nickname</i></tt>", showing the nickname of the
+person who jupitered the server.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.raw"></a>
+<p><b>RAW</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>RAW <i>text</i></b></tt>
+</dl>
+<p>
+Sends a string of text directly to the server to which
+Services is connected, without performing any processing on
+it.  This command is intended primarily for testing of
+Services and IRC servers; it has a very limited range of
+uses on a live network, and can wreak havoc on a network or
+cause Services to crash if used improperly.  <b>DO NOT USE THIS
+COMMAND</b> unless you are absolutely certain you know what you
+are doing!
+<p>
+Limited to the <b>Services super-user</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.update"></a>
+<p><b>UPDATE</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>UPDATE [FORCE]</b></tt>
+</dl>
+<p>
+Causes Services to update all database files as soon as you
+send the command.  If the <tt>FORCE</tt> option is given, Services
+will attempt to unlock the databases before performing the
+update; this can be used to fix "databases are locked"
+errors when updating the databases.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.quit"></a>
+<p><b>QUIT</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>QUIT</b></tt>
+</dl>
+<p>
+Causes Services to do an immediate shutdown; databases are
+<b>not</b> saved.  This command should not be used unless
+damage to the in-memory copies of the databases is feared
+and they should not be saved.  For normal shutdowns, use the
+<a href="#oper.shutdown"><tt>SHUTDOWN</tt></a> command.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.shutdown"></a>
+<p><b>SHUTDOWN</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SHUTDOWN</b></tt>
+</dl>
+<p>
+Causes Services to save all databases and then shut down.
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.restart"></a>
+<p><b>RESTART</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>RESTART</b></tt>
+</dl>
+<p>
+Causes Services to save all databases and then restart
+(<i>i.e.</i> exit and immediately re-run the executable).
+<p>
+Limited to <b>Services admins</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.rehash"></a>
+<p><b>REHASH</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>REHASH</b></tt>
+</dl>
+<p>
+Causes Services to re-read its configuration files and
+update active settings.  Some settings, such as
+<a href="a.html#RemoteServer"><tt>RemoteServer</tt></a>
+(which sets the hostname of the IRC server to connect to),
+cannot be changed with REHASH, and will only take effect
+when Services is restarted; in these cases, a message will
+be written to the Services log file, and a notice will be
+sent notifying you of this.
+<p>
+If <a href="a.html#LoadModule"><tt>LoadModule</tt></a>
+lines have been added to or removed from the
+main Services configuration file (<tt>ircservices.conf</tt>), modules
+will be loaded or unloaded as needed.  Modules which no
+longer have a <tt>LoadModule</tt> line will be unloaded in reverse
+order of loading; then, after the remaining modules have
+been rehashed, new modules will be loaded in the order
+listed in the configuration file.  If an error occurs at any
+step, rehashing will be aborted.
+<p>
+Note that due to module dependencies, some modules cannot be
+removed or changed via REHASH; in such cases, you will need
+to restart Services for the changes to take effect.
+<p>
+Limited to <b>Services admins</b>.	
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.killclones"></a>
+<p><b>KILLCLONES</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>KILLCLONES <i>nickname</i></b></tt>
+</dl>
+<p>
+Kills all users who have the same hostname as <tt><i>nickname</i></tt>.  A
+temporary AKILL, in the form <tt>*@<i>host</i></tt>, is added to prevent the
+offending clients from immediately reconnecting.  A <tt>WALLOPS</tt>
+is also sent indicating who used the command, which host was
+affected, and how many users were killed.  It's useful for
+removing numerous clones from the network.
+<p>
+Limited to <b>Services operators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.logonnews"></a>
+<p><b>LOGONNEWS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>LOGONNEWS ADD <i>text</i></b></tt>
+<tt>	<b>LOGONNEWS DEL {<i>num</i> | ALL}</b></tt>
+<tt>	<b>LOGONNEWS LIST</b></tt>
+</dl>
+<p>
+Edits or displays the list of logon news messages.  When a
+user connects to the network, these messages will be sent
+to them.  (However, no more than three messages will be
+sent in order to avoid flooding the user.  If there are
+more than three news messages, only the three most recent
+will be sent.)
+<p>
+<tt>LOGONNEWS LIST</tt> may be used by any IRC operator to list the
+current news messages.  <tt>ADD</tt> and <tt>DEL</tt> may only be used by
+Services administrators.
+
+<p>
+<hr align=center width="50%">
+
+<a name="oper.opernews"></a>
+<p><b>OPERNEWS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>OPERNEWS ADD <i>text</i></b></tt>
+<tt>	<b>OPERNEWS DEL {<i>num</i> | ALL}</b></tt>
+<tt>	<b>OPERNEWS LIST</b></tt>
+</dl>
+<p>
+Edits or displays the list of logon news messages.  When a
+user opers up (with the <tt>/OPER</tt> command), these messages will
+be sent to them.  (However, no more than three messages will
+be sent in order to avoid flooding the user.  If there are
+more than three news messages, only the three most recent
+will be sent.)
+<p>
+<tt>OPERNEWS LIST</tt> may be used by any IRC operator to list the
+current news messages.  <tt>ADD</tt> and <tt>DEL</tt> may only be used by
+Services administrators.
+
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=5></a>
+<h3>4-5. StatServ commands</h3>
+
+<p>
+<hr align=center width="50%">
+
+<a name="stat.servers"></a>
+<p><b>SERVERS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>SERVERS STATS</b></tt>
+<br><tt><b>SERVERS LIST [<i>mask</i>]</b></tt>
+<br><tt><b>SERVERS VIEW [<i>mask</i>] [ONLINE | OFFLINE]</b></tt>
+<br><tt><b>SERVERS DELETE <i>server</i></b></tt>
+<br><tt><b>SERVERS COPY <i>server</i> <i>newname</i></b></tt>
+<br><tt><b>SERVERS RENAME <i>server</i> <i>newname</i></b></tt>
+</dl>
+<p>
+	Displays statistics relating to the network's servers.
+<p>
+	<tt>SERVERS STATS</tt> displays a brief summary of the servers
+	currently visible (online) and invisible (offline) to
+	Services.
+	<tt>SERVERS LIST</tt> displays a list of online servers and
+	current statistics about each.
+	<tt>SERVERS VIEW</tt> displays a list of online and offline
+	servers with detailed statistics about each. The
+	<tt>ONLINE</tt> and <tt>OFFLINE</tt> options cause, respectively,
+	only online or offline servers to be shown.
+<p>
+	Use the <tt><i>mask</i></tt> option to limit which servers'
+	statistics are shown.
+<p>
+	<tt>DELETE</tt> deletes the specified server's statistics.
+<br>	<tt>COPY</tt> duplicates a set of server statistics.
+<br>	<tt>RENAME</tt> rename's a set of server statistics.
+<br>	These three commands are limited to <b>Services administrators</b>.
+
+<p>
+<hr align=center width="50%">
+
+<a name="stat.users"></a>
+<p><b>USERS</b>
+
+<p><dl><dt><b>Syntax:</b>
+<dd><tt><b>USERS STATS</b></tt>
+</dl>
+<p>
+Displays statistics relating to the network's users.
+
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=6></a>
+<h3>4-6. Command index</h3>
+
+<p>
+<a href="#6.A">A</a>
+<a href="#6.B">B</a>
+<a href="#6.C">C</a>
+<a href="#6.D">D</a>
+<a href="#6.E">E</a>
+<a href="#6.F">F</a>
+<a href="#6.G">G</a>
+<a href="#6.H">H</a>
+<a href="#6.I">I</a>
+<a href="#6.J">J</a>
+<a href="#6.K">K</a>
+<a href="#6.L">L</a>
+<a href="#6.M">M</a>
+<a href="#6.N">N</a>
+<a href="#6.O">O</a>
+<a href="#6.P">P</a>
+<a href="#6.Q">Q</a>
+<a href="#6.R">R</a>
+<a href="#6.S">S</a>
+<a href="#6.T">T</a>
+<a href="#6.U">U</a>
+<a href="#6.V">V</a>
+<a href="#6.W">W</a>
+<a href="#6.X">X</a>
+<a href="#6.Y">Y</a>
+<a href="#6.Z">Z</a>
+
+<a name=6.A></a><h4>A</h4>
+<br><a href="#chan.access"><tt>ACCESS</tt></a> (ChanServ)
+<br><a href="#nick.access"><tt>ACCESS</tt></a> (NickServ)
+<br><a href="#oper.admin"><tt>ADMIN</tt></a>
+<br><a href="#nick.ajoin"><tt>AJOIN</tt></a>
+<br><a href="#chan.akick"><tt>AKICK</tt></a>
+<br><a href="#oper.akill"><tt>AKILL</tt></a>
+<br><a href="#chan.aop"><tt>AOP</tt></a>
+<br><a href="#nick.auth"><tt>AUTH</tt></a>
+
+<a name=6.B></a><h4>B</h4>
+
+<a name=6.C></a><h4>C</h4>
+<br><a href="#chan.clear"><tt>CLEAR</tt></a>
+<br><a href="#nick.clearauth"><tt>CLEARAUTH</tt></a>
+<br><a href="#oper.clearchan"><tt>CLEARCHAN</tt></a>
+<br><a href="#oper.clearmodes"><tt>CLEARMODES</tt></a>
+
+<a name=6.D></a><h4>D</h4>
+<br><a href="#chan.dehalfop"><tt>DEHALFOP</tt></a>
+<br><a href="#memo.del"><tt>DEL</tt></a>
+<br><a href="#chan.deop"><tt>DEOP</tt></a>
+<br><a href="#chan.deprotect"><tt>DEPROTECT</tt></a>
+<br><a href="#chan.devoice"><tt>DEVOICE</tt></a>
+<br><a href="#chan.drop"><tt>DROP</tt></a> (ChanServ)
+<br><a href="#nick.drop"><tt>DROP</tt></a> (NickServ)
+<br><a href="#nick.dropemail"><tt>DROPEMAIL</tt></a>
+<br><a href="#nick.dropnick"><tt>DROPNICK</tt></a>
+
+<a name=6.E></a><h4>E</h4>
+<br><a href="#oper.exception"><tt>EXCEPTION</tt></a>
+
+<a name=6.F></a><h4>F</h4>
+<br><a href="#chan.forbid"><tt>FORBID</tt></a> (ChanServ)
+<br><a href="#nick.forbid"><tt>FORBID</tt></a> (NickServ)
+<br><a href="#memo.forward"><tt>FORWARD</tt></a>
+
+<a name=6.G></a><h4>G</h4>
+<br><a href="#nick.getauth"><tt>GETAUTH</tt></a>
+<br><a href="#oper.getkey"><tt>GETKEY</tt></a>
+<br><a href="#chan.getpass"><tt>GETPASS</tt></a> (ChanServ)
+<br><a href="#nick.getpass"><tt>GETPASS</tt></a> (NickServ)
+<br><a href="#nick.ghost"><tt>GHOST</tt></a>
+<br><a href="#oper.global"><tt>GLOBAL</tt></a>
+
+<a name=6.H></a><h4>H</h4>
+<br><a href="#chan.halfop"><tt>HALFOP</tt></a>
+<br><a href="#chan.hop"><tt>HOP</tt></a>
+
+<a name=6.I></a><h4>I</h4>
+<br><a href="#chan.identify"><tt>IDENTIFY</tt></a> (ChanServ)
+<br><a href="#nick.identify"><tt>IDENTIFY</tt></a> (NickServ)
+<br><a href="#memo.ignore"><tt>IGNORE</tt></a>
+<br><a href="#chan.info"><tt>INFO</tt></a> (ChanServ)
+<br><a href="#memo.info"><tt>INFO</tt></a> (MemoServ)
+<br><a href="#nick.info"><tt>INFO</tt></a> (NickServ)
+<br><a href="#chan.invite"><tt>INVITE</tt></a>
+
+<a name=6.J></a><h4>J</h4>
+<br><a href="#oper.jupe"><tt>JUPE</tt></a>
+
+<a name=6.K></a><h4>K</h4>
+<br><a href="#chan.kick"><tt>KICK</tt></a> (ChanServ)
+<br><a href="#oper.kick"><tt>KICK</tt></a> (OperServ)
+<br><a href="#oper.killclones"><tt>KILLCLONES</tt></a>
+
+<a name=6.L></a><h4>L</h4>
+<br><a href="#chan.levels"><tt>LEVELS</tt></a>
+<br><a href="#nick.link"><tt>LINK</tt></a>
+<br><a href="#chan.list"><tt>LIST</tt></a> (ChanServ)
+<br><a href="#memo.list"><tt>LIST</tt></a> (MemoServ)
+<br><a href="#nick.list"><tt>LIST</tt></a> (NickServ)
+<br><a href="#nick.listchans"><tt>LISTCHANS</tt></a>
+<br><a href="#nick.listemail"><tt>LISTEMAIL</tt></a>
+<br><a href="#nick.listlinks"><tt>LISTLINKS</tt></a>
+<br><a href="#oper.logonnews"><tt>LOGONNEWS</tt></a>
+
+<a name=6.M></a><h4>M</h4>
+<br><a href="#oper.mode"><tt>MODE</tt></a>
+
+<a name=6.N></a><h4>N</h4>
+<br><a href="#chan.nop"><tt>NOP</tt></a>
+
+<a name=6.O></a><h4>O</h4>
+<br><a href="#chan.op"><tt>OP</tt></a>
+<br><a href="#oper.oper"><tt>OPER</tt></a>
+<br><a href="#oper.opernews"><tt>OPERNEWS</tt></a>
+
+<a name=6.P></a><h4>P</h4>
+<br><a href="#chan.protect"><tt>PROTECT</tt></a>
+
+<a name=6.Q></a><h4>Q</h4>
+<br><a href="#oper.quit"><tt>QUIT</tt></a>
+
+<a name=6.R></a><h4>R</h4>
+<br><a href="#oper.raw"><tt>RAW</tt></a>
+<br><a href="#memo.read"><tt>READ</tt></a>
+<br><a href="#nick.reauth"><tt>REAUTH</tt></a>
+<br><a href="#nick.recover"><tt>RECOVER</tt></a>
+<br><a href="#chan.register"><tt>REGISTER</tt></a> (ChanServ)
+<br><a href="#nick.register"><tt>REGISTER</tt></a> (NickServ)
+<br><a href="#oper.rehash"><tt>REHASH</tt></a>
+<br><a href="#nick.release"><tt>RELEASE</tt></a>
+<br><a href="#memo.renumber"><tt>RENUMBER</tt></a>
+<br><a href="#oper.restart"><tt>RESTART</tt></a>
+
+<a name=6.S></a><h4>S</h4>
+<br><a href="#memo.save"><tt>SAVE</tt></a>
+<br><a href="#memo.send"><tt>SEND</tt></a>
+<br><a href="#nick.sendauth"><tt>SENDAUTH</tt></a>
+<br><a href="#oper.servermap"><tt>SERVERMAP</tt></a>
+<br><a href="#stat.servers"><tt>SERVERS</tt></a>
+<br><a href="#oper.session"><tt>SESSION</tt></a>
+<br><a href="#chan.set"><tt>SET</tt></a> (ChanServ)
+<br><a href="#memo.set"><tt>SET</tt></a> (MemoServ)
+<br><a href="#nick.set"><tt>SET</tt></a> (NickServ)
+<br><a href="#oper.set"><tt>SET</tt></a> (OperServ)
+<br><a href="#oper.set_debug"><tt>SET DEBUG</tt></a>
+<br><a href="#chan.set_desc"><tt>SET DESC</tt></a>
+<br><a href="#chan.set_email"><tt>SET EMAIL</tt></a> (ChanServ)
+<br><a href="#nick.set_email"><tt>SET EMAIL</tt></a> (NickServ)
+<br><a href="#chan.set_enforce"><tt>SET ENFORCE</tt></a>
+<br><a href="#chan.set_entrymsg"><tt>SET ENTRYMSG</tt></a>
+<br><a href="#memo.set_forward"><tt>SET FORWARD</tt></a>
+<br><a href="#chan.set_founder"><tt>SET FOUNDER</tt></a>
+<br><a href="#chan.set_hide"><tt>SET HIDE</tt></a> (ChanServ)
+<br><a href="#nick.set_hide"><tt>SET HIDE</tt></a> (NickServ)
+<br><a href="#chan.set_keeptopic"><tt>SET KEEPTOPIC</tt></a>
+<br><a href="#nick.set_kill"><tt>SET KILL</tt></a>
+<br><a href="#nick.set_language"><tt>SET LANGUAGE</tt></a>
+<br><a href="#chan.set_leaveops"><tt>SET LEAVEOPS</tt></a>
+<br><a href="#memo.set_limit"><tt>SET LIMIT</tt></a>
+<br><a href="#nick.set_mainnick"><tt>SET MAINNICK</tt></a>
+<br><a href="#chan.set_mlock"><tt>SET MLOCK</tt></a>
+<br><a href="#chan.set_noexpire"><tt>SET NOEXPIRE</tt></a> (ChanServ)
+<br><a href="#nick.set_noexpire"><tt>SET NOEXPIRE</tt></a> (NickServ)
+<br><a href="#memo.set_notify"><tt>SET NOTIFY</tt></a>
+<br><a href="#chan.set_opnotice"><tt>SET OPNOTICE</tt></a>
+<br><a href="#chan.set_password"><tt>SET PASSWORD</tt></a> (ChanServ)
+<br><a href="#nick.set_password"><tt>SET PASSWORD</tt></a> (NickServ)
+<br><a href="#chan.set_private"><tt>SET PRIVATE</tt></a> (ChanServ)
+<br><a href="#nick.set_private"><tt>SET PRIVATE</tt></a> (NickServ)
+<br><a href="#oper.set_readonly"><tt>SET READONLY</tt></a>
+<br><a href="#chan.set_restricted"><tt>SET RESTRICTED</tt></a>
+<br><a href="#chan.set_secure"><tt>SET SECURE</tt></a> (ChanServ)
+<br><a href="#nick.set_secure"><tt>SET SECURE</tt></a> (NickServ)
+<br><a href="#chan.set_secureops"><tt>SET SECUREOPS</tt></a>
+<br><a href="#chan.set_successor"><tt>SET SUCCESSOR</tt></a>
+<br><a href="#oper.set_supass"><tt>SET SUPASS</tt></a>
+<br><a href="#nick.set_timezone"><tt>SET TIMEZONE</tt></a>
+<br><a href="#chan.set_topiclock"><tt>SET TOPICLOCK</tt></a>
+<br><a href="#chan.set_url"><tt>SET URL</tt></a> (ChanServ)
+<br><a href="#nick.set_url"><tt>SET URL</tt></a> (NickServ)
+<br><a href="#nick.setauth"><tt>SETAUTH</tt></a>
+<br><a href="#oper.sgline"><tt>SGLINE</tt></a>
+<br><a href="#oper.shutdown"><tt>SHUTDOWN</tt></a>
+<br><a href="#chan.sop"><tt>SOP</tt></a>
+<br><a href="#oper.sqline"><tt>SQLINE</tt></a>
+<br><a href="#oper.stats"><tt>STATS</tt></a>
+<br><a href="#chan.status"><tt>STATUS</tt></a> (ChanServ)
+<br><a href="#nick.status"><tt>STATUS</tt></a> (NickServ)
+<br><a href="#oper.su"><tt>SU</tt></a>
+<br><a href="#chan.suspend"><tt>SUSPEND</tt></a> (ChanServ)
+<br><a href="#nick.suspend"><tt>SUSPEND</tt></a> (NickServ)
+<br><a href="#oper.szline"><tt>SZLINE</tt></a>
+
+<a name=6.T></a><h4>T</h4>
+<br><a href="#chan.topic"><tt>TOPIC</tt></a>
+
+<a name=6.U></a><h4>U</h4>
+<br><a href="#chan.unban"><tt>UNBAN</tt></a>
+<br><a href="#nick.unlink"><tt>UNLINK</tt></a>
+<br><a href="#chan.unset"><tt>UNSET</tt></a> (ChanServ)
+<br><a href="#nick.unset"><tt>UNSET</tt></a> (NickServ)
+<br><a href="#chan.unsuspend"><tt>UNSUSPEND</tt></a> (ChanServ)
+<br><a href="#nick.unsuspend"><tt>UNSUSPEND</tt></a> (NickServ)
+<br><a href="#oper.update"><tt>UPDATE</tt></a>
+<br><a href="#stat.users"><tt>USERS</tt></a>
+
+<a name=6.V></a><h4>V</h4>
+<br><a href="#chan.voice"><tt>VOICE</tt></a>
+<br><a href="#chan.vop"><tt>VOP</tt></a>
+
+<a name=6.W></a><h4>W</h4>
+
+<a name=6.X></a><h4>X</h4>
+
+<a name=6.Y></a><h4>Y</h4>
+
+<a name=6.Z></a><h4>Z</h4>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<p align=right><font size=-1><a href=3.html>Previous section: Overview of Services features</a> |
+<a href=index.html>Table of Contents</a> |
+<a href=5.html>Next section: Importing and exporting databases</a></font>
+
+</body>
+</html>

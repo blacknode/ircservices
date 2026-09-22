@@ -1,0 +1,959 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - Appendix C. List of callbacks</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">Appendix C. List of callbacks</h2>
+
+<p class="section-toc">
+     C-1. <a href="#s1">General notes</a>
+<br/>C-2. <a href="#s2">Services core callbacks</a>
+<br/>C-3. <a href="#s3">OperServ callbacks</a>
+<br/>C-4. <a href="#s4">NickServ callbacks</a>
+<br/>C-5. <a href="#s5">ChanServ callbacks</a>
+<br/>C-6. <a href="#s6">MemoServ callbacks</a>
+<br/>C-7. <a href="#s7">StatServ callbacks</a>
+<br/>C-8. <a href="#s8">HTTP server callbacks</a>
+</p>
+
+<p class="backlink"><a href="index.html">Table of Contents</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">C-1. General notes</h3>
+
+<p>The callbacks provided by Services are listed in this appendix under the
+names used to access them (<i>e.g.,</i> with <tt>add_callback()</tt>).
+When using Services core callbacks, use a <tt><i>module</i></tt> parameter
+of <tt>NULL</tt>.</p>
+
+<p>Where the descriptions below refer to "processing" a message, they refer
+to a message that is meant specifically for the callback in question and
+which is not to be passed on to other modules or the Services core.</p>
+
+<p>Except as otherwise specified, callbacks which return zero must leave
+all arguments unchanged, and callbacks which return nonzero may modify any
+arguments which are not specified as <tt>const</tt>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">C-2. Services core callbacks</h3>
+
+<dl>
+<dt><tt><b>channel create</b></tt>
+<br/>Parameters: <tt>Channel *<i>channel</i></tt>, <tt>User *<i>user</i></tt>,
+	<tt>int32 <i>mode</i></tt></dt>
+    <dd>Called when a channel is created (<i>i.e.</i>, when a client joins
+	a nonexistent channel).  The client that created the channel and
+	that client's modes (<tt>CUMODE_*</tt>) are also passed to the
+	callback (note that the client is not yet in the channel's client
+	list).  The callback routine should always return 0.</dd>
+
+<dt><tt><b>channel delete</b></tt>
+<br/>Parameters: <tt>Channel *<i>channel</i></tt></dt>
+    <dd>Called when a channel is about to be deleted (<i>i.e.</i>, when the
+	last client has left the channel).  The callback routine should
+	always return 0.</dd>
+
+<dt><tt><b>channel JOIN</b></tt>
+<br/>Parameters: <tt>Channel *<i>channel</i></tt>,
+	<tt>struct c_userlist *<i>u</i></tt></dt>
+    <dd>Called when a client has joined a channel.  The callback routine
+	should always return 0.</dd>
+
+<dt><tt><b>channel JOIN check</b></tt>
+<br/>Parameters: <tt>const char *<i>channel</i></tt>, <tt>User *<i>user</i></tt></dt>
+    <dd>Called when a client is about to join a channel.  The callback
+	routine should return 1 to refuse the client access to the channel
+	or 0 to allow the <tt>JOIN</tt> to proceed normally.</dd>
+
+<dt><tt><b>channel KICK</b></tt>
+<br/>Parameters: <tt>Channel *<i>channel</i></tt>, <tt>User *<i>user</i></tt>,
+	<tt>const char *<i>reason</i></tt>, <tt>const char *<i>source</i></tt></dt>
+    <dd>Called when a client has been kicked from a channel.  The callback
+	routine should always return 0.</dd>
+
+<dt><tt><b>channel MODE</b></tt>
+<br/>Parameters: <tt>const char *<i>source</i></tt>,
+	<tt>Channel *<i>channel</i></tt>, <tt>int <i>modechar</i></tt>,
+	<tt>int <i>add</i></tt>, <tt>char **<i>av</i></tt></dt>
+    <dd>Called for each valid mode character in a <tt>MODE</tt> message,
+	except for channel user modes (<tt>+o</tt>, <tt>+v</tt>, etc.).
+	<tt><i>add</i></tt> is nonzero if adding modes, zero if removing
+	them.  <tt><i>av</i></tt> points to the first argument for the
+	mode; there are guaranteed to be enough arguments for the mode
+	character (provided the number of parameters in the mode definition
+	is set correctly).  The callback routine should return 1 if it
+	processes the mode, 0 otherwise.</dd>
+
+<dt><tt><b>channel mode change</b></tt>
+<br/>Parameters: <tt>Channel *<i>channel</i></tt></dt>
+    <dd>Called when a channel's modes have changed.  The callback routine
+	should always return 0.</dd>
+
+<dt><tt><b>channel umode change</b></tt>
+<br/>Parameters: <tt>Channel *<i>channel</i></tt>,
+	<tt>struct c_userlist *<i>user</i></tt></dt>
+    <dd>Called when a client's modes on a channel have changed.  The
+	callback routine should always return 0.</dd>
+
+<dt><tt><b>channel PART</b></tt>
+<br/>Parameters: <tt>Channel *<i>channel</i></tt>, <tt>User *<i>user</i></tt>,
+	<tt>const char *<i>reason</i></tt></dt>
+    <dd>Called when a client parts from a channel.  The callback routine
+	should always return 0.</dd>
+
+<dt><tt><b>channel TOPIC</b></tt>
+<br/>Parameters: <tt>Channel *channel</tt>, <tt>const char *topic</tt>,
+	<tt>const char *setter</tt>
+    <tt>time_t topic_time</tt></dt>
+    <dd>Called when a <tt>TOPIC</tt> command is received.  The callback
+	routine should return 0 to permit the topic change or 1 to refuse
+	it.  Note that <tt><i>setter</i></tt> may be in the form
+	"<tt><i>nick</i>!<i>user</i>@<i>host</i></tt>" instead of just a
+	nickname, depending on the remote server type; however, Services
+	currently stores only the nickname, and discards the username and
+	hostname if present.</dd>
+
+<dt><tt><b>clear channel</b></tt>
+<br/>Parameters: <tt>const char *<i>source</i></tt>,
+	<tt>Channel *<i>channel</i></tt>, <tt>int <i>what</i></tt>,
+	<tt>const void *<i>param</i></tt></dt>
+    <dd>Called whenever the <tt>clear_channel()</tt> function (in
+	<tt>actions.c</tt>) is called, before any other action is taken.
+	The callback routine should return 1 to terminate
+	<tt>clear_channel()</tt> processing or 0 to continue.  Note that
+	even if the callback routine returns 1, <tt>clear_channel()</tt>
+	will still flush out any channel mode changes, so the routine does
+	not need to do this itself.  See the comments above
+	<tt>clear_channel()</tt> in <tt>actions.c</tt> for the meaning of
+	the parameters.</dd>
+
+<dt><tt><b>command line</b></tt>
+<br/>Parameters: <tt>char *<i>option</i></tt>, <tt>char *<i>value</i></tt></dt>
+    <dd>Called at program startup for each command-line option.
+	<tt><i>option</i></tt> is the name of the option (the part of the
+	option string after the initial "<tt>-</tt>", up to and not
+	including any "<tt>=</tt>"), and <tt><i>value</i></tt>" is the text
+	after the "<tt>=</tt>" (<tt>NULL</tt> if no "<tt>=</tt>" is present).
+	<tt><i>option</i></tt> is guaranteed to be non-<tt>NULL</tt>.  The
+	callback routine should return 0 if it does not recognize the
+	option, 1 if it successfully processes the option, 2 if there is an
+	error processing the option, or 3 if no error occurred but Services
+	should terminate successfully.</dd>
+
+<dt><tt><b>connect</b></tt>
+<br/>Parameters: none</dt>
+    <dd>Called when a connection to the remote server is established.
+	Modules that want to send data to the remote server on startup
+	should use this callback; attempting to send data to the server
+	before the connection is established will cause the data to be
+	lost.  The callback routine should always return 0.</dd>
+
+<dt><tt><b>introduce_user</b></tt>
+<br/>Parameters: <tt>char *<i>nick</i></tt></dt>
+    <dd>Called whenever Services may need to introduce a pseudoclient (at
+	startup and when receiving a <tt>KILL</tt> message).  The
+	<tt><i>nick</i></tt> parameter is the nickname of the pseudoclient
+	which should be introduced (if it exists), or <tt>NULL</tt> when
+	introducing all pseudoclients.  The callback routine should return
+	1 if <tt>nick</tt> is not <tt>NULL</tt> <i>and</i> the routine
+	introduces a pseudoclient, 0 otherwise.  (If <tt>nick</tt> is
+	<tt>NULL</tt>, the routine should introduce any pseudoclients
+	necessary and return 0.)</dd>
+
+<dt><tt><b>load module</b></tt>
+<br/>Parameters: <tt>Module *<i>module</i></tt>,
+	<tt>const char *<i>modname</i></tt></dt>
+    <dd>Called when a module is loaded, after its <tt>init_module()</tt>
+	routine has been called.  <tt><i>modname</i></tt> is the name of
+	the module, either specified by the module (<tt>char
+	module_name[]</tt>) or copied from the module's path.  The callback
+	routine should always return 0.  This callback may be used, for
+	example, to add callback routines to a new module's callbacks when
+	the module is loaded.</dd>
+
+<dt><tt><b>m_privmsg</b></tt>
+<br/>Parameters: <tt>char *<i>source</i></tt>, <tt>char *<i>target</i></tt>,
+	<tt>char *<i>message</i></tt></dt>
+    <dd>Called for every <tt>PRIVMSG</tt> which is not ignored by Services.
+	The callback routine should return 1 if it processes the message,
+	0 otherwise.</dd>
+
+<dt><tt><b>m_whois</b></tt>
+<br/>Parameters: <tt>char *<i>source</i></tt>, <tt>char *<i>target</i></tt>,
+	<tt>char *<i>target_server</i></tt></dt>
+    <dd>Called for every <tt>WHOIS</tt> command.  The callback routine
+	should return 1 if it processes the message, 0 otherwise.</dd>
+
+<dt><tt><b>receive message</b></tt>
+<br/>Parameters: <tt>char *<i>source</i></tt>, <tt>char *<i>cmd</i></tt>,
+	<tt>int <i>ac</i></tt>, <tt>char **<i>av</i></tt></dt>
+    <dd>Called for every message received from the uplink server.  The
+	callback routine should return 1 if it processes the message, 0
+	otherwise.  Note that it is acceptable for a callback routine to
+	modify the parameters passed and return 0 to allow the next routine
+	to continue, subject to the following constraints:
+	<ul>
+	<li>The number of message parameters (<tt><i>ac</i></tt>) is not
+	    changed.</li>
+	<li>None of the strings (<tt><i>source</i></tt>, <tt><i>cmd</i></tt>,
+	    or any element of <tt><i>av</i></tt>) are lengthened.
+	    (Shortening strings is allowed.)</li>
+	</ul></dd>
+
+<dt><tt><b>reconfigure</b></tt>
+<br/>Parameters: <tt>int <i>after_configure</i></tt></dt>
+    <dd>Called twice when Services is signalled to re-read its
+	configuration files.  The first call is made before any module
+	configuration data is changed (but after the main Services
+	configuration settings have been updated), with
+	<tt>after_configure</tt> set to 0; the second call is made after
+	all configuration data has been successfully read and configuration
+	variables have been updated, with <tt>after_configure</tt> set to
+	1.  Callback routines should always return 0.</dd>
+
+<dt><tt><b>save data</b></tt>
+<br/>Parameters: none</dt>
+    <dd>Called whenever the save-data timeout runs out, or another action,
+	such as OperServ <tt>UPDATE</tt>, explicitly causes data saving to
+	occur.  The callback routine should always return 0.</dd>
+
+<dt><tt><b>save data complete</b></tt>
+<br/>Parameters: <tt>int <i>successful</i></tt></dt>
+    <dd>Called when a save-data operation completes.  The
+	<tt><i>successful</i></tt> parameter indicates whether the
+	operation succeeded or not.  The callback routine should always
+	return 0.</dd>
+
+<dt><tt><b>server create</b></tt>
+<br/>Parameters: <tt>Server *<i>server</i></tt></dt>
+    <dd>Called whenever a new server joins the network, after the server
+	record is created.  The callback routine should always return 0.</dd>
+
+<dt><tt><b>server delete</b></tt>
+<br/>Parameters: <tt>Server *<i>server</i></tt>,
+	<tt>const char *<i>reason</i></tt></dt>
+    <dd>Called whenever a server splits from the network, before the server
+	record is deleted.  The callback routine should always return 0.</dd>
+
+<dt><tt><b>set topic</b></tt>
+<br/>Parameters: <tt>const char *<i>source</i></tt>, <tt>Channel *<i>c</i></tt>,
+	<tt>const char *<i>topic</i></tt>, <tt>const char *<i>setter</i></tt>,
+	<tt>time_t <i>t</i></tt></dt>
+    <dd>Called twice whenever <tt>set_topic()</tt> (in <tt>actions.c</tt>)
+	is called to set the topic of a channel from Services.  Parameters
+	are as for <tt>set_topic()</tt> (in <tt>actions.c</tt>), except as
+	noted below; <tt><i>source</i></tt> will always be non-<tt>NULL</tt>.
+	The first call is done before the channel structure is modified,
+	and all callback routines must return 0 in this case.  The second
+	call is done after the channel structure is modified, but before
+	<tt>c-&gt;topic_time</tt> is changed; in this call,
+	<tt><i>topic</i></tt> and <tt><i>setter</i></tt> are both
+	<tt>NULL</tt>.  If the callback routine returns 1, no further
+	processing is done.  This is currently used to ensure that the
+	topic time is set so that the IRC servers will acknowledge the
+	change under certain protocols.</dd>
+
+<dt><tt><b>unload module</b></tt>
+<br/>Parameters: <tt>Module *<i>module</i></tt></dt>
+    <dd>Called when a module is unloaded, after its <tt>exit_module()</tt>
+	routine has been called.  The module handle <tt><i>module</i></tt>
+	is the same value as was passed to the "<tt>load module</tt>"
+	callback for this module, but the handle may not be used with any
+	module functions except <tt>get_module_name()</tt>.  The callback
+	routine should always return 0.  Note that it is not necessary (and
+	in fact not possible, as mentioned above) to use this callback to
+	remove callback functions from a module which is being unloaded;
+	those callback entries will be removed automatically.</dd>
+
+<dt><tt><b>user check</b></tt>
+<br/>Parameters: <tt>int <i>ac</i></tt>, <tt>char **<i>av</i></tt></dt>
+    <dd>Called whenever a client joins the network, before the
+	<tt>User</tt> record is created.  <tt><i>ac</i></tt> and
+	<tt><i>av</i></tt> are the argument list to the <tt>NICK</tt> (or
+	<tt>USER</tt>) message, as passed to <tt>users.c/do_nick()</tt>.
+	The callback routine should return 0 to allow the client to connect
+	or 1 to disallow (in this case the routine should take action to
+	remove the client from the network, such as sending a <tt>KILL</tt>
+	message).
+
+	<p><i>Notice:</i> When using <tt>add_callback_pri()</tt> with this
+	callback, never add a routine with priority less than -9, or the
+	<tt>operserv/sessions</tt> module will malfunction!</p></dd>
+
+<dt><tt><b>user create</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>int <i>ac</i></tt>,
+	<tt>char **<i>av</i></tt>, <tt>int <i>reconnect</i></tt></dt>
+    <dd>Called whenever a client joins the network, after the <tt>User</tt>
+	record is created.  <tt><i>ac</i></tt> and <tt><i>av</i></tt> are
+	the argument list to the <tt>NICK</tt> (or <tt>USER</tt>) message,
+	as passed to <tt>users.c/do_nick()</tt>.  <tt><i>reconnect</i></tt>
+	is nonzero for clients that are reconnecting after a network split.
+	The callback routine should always return 0.</dd>
+
+<dt><tt><b>user delete</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>reason</i></tt>,
+	<tt>int <i>is_kill</i></tt></dt>
+    <dd>Called whenever a client leaves the network (whether by
+	<tt>QUIT</tt> or <tt>KILL</tt>), before the <tt>User</tt> record is
+	deleted.  <tt><i>is_kill</i></tt> is 1 if the client is
+	disconnecting because of a <tt>KILL</tt>, 0 if because of a
+	<tt>QUIT</tt>.  The callback routine should always return 0.</dd>
+
+<dt><tt><b>user MODE</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>int <i>modechar</i></tt>,
+	<tt>int <i>add</i></tt>, <tt>char **<i>av</i></tt></dt>
+    <dd>Called for every mode character given in a client <tt>MODE</tt>
+	message.  <tt><i>add</i></tt> is nonzero when adding modes and zero
+	when subtracting.  <tt><i>av</i></tt> points to the first argument
+	for the mode; there are guaranteed to be enough arguments for the
+	mode character (provided the number of parameters in the mode
+	definition is set correctly).  The callback routine should return 1
+	if it processes the mode, 0 otherwise.</dd>
+
+<dt><tt><b>user nickchange (after)</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>const char *<i>oldnick</i></tt></dt>
+    <dd>Called whenever a client changes nicknames, after the nickname is
+	actually changed.  The callback routine should return 1 if it
+	kills the client, 0 otherwise.</dd>
+
+<dt><tt><b>user nickchange (before)</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>const char *<i>newnick</i></tt></dt>
+    <dd>Called whenever a client changes nicknames, before the nickname is
+	actually changed.  The callback routine should always return 0.
+	Note that clients should never be killed within this callback; use
+	the "<tt>user nickchange (after)</tt>" callback for that.</dd>
+
+<dt><tt><b>user servicestamp change</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt></dt>
+    <dd>Called when a client's Services timestamp (the <tt>servicestamp</tt>
+	field) is altered and the network should be informed of it.  The
+	callback routine should always return 0.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">C-3. OperServ callbacks</h3>
+
+<dl>
+<dt><tt><b>command</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>command</i></tt></dt>
+    <dd>Called for every message (other than a CTCP <tt>PING</tt> or empty
+	message) received by OperServ.  <tt><i>command</i></tt> is the
+	first word in the message (where words are separated by spaces);
+	the remaining text can be obtained through repeated calls to
+	<tt>strtok()</tt> with a <tt>NULL</tt> first parameter.  The
+	callback routine should return 1 if it processes the message, 0
+	otherwise.  If the routine does not process the message, it
+	<i>must not</i> call <tt>strtok()</tt>.</dd>
+
+<dt><tt><b>expire maskdata</b></tt>
+<br/>Parameters: <tt>uint32 <i>type</i></tt>, <tt>MaskData *<i>md</i></tt></dt>
+    <dd>Called when a <tt>MaskData</tt> entry is about to be expired, just
+	before it is actually deleted.  The callback routine should always
+	return 0.</dd>
+
+<dt><tt><b>HELP</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>param</i></tt></dt>
+    <dd>Called when the <tt>HELP</tt> command is used with a parameter.
+	The callback should return 1 if it processes the message, 0
+	otherwise.</dd>
+
+<dt><tt><b>HELP COMMANDS</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>int <i>which</i></tt></dt>
+    <dd>Called when the <tt>HELP COMMANDS</tt> command is used.  The
+	<tt><i>which</i></tt> parameter is 0 when called after the list of
+	unprivileged (IRC operator) commands, 1 after the Services operator
+	commands, 2 after the Services administrator commands, and 3 after
+	the Services root commands.  The callback routine should always
+	return 0.</dd>
+
+<dt><tt><b>SET</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>char *<i>option</i></tt>,
+	<tt>char *<i>param</i></tt></dt>
+    <dd>Called when the <tt>SET</tt> command is used.  All parameters are
+	guaranteed to be valid (non-<tt>NULL</tt>); <tt><i>param</i></tt>
+	may contain multiple words.  The callback routine should return 1
+	if it processes the given option, 0 otherwise.</dd>
+
+<dt><tt><b>STATS</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>extra</i></tt></dt>
+    <dd>Called for every <tt>STATS</tt> command that is not plain
+	"<tt>STATS</tt>", "<tt>STATS ALL</tt>", "<tt>STATS NETWORK</tt>",
+	or "<tt>STATS RESET</tt>".  "<tt>extra</tt>" contains the remainder
+	of the message (after <tt>STATS</tt> and any following whitespace).
+	The callback routine should return 1 if it processes the command, 0
+	otherwise.</dd>
+
+<dt><tt><b>STATS ALL</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>,
+	<tt>const char *<i>s_OperServ</i></tt></dt>
+    <dd>Called for every <tt>STATS ALL</tt> command.
+	<tt><i>s_OperServ</i></tt> is the OperServ pseudoclient nickname;
+	the callback routine should send messages using this nickname.  The
+	callback routine should always return 0.</dd>
+
+<dt><tt><b>cancel_akill</b></tt> (<tt>operserv/akill</tt> module)
+<br/>Parameters: <tt>const char *<i>username</i></tt>,
+	<tt>const char *<i>host</i></tt></dt>
+    <dd>Called when an autokill is to be removed from the uplink server.
+	The callback routine should return 1 if it removes the autokill, 0
+	otherwise.</dd>
+
+<dt><tt><b>cancel_exclude</b></tt> (<tt>operserv/akill</tt> module)
+<br/>Parameters: <tt>const char *<i>username</i></tt>,
+	<tt>const char *<i>host</i></tt></dt>
+    <dd>Called when an autokill exclusion is to be removed from the uplink
+	server.  The callback routine should return 1 if it removes the
+	autokill exclusion, 0 otherwise.</dd>
+
+<dt><tt><b>send_akill</b></tt> (<tt>operserv/akill</tt> module)
+<br/>Parameters: <tt>const char *username</tt>, <tt>const char *host</tt>,
+	<tt>time_t expires</tt>, <tt>const char *who</tt>,
+	<tt>const char *reason</tt></dt>
+    <dd>Called when an autokill is to be sent to the uplink server.  The
+	callback routine should return 1 if it sends the autokill, 0
+	otherwise.</dd>
+
+<dt><tt><b>send_exclude</b></tt> (<tt>operserv/akill</tt> module)
+<br/>Parameters: <tt>const char *username</tt>, <tt>const char *host</tt>,
+	<tt>time_t expires</tt>, <tt>const char *who</tt>,
+	<tt>const char *reason</tt></dt>
+    <dd>Called when an autokill exclusion is to be sent to the uplink
+	server.  The callback routine should return 1 if it sends the
+	autokill exclusion, 0 otherwise.</dd>
+
+<dt><tt><b>cancel_sgline</b></tt> (<tt>operserv/sline</tt> module)
+<br/>Parameters: <tt>const char *<i>mask</i></tt></dt>
+    <dd>Called when an SGline is to be removed from the uplink server.
+	The callback routine should return 1 if it removes the SGline, 0
+	otherwise.</dd>
+
+<dt><tt><b>cancel_sqline</b></tt> (<tt>operserv/sline</tt> module)
+<br/>Parameters: <tt>const char *<i>mask</i></tt></dt>
+    <dd>Called when an SQline is to be removed from the uplink server.
+	The callback routine should return 1 if it removes the SQline, 0
+	otherwise.</dd>
+
+<dt><tt><b>cancel_szline</b></tt> (<tt>operserv/sline</tt> module)
+<br/>Parameters: <tt>const char *<i>mask</i></tt></dt>
+    <dd>Called when an SZline is to be removed from the uplink server.
+	The callback routine should return 1 if it removes the SZline, 0
+	otherwise.</dd>
+
+<dt><tt><b>send_sgline</b></tt> (<tt>operserv/sline</tt> module)
+<br/>Parameters: <tt>const char *<i>mask</i></tt>, <tt>time_t expires</tt>,
+	<tt>const char *who</tt>, <tt>const char *reason</tt></dt>
+    <dd>Called when an SGline is to be sent to the uplink server.  The
+	callback routine should return 1 if it sends the SGline, 0
+	otherwise.</dd>
+
+<dt><tt><b>send_sqline</b></tt> (<tt>operserv/sline</tt> module)
+<br/>Parameters: <tt>const char *<i>mask</i></tt>, <tt>time_t expires</tt>,
+	<tt>const char *who</tt>, <tt>const char *reason</tt></dt>
+    <dd>Called when an SQline is to be sent to the uplink server.  The
+	callback routine should return 1 if it sends the SQline, 0
+	otherwise.</dd>
+
+<dt><tt><b>send_szline</b></tt> (<tt>operserv/sline</tt> module)
+<br/>Parameters: <tt>const char *<i>mask</i></tt>, <tt>time_t expires</tt>,
+	<tt>const char *who</tt>, <tt>const char *reason</tt></dt>
+    <dd>Called when an SZline is to be sent to the uplink server.  The
+	callback routine should return 1 if it sends the SZline, 0
+	otherwise.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s4">C-4. NickServ callbacks</h3>
+
+<dl>
+<dt><tt><b>authed</b></tt> (module <tt>nickserv/mail-auth</tt>)
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>NickInfo *<i>ni</i></tt>,
+	<tt>NickGroupInfo *<i>ngi</i></tt>, <tt>int <i>authreason</i></tt></dt>
+    <dd>Called when a client successfully authenticates its nickname with
+	the <tt>AUTH</tt> command, after all normal processing has been
+	performed.  <tt><i>authreason</i></tt> is the value that the
+	<tt>ngi-&gt;authreason</tt> field had before being cleared (one of
+	the <tt>NICKAUTH_*</tt> constants).  The callback routine should
+	always return 0.</dd>
+
+<dt><tt><b>cancel user</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>int <i>old_status</i></tt>,
+	<tt>int <i>old_authstat</i></tt></dt>
+    <dd>Called whenever the <tt>cancel_user()</tt> routine is called for a
+	client with a registered nickname.  <tt><i>old_status</i></tt> is
+	the value of the client's nickname's <tt>status</tt> field while
+	the nickname was in use (when the callback is called, all temporary
+	flags will have been cleared); <tt><i>old_authstat</i></tt> is
+	likewise the value before clearing of the nickname group's
+	<tt>authstat</tt> field.  The callback routine should always
+	return 0.</dd>
+
+<dt><tt><b>check_expire</b></tt>
+<br/>Parameters: <tt>NickInfo *ni, NickGroupInfo *<i>ngi</i></tt></dt>
+    <dd>Called when a nickname is being checked for expiration, after the
+	nickname's last-used time has been updated (if appropriate).  The
+	callback routine should return 1 if the nickname should be expired,
+	0 otherwise.  If returning 1, the callback routine should log an
+	appropriate message.</dd>
+
+<dt><tt><b>check recognized</b></tt>
+<br/>Parameters: <tt>const User *<i>u</i></tt></dt>
+    <dd>Called whenever Services needs to check whether a client is
+	recognized as being the owner of the nickname it is using
+	(<i>e.g.,</i> when the client connects to the network).  The
+	<tt>User</tt> structure is guaranteed to have valid
+	<tt><i>ni</i></tt> and <tt><i>ngi</i></tt> pointers.  The callback
+	routine should return:
+	<ul>
+	<li>0, to indicate that the client was not recognized;</li>
+	<li>1, to indicate that the client was recognized as the owner of
+		the nickname; or</li>
+	<li>2, to indicate that the client should <i>not</i> be recognized
+		as the owner of the nickname, regardless of any subsequent
+		checks.</li>
+	</ul></dd>
+
+<dt><tt><b>collide</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt></dt>
+    <dd>Called whenever NickServ determines that a client should be
+	"collided".  The callback should return 1 if it handles colliding
+	the client (for example, by forcibly changing the client's
+	nickname), or 0 to allow normal collide processing to continue.</dd>
+
+<dt><tt><b>command</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>command</i></tt></dt>
+    <dd>Called for every message (other than a CTCP <tt>PING</tt> or empty
+	message) received by NickServ.  See the OperServ "<tt>command</tt>"
+	callback for details.</dd>
+
+<dt><tt><b>HELP</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>param</i></tt></dt>
+    <dd>Called when the <tt>HELP</tt> command is used with a parameter.
+	The callback should return 1 if it processes the messages, 0
+	otherwise.</dd>
+
+<dt><tt><b>HELP COMMANDS</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>int <i>which</i></tt></dt>
+    <dd>Called when the <tt>HELP COMMANDS</tt> command is used.  The
+	<tt><i>which</i></tt> parameter is 0 when called after the list of
+	unprivileged commands and 1 after the list of privileged commands
+	(those shown to IRC operators).  The callback routine should always
+	return 0.</dd>
+
+<dt><tt><b>identified</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>int <i>old_authstat</i></tt></dt>
+    <dd>Called when a client identifies for its nickname via the IDENTIFY
+	command.  <tt><i>old_authstat</i></tt> is the authorization status
+	of the nickname before the identify took place.  The callback
+	routine should always return 0.</dd>
+
+<dt><tt><b>IDENTIFY check</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>char *<i>pass</i></tt></dt>
+    <dd>Called when a client attempts to identify for its nickname, after the
+	standard checks (whether the nickname exists, etc.) are done but before
+	the password itself is checked.  The callback routine should return
+	1 to disallow identification or 0 to allow processing to continue
+	normally.</dd>
+
+<dt><tt><b>nick delete</b></tt>
+<br/>Parameters: <tt>NickInfo *<i>ni</i></tt></dt>
+    <dd>Called when a nickname's registration is deleted.  The callback routine
+	should always return 0.</dd>
+
+<dt><tt><b>nickgroup delete</b></tt>
+<br/>Parameters: <tt>NickGroupInfo *<i>ngi</i></tt>,
+	<tt>const char *<i>oldnick</i></tt></dt>
+    <dd>Called when a nickname group is deleted (<i>i.e.</i>, when the last
+	nickname for the group is deleted), after the "<tt>nick delete</tt>"
+	callback is called.  <tt><i>oldnick</i></tt> is the nickname whose
+	deletion caused this nickname group to be deleted.  The callback
+	routine should always return 0.</dd>
+
+<dt><tt><b>REGISTER/LINK check</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>const char *<i>nick</i></tt>,
+	<tt>char *<i>password</i></tt>, <tt>char *<i>email</i></tt></dt>
+    <dd>Called when a client attempts to register its nickname, after the
+	validity of the parameters has been checked but before checking
+	whether the nickname exists or the password is strong enough.
+	<tt><i>u</i></tt> is the client that sent the <tt>REGISTER</tt>
+	command, and <tt><i>nick</i></tt> is their nickname (the same as
+	<tt><i>u</i>-&gt;nick</tt>).  <tt><i>email</i></tt> may be
+	<tt>NULL</tt> (if the client did not provide an E-mail address),
+	but <tt><i>password</i></tt> will always be non-<tt>NULL</tt>.
+	The callback routine should return 0 to allow the registration to
+	continue or 1 to disallow it.
+
+	<p>Also called by the <tt>nickserv/link</tt> module when a client
+	attempts to link a new nickname to its own.  In this case
+	<tt><i>nick</i></tt> is the requested target nickname (different
+	from <tt><i>u</i>-&gt;nick</tt>), and <tt><i>password</i></tt> and
+	<tt><i>email</i></tt> are both <tt>NULL</tt>.  The callback is
+	called after the nickname is checked for validity (length and
+	invalid characters), but before checking whether the client has
+	registered their current nickname.  The callback routine should
+	return 0 to allow the link to be made or 1 to disallow it.</p></dd>
+
+<dt><tt><b>registered</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>NickInfo *<i>ni</i></tt>,
+	<tt>NickGroupInfo *<i>ngi</i></tt>,
+	<tt>int *<i>replied</i></tt></dt>
+    <dd>Called when a client registers its nickname, after the data
+	structures have been set up.  The integer pointed to by
+	<tt><i>replied</i></tt> can be set to 1 to disable the standard
+	"your nickname has been registered" reply.  The callback need not call
+	<tt>put_<i>xxx</i>()</tt> even if it modifies <tt><i>ni</i></tt> or
+	<tt><i>ngi</i></tt>, as the caller will do so afterwards.  The
+	callback routine should always return 0.</dd>
+
+<dt><tt><b>SET</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>NickInfo *<i>ni</i></tt>,
+	<tt>NickGroupInfo *<i>ngi</i></tt>,
+	<tt>char *<i>option</i></tt>, <tt>char *<i>param</i></tt></dt>
+    <dd>Called when the <tt>SET</tt> command is used.  All parameters are
+	guaranteed to be valid (non-<tt>NULL</tt>), and standard permission
+	checks will have been performed (so <tt><i>u</i></tt> either is
+	identified for <tt><i>ni</i></tt>/<tt><i>ngi</i></tt> or is a
+	Services administrator).  The callback routine should return 1 if
+	it processes the given option, 0 otherwise.</dd>
+
+<dt><tt><b>SET EMAIL</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>NickGroupInfo *<i>ngi</i></tt>,
+	<tt>char *<i>last_email</i></tt></dt>
+    <dd>Called when the E-mail address associated with a nickname group is set,
+	changed, or unset.  <tt><i>u</i></tt> is the client making the
+	change; this may not necessarily be the owner of the nickname if, for
+	example, a Services administrator is making the change.  The new
+	address is stored in <tt><i>ngi</i>-&gt;email</tt>, while the
+	previous address is passed in <tt><i>last_email</i></tt> (this will
+	be <tt>NULL</tt> if no address was previously set).  The callback
+	routine should always return 0.</dd>
+
+<dt><tt><b>set identified</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>int <i>old_authstat</i></tt></dt>
+    <dd>Called whenever the <tt>set_identified()</tt> routine is called for
+	a client, after the nickname structure has been updated.
+	<tt><i>old_authstat</i></tt> is the previous value of the client
+	nickname's <tt>authstat</tt> field.  The callback routine should
+	always return 0.</dd>
+
+<dt><tt><b>UNSET</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>NickInfo *<i>ni</i></tt>,
+	<tt>NickGroupInfo *<i>ngi</i></tt>,
+	<tt>char *<i>option</i></tt></dt>
+    <dd>Called when the <tt>UNSET</tt> command is used.  All parameters are
+	guaranteed to be valid (non-<tt>NULL</tt>), and standard permission
+	checks will have been performed (so <tt><i>u</i></tt> either is
+	identified for <tt><i>ni</i></tt>/<tt><i>ngi</i></tt> or is a
+	Services administrator).  The callback routine should return 1 if
+	it processes the given option, 0 otherwise.</dd>
+
+<dt><tt><b>send_svsjoin</b></tt> (<tt>nickserv/autojoin</tt> module)
+<br/>Parameters: <tt>const char *nick</tt>, <tt>const char *channel</tt></dt>
+    <dd>Called when a client should be forced to join a channel.  The
+	callback routine should return 1 if it forces the client into the
+	channel, 0 otherwise.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s5">C-5. ChanServ callbacks</h3>
+
+<dl>
+<dt><tt><b>check_chan_user_modes</b></tt>
+<br/>Parameters: <tt>const char *<i>source</i></tt>, <tt>User *<i>user</i></tt>,
+	<tt>Channel *<i>c</i></tt>, <tt>int32 <i>modes</i></tt></dt>
+    <dd>Called when checking a client's modes on a channel, before any
+	standard checks are performed.  The mode change is being performed
+	by <tt><i>source</i></tt> (<tt>NULL</tt> for a channel join) on
+	<tt><i>user</i></tt> on channel <tt><i>c</i></tt>, and the client's
+	current modes on the channel are <tt><i>modes</i></tt>.  The
+	callback routine should return 0 to allow normal checking to
+	continue or 1 to abort further checks.
+
+	<p><b>Note:</b> <tt><i>source</i></tt> may be the empty string; this
+	indicates an internal call to verify a client's current modes.  In
+	this case callback routines should not make any decisions about
+	modes based on the value of <tt><i>source</i></tt>.</p></dd>
+
+<dt><tt><b>check_kick</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>const char *<i>chan</i></tt>,
+	<tt>ChannelInfo *<i>ci</i></tt>, <tt>char **<i>mask_ret</i></tt>,
+	<tt>const char **<i>reason_ret</i></tt></dt>
+    <dd>Called when checking whether a client should be kicked from a
+	channel, before any standard checks are performed.  All parameters
+        are guaranteed to be non-<tt>NULL</tt>, except for
+	<tt><i>ci</i></tt>, which will be <tt>NULL</tt> when the channel is
+	not registered.  The callback routine may return:
+	<ul>
+	<li>0, to allow normal processing to continue.</li>
+	<li>1, to cause the client to be kicked from the channel.  In this
+	       case, the callback routine must set <tt>*<i>mask_ret</i></tt>
+	       to a newly <tt>malloc()</tt>/<tt>smalloc()</tt>'d memory
+	       area containing the mask to be banned (<tt>create_mask()</tt>
+	       or <tt>sstrdup()</tt> may also be used) and
+	       <tt>*<i>reason_ret</i></tt> to a string for use as the
+	       reason in the kick.</li>
+	<li>2, to abort further processing and allow the client to enter the
+	       channel.</li>
+	</ul></dd>
+
+<dt><tt><b>check_modes</b></tt>
+<br/>Parameters: <tt>Channel *<i>channel</i></tt>,
+	<tt>ChannelInfo *<i>ci</i></tt>, <tt>int <i>add</i></tt>,
+	<tt>int32 <i>flag</i></tt></dt>
+    <dd>Called when checking a channel's modes against its mode lock for
+	every mode locked either on (<tt>add</tt> nonzero) or off
+	(<tt>add</tt> zero).  The callback routine should return 1 if it
+	processes the mode, 0 if not.  If a mode is not processed by any
+	callback and is further not specially handled by Services
+	(<tt>+k</tt> and <tt>+l</tt> modes), the default action is to
+	simply modify the channel's current modes to match the mode lock
+	(by calling <tt>set_cmode(...,"+<i>X</i>")</tt> or
+	<tt>set_cmode(...,"-<i>X</i>")</tt> for mode <tt><i>X</i></tt>), so
+	it is not necessary to add a callback for modes for which this
+	behavior is sufficient.</dd>
+
+<dt><tt><b>CLEAR</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>Channel *<i>channel</i></tt>,
+	<tt>char *<i>what</i></tt></dt>
+    <dd>Called when a valid <tt>CLEAR</tt> command is received (<i>i.e.</i>,
+	from a client with permission to use the command on the given
+	channel).  The callback routine should return 1 if it processes the
+	command, 0 if not.</dd>
+
+<dt><tt><b>command</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>command</i></tt></dt>
+    <dd>Called for every message (other than a CTCP <tt>PING</tt> or empty
+	message) received by ChanServ.  See the OperServ "<tt>command</tt>"
+	callback for details.</dd>
+
+<dt><tt><b>HELP</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>param</i></tt></dt>
+    <dd>Called when the <tt>HELP</tt> command is used with a parameter.
+	The callback should return 1 if it processes the message, 0
+	otherwise.</dd>
+
+<dt><tt><b>HELP COMMANDS</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>int <i>which</i></tt></dt>
+    <dd>Called when the <tt>HELP COMMANDS</tt> command is used.  The
+	<tt><i>which</i></tt> parameter is 0 when called after the list of
+	unprivileged commands and 1 after the list of privileged commands
+	(those shown to IRC operators).  The callback routine should always
+	return 0.</dd>
+
+<dt><tt><b>INVITE</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>Channel *<i>c</i></tt>,
+	<tt>ChannelInfo *<i>ci</i></tt></dt>
+    <dd>Called whenever a valid <tt>INVITE</tt> command is received
+	(<i>i.e.</i>, the client has permission to use <tt>INVITE</tt> for
+	the channel).  The callback should return 0 to allow normal
+	processing to continue or 1 to abort further processing.</dd>
+
+<dt><tt><b>SET</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>ChannelInfo *<i>ci</i></tt>,
+	<tt>char *<i>option</i></tt>, <tt>char *<i>param</i></tt></dt>
+    <dd>Called when the <tt>SET</tt> command is used.  All parameters are
+	guaranteed to be valid (non-<tt>NULL</tt>), and standard permission
+	checks will have been performed (so `<tt>u</tt>' either is
+	identified for <tt><i>ci</i></tt> or is a Services administrator).
+	The callback routine should return 1 if it processes the given
+	option, 0 otherwise.</dd>
+
+<dt><tt><b>SET MLOCK</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>ChannelInfo *<i>ci</i></tt>,
+	<tt>int <i>modechar</i></tt>, <tt>int <i>add</i></tt>,
+	<tt>char **<i>av</i></tt></dt>
+    <dd>Called for each valid mode character in a <tt>SET MLOCK</tt>
+	command.  <tt><i>add</i></tt> is nonzero if adding modes, zero if
+	removing them.  <tt><i>av</i></tt> points to the first argument for
+	the mode; there are guaranteed to be enough arguments for the mode
+	character (provided the number of arguments in the mode definition
+	is set correctly.  The new mode lock (currently being constructed)
+	is stored in the <tt>ci-&gt;mlock</tt> structure.  The callback
+	routine should return 1 if it encounters an invalid parameter for a
+	mode, 0 otherwise.
+
+	<p>Also called with <tt><i>modechar</i></tt> set to zero when all
+	modes have been processed.  In this case, <tt><i>add</i></tt> and
+	<tt><i>av</i></tt> are undefined, and the callback routine should
+	return 1 if there is a problem with the mode lock, 0 otherwise.</p></dd>
+
+<dt><tt><b>UNBAN</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>Channel *<i>c</i></tt>,
+	<tt>ChannelInfo *<i>ci</i></tt></dt>
+    <dd>Called whenever a valid <tt>UNBAN</tt> command is received
+	(<i>i.e.</i>, the client has permission to use <tt>UNBAN</tt> for the
+	channel). The callback should return 0 to allow normal processing
+	to continue or 1 to abort further processing.</dd>
+
+<dt><tt><b>UNSET</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>ChannelInfo *<i>ci</i></tt>,
+	<tt>char *<i>option</i></tt></dt>
+    <dd>Called when the <tt>UNSET</tt> command is used.  All parameters are
+	guaranteed to be valid (non-<tt>NULL</tt>), and standard permission
+	checks will have been performed (so `<tt>u</tt>' either is
+	identified for <tt><i>ci</i></tt> or is a Services administrator).
+	The callback routine should return 1 if it processes the given
+	option, 0 otherwise.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s6">C-6. MemoServ callbacks</h3>
+
+<dl>
+<dt><tt><b>command</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>command</i></tt></dt>
+    <dd>Called for every message (other than a CTCP <tt>PING</tt> or empty
+	message) received by MemoServ.  See the OperServ "<tt>command</tt>"
+	callback for details.</dd>
+
+<dt><tt><b>HELP</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>param</i></tt></dt>
+    <dd>Called when the <tt>HELP</tt> command is used with a parameter.
+	The callback should return 1 if it processes the message, 0
+	otherwise.</dd>
+
+<dt><tt><b>HELP COMMANDS</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>int <i>which</i></tt></dt>
+    <dd>Called when the <tt>HELP COMMANDS</tt> command is used.  The
+	<tt><i>which</i></tt> parameter is 0 when called after the list of
+	unprivileged commands and 1 after the list of privileged commands
+	(those shown to IRC operators).  The callback routine should always
+	return 0.</dd>
+
+<dt><tt><b>receive memo</b></tt>
+<br/>Parameters: <tt>const User *<i>sender</i></tt>,
+	<tt>const char *<i>target</i></tt>,
+	<tt>NickGroupInfo *<i>target_ngi</i></tt>,
+	<tt>const char *<i>channel</i></tt>, <tt>const char *<i>text</i></tt></dt>
+    <dd>Called when a nickname receives a memo.  <tt><i>sender</i></tt> is
+	the client sending the memo; <tt><i>target</i></tt> is the recipient's
+	nickname, and <tt><i>target_ngi</i></tt> is the corresponding
+	<tt>NickGroupInfo</tt> structure.  <tt><i>channel</i></tt> is the
+	name of the channel the memo was addressed to if a channel memo,
+	<tt>NULL</tt> if an ordinary memo.  The callback should return
+	0 to cause the memo to be received by the target nickname normally,
+	1 if it successfully delivered the memo, or an error message number
+	(from the language string list) if the memo could/should not be
+	delivered.
+
+	<p>Callback routines for this callback should use one of the
+	following two priorities (defined in <tt>memoserv.h</tt>):
+	<tt>MS_RECEIVE_PRI_CHECK</tt> for routines which check whether the
+	memo is allowed to be sent, or <tt>MS_RECEIVE_PRI_DELIVER</tt> for
+	actually sending the memo.</p></dd>
+
+<dt><tt><b>SET</b></tt>
+<br/>Parameters: <tt>User *<i>u</i></tt>, <tt>MemoInfo *<i>mi</i></tt>,
+	<tt>char *<i>option</i></tt>, <tt>char *<i>param</i></tt></dt>
+    <dd>Called when the <tt>SET</tt> command is used.  All parameters are
+	guaranteed to be valid (non-<tt>NULL</tt>), and standard permission
+	checks will have been performed.  <tt><i>mi</i></tt> points to the
+	MemoInfo for the client's nickname.  The callback routine should
+	return 1 if it handles the given option, 0 otherwise.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s7">C-7. StatServ callbacks</h3>
+
+<dl>
+<dt><tt><b>command</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>command</i></tt></dt>
+    <dd>Called for every message (other than a CTCP <tt>PING</tt> or empty
+	message) received by StatServ.  See the OperServ "<tt>command</tt>"
+	callback for details.</dd>
+
+<dt><tt><b>HELP</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>char *<i>param</i></tt></dt>
+    <dd>Called when the <tt>HELP</tt> command is used with a parameter.
+	The callback should return 1 if it processes the message, 0
+	otherwise.</dd>
+
+<dt><tt><b>HELP COMMANDS</b></tt>
+<br/>Parameters: <tt>User *<i>user</i></tt>, <tt>int <i>which</i></tt></dt>
+    <dd>Called when the <tt>HELP COMMANDS</tt> command is used.  The
+	<tt><i>which</i></tt> parameter is currently always 0.  The
+	callback routine should always return 0.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s8">C-8. HTTP server callbacks</h3>
+
+<dl>
+<dt><tt><b>auth</b></tt>
+<br/>Parameters: <tt>Client *<i>c</i></tt>, <tt>int *<i>close_ptr</i></tt></dt>
+    <dd>Called for each valid request received by the server.
+	<tt><i>c</i></tt> is the client from which the request was
+	received; the request data is stored in the client structure
+	(see <tt>http.h</tt>), and at a minimum the <tt>method</tt>,
+	<tt>url</tt>, <tt>version_major</tt>, and <tt>version_minor</tt>
+	fields will be set appropriately.  If the request is denied and the
+	connection should be closed after the reply is sent, the callback
+	routine should set <tt>*<i>close_ptr</i></tt> to a nonzero value
+	(<tt>*<i>close_ptr</i></tt> should not be modified if the request
+	is not denied).  The callback routine should return
+	<tt>HTTP_AUTH_ALLOW</tt> to explicitly allow the request to
+	proceed, <tt>HTTP_AUTH_DENY</tt> to deny the request (in which case
+	the module must send an appropriate error message), or
+	<tt>HTTP_AUTH_UNDECIDED</tt> to pass the request through to the
+	next callback; if all authorization callbacks pass the request
+	through, it is treated as allowed.</dd>
+
+<dt><tt><b>request</b></tt>
+<br/>Parameters: <tt>Client *<i>c</i></tt>, <tt>int *<i>close_ptr</i></tt></dt>
+    <dd>Called for each valid request received by the server and either
+	explicitly allowed or passed through by all authorization
+	callbacks.  <tt><i>c</i></tt> is the client from which the request
+	was received; the request data is stored in the client structure
+	(see <tt>http.h</tt>), and at a minimum the <tt>method</tt>,
+	<tt>url</tt>, <tt>version_major</tt>, and <tt>version_minor</tt>
+	fields will be set appropriately.  If the connection should be
+	closed after the reply is sent, the callback routine should set
+	<tt>*<i>close_ptr</i></tt> to a nonzero value.  The callback
+	routine should return 1 if it processes the request, 0 otherwise.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="index.html">Table of Contents</a></p>
+
+</body>
+</html>

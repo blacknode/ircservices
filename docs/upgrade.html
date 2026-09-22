@@ -1,0 +1,328 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services - Important information about upgrading</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>Important information for users upgrading from previous
+	versions of Services</h2>
+
+<p><a href="#4.5">Upgrading from version 4.5 and earlier to 5.0</a>
+<br><a href="#5.0">Upgrading from version 5.0 to 5.1</a>
+
+<p>Note that information for later versions is applicable to earlier
+versions as well, so please read through to the end of the document.
+
+<p align=right><font size=-1><a href=index.html>Table of Contents</a></font>
+
+<p><hr>
+
+<a name=4.5></a>
+<h2 align=center>Upgrading from version 4.5 and earlier</h2>
+
+<a name=4.5-1></a>
+<h3 align=center>1. Executable and configuration files</h3>
+
+<p>In previous versions of Services, the main executable file (program
+file) was called "<tt>services</tt>"; in version 5.0 it has been renamed to
+"<tt>ircservices</tt>" to match the package name.  Once you are satisfied
+that you don't need the old <tt>services</tt> executable file, you should
+delete it (<tt>make install</tt> will leave it alone).
+
+<p>Also, previous versions of Services (since 4.1.0) used a file called
+"<tt>services.conf</tt>" to control various aspects of the behavior of
+Services.  Services 5.0 also uses such a file, but it has been renamed to
+"<tt>ircservices.conf</tt>" and its format has changed from previous
+versions.  In particular, many of the options from previous versions are
+now module options, and must be placed in a separate file called
+"<tt>modules.conf</tt>".  Please see the manual, and the
+<tt>example-ircservices.conf</tt> and <tt>example-modules.conf</tt> files
+in the data directory, for details.
+
+<p align=center><hr width="50%">
+
+<a name=4.5-2></a>
+<h3 align=center>2. Running the <tt>configure</tt> script</h3>
+
+<p>The <tt>configure</tt> script has been redesigned to require as little
+input as possible; many of the options that previously required user input
+during the configuration process have been moved to the
+<tt>ircservices.conf</tt> file, and the script can now be completely
+automated if you provide the <tt>-prefix</tt> option or both of the
+<tt>-bindest</tt> and <tt>-datdest</tt> options to specify the pathnames
+for installation.  Run <tt>configure</tt> with the <tt>-help</tt> option
+for details on available command-line options.
+
+<p>The <tt>configure</tt> script also now accepts all options in the GNU
+long-option (two leading hyphens) style, so if you are used to the GNU
+autoconf-style <tt>configure</tt>, you can now type <tt>./configure
+--prefix=/usr</tt> (for example) to get the same effect with Services.
+
+<p align=center><hr width="50%">
+
+<a name=4.5-3></a>
+<h3 align=center>3. <tt>listnicks</tt> and <tt>listchans</tt></h3>
+
+<p>Earlier versions of Services provided two additional programs,
+"<tt>listnicks</tt>" and "<tt>listchans</tt>", to show nickname and
+channel data from the command line.  These programs have been removed in
+version 5.0 in favor of the new HTTP interface; the <tt>httpd/dbaccess</tt>
+module provides the same functionality and much, much more.  (It is still
+possible to retrieve data from the command line as well, using the
+<tt>-export</tt> option; see <a href="5.html#1">section 5-1</a> for
+details.)
+
+<p align=center><hr width="50%">
+
+<a name=4.5-4></a>
+<h3 align=center>4. Encrypted passwords</h3>
+
+<p>Unlike previous versions of Services, encryption is no longer an
+"on/off" setting; instead, encryption is enabled by specifying an
+encryption module in <tt>ircservices.conf</tt>.  See the manual
+(<a href="3.html#7">section 3-7</a>) for details.
+
+<p>If you are upgrading from version 4.4.x or earlier, and you use
+MD5-encrypted passwords, <b>your passwords will no longer work</b> due to a
+bug in those versions of Services.  Support is available in version 4.5 for
+reading the broken passwords and allowing them to be reset; if you want to
+give users a chance to change their passwords, you should first upgrade to
+the most recent 4.5.x release, then when most or all of the users have
+reset their passwords, upgrade to version 5.0.  For details, see the What's
+New notes for version 4.5.
+
+<p align=center><hr width="50%">
+
+<a name=4.5-5></a>
+<h3 align=center>5. Using the <tt>mail-auth</tt> module with existing
+databases</h3>
+
+<p>The <tt>mail-auth</tt> module is a new feature in version 5.0 which
+allows E-mail addresses to be checked for validity.  When enabled, all new
+nickname registrations and E-mail address changes will require the user to
+verify that the address provided is valid, by entering an authentication
+code mailed by Services to the address.  However, if you are upgrading from
+an earlier version of Services, some users may already have entered invalid
+E-mail addresses for their nicknames.
+
+<p>To correct this situation, the command-line option
+"<tt>-clear-nick-email</tt>" can be given (note that this option is only
+valid if NickServ is enabled).  When this option is used, Services will
+clear the E-mail address associated with all registered nicknames; all
+users will then be required to enter their E-mail address again and verify
+it with an authentication code before being allowed to identify for their
+nicknames.
+
+<p>If you intend to use the <tt>mail-auth</tt> module, it is recommended
+that you use this option once when starting up Services 5.0 for the first
+time.  This option only needs to be specified once to take effect.
+
+<p align=center><hr width="50%">
+
+<a name=4.5-6></a>
+<h3 align=center>6. Nickname linking system changes</h3>
+
+<p>The nickname linking system used in Services 5.0 is different from that
+used in previous versions.  Rather than a multiple-level "tree" of linked
+nicknames, nicknames are now organized into groups, and the <tt>LINK</tt>
+and <tt>UNLINK</tt> commands add nicknames to or remove nicknames from this
+group.  Functionally, there is little difference between this system and
+using only one level of links in the previous system.  However, the
+<tt>LINK</tt> and <tt>UNLINK</tt> commands work in the opposite direction
+from version 4.x, taking a nickname parameter and adding or removing that
+nickname (for example, "<tt>LINK OtherNick</tt>"), and nicknames to be
+linked must be <i>unregistered</i> nicknames, which is also a change from
+version 4.x; make sure your users are aware of these changes.
+
+<p>Related to these changes, it is also important to note that the
+behavior of the NickServ <tt>UNLINK</tt> and <tt>DROP</tt> commands has
+changed with respect to de-registration of nicknames; in particular, <b>the
+<tt>DROP</tt> command will now drop <i>all</i> linked nicknames!</b>  The
+syntax for the <tt>DROP</tt> command has changed as well, requiring a
+password to confirm the action, and the help message includes a warning,
+but be aware that users may simply append their password to the command
+without checking the help message, resulting in the unintended
+de-registration of all of the user's nicks.  The <tt>UNLINK</tt> command
+should be used to cancel single nicknames out of a group of links (a
+nickname which is unlinked is deregistered as well, similar to
+<tt>UNLINK</tt> followed by <tt>DROP</tt> in version 4.x).
+
+<p align=center><hr width="50%">
+
+<a name=4.5-7></a>
+<h3 align=center>7. Memo expiration</h3>
+
+<p>Version 5.0 of Services provides the ability to automatically delete
+(expire) memos after a certain period of time.  Since this feature was not
+present in previous versions and users may have important information saved
+in memos, Services will not expire any memos which were sent before
+upgrading to version 5.0; thus, it is safe to enable memo expiration without
+having to warn users about loss of saved memos or taking other preventative
+measures.  (However, it would be prudent to inform users that any future
+memos will expire after a certain period of time, if you choose to enable
+memo expiration.)
+
+<p align=center><hr width="50%">
+
+<a name=4.5-8></a>
+<h3 align=center>8. Channel access levels</h3>
+
+<p>Channel access levels have been rescaled in this version of Services to
+make better use of the available range of values; instead of a range of
+-9999 through 9999 where only values -2 through 10 are used, the range has
+been reduced to -999 through 999, and default levels now range from -100 to
+100 (all defaults have been increased by a factor of 10, with the exception
+of <tt>AUTODEOP</tt> and <tt>NOJOIN</tt>, which are no longer changeable in
+version 5.0 but are fixed internally at -1 and -100 respectively).  Level
+values from version 4.x databases will be properly converted to use the new
+range, so that all users will still have the same privileges as they did in
+previous versions.  However, be aware that in some cases involving two
+users with levels outside the range -50 through 50 in version 4.x, if the
+levels are different but close (<i>e.g.</i> 1001 and 1002), then the users
+will have the same access level in version 5.0.  The exact conversion
+function is stepwise linear, as follows (negative levels are converted to
+the negative of the conversion of the absolute value of the level):
+
+<div align=center><table border=0>
+<tr><th colspan=3>&nbsp;&nbsp;Old&nbsp;level&nbsp;(<i>o</i>)&nbsp;
+    <th colspan=3>&nbsp;New&nbsp;level&nbsp;(<i>n</i>)&nbsp;&nbsp;
+    <th>Conversion function
+<tr><td align=right>0<td>. . .<td>25
+    <td align=right>0<td>. . .<td>250
+    <td><i>n</i> = 10<i>o</i>
+<tr><td align=right>25<td>. . .<td>50
+    <td align=right>250<td>. . .<td>300
+    <td><i>n</i> = 2<i>o</i> + 200
+<tr><td align=right>50<td>. . .<td>100
+    <td align=right>300<td>. . .<td>320
+    <td><i>n</i> = 2<i>o</i>/5 + 280
+<tr><td align=right>100<td>. . .<td>1000
+    <td align=right>320<td>. . .<td>500
+    <td><i>n</i> = <i>o</i>/5 + 300
+<tr><td align=right>1000<td>. . .<td>2000
+    <td align=right>500<td>. . .<td>600
+    <td><i>n</i> = <i>o</i>/10 + 400
+<tr><td align=right>&nbsp;&nbsp;2000<td>. . .<td>9999&nbsp;
+    <td align=right>&nbsp;&nbsp;600<td>. . .<td>999&nbsp;&nbsp;&nbsp;
+    <td><i>n</i> = <i>o</i>/20 + 500
+</table></div>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=5.0></a>
+<h2 align=center>Upgrading from version 5.0</h2>
+
+<a name=5.0-1></a>
+<h3 align=center>1. Switching to the new database format</h3>
+
+<p>A new, more robust database file format has been developed for version
+5.1 which is incompatible with the format used in earlier versions.  To
+switch your databases to this format, ensure that the
+<tt>misc/xml-export</tt> and <tt>misc/xml-import</tt> modules are loaded by
+your <tt>ircservices.conf</tt>, and:
+<ol>
+<li>Shut down Services.
+<li>Export your databases to an XML file using the command:
+    <tt>ircservices&nbsp;-export=<i>database.xml</i></tt> (any filename can
+    be used).
+<li>Edit your <tt>ircservices.conf</tt> file and change the line reading
+    <br><tt>&nbsp;&nbsp;&nbsp;&nbsp;LoadModule&nbsp;database/version4</tt>
+    <br>to
+    <br><tt>&nbsp;&nbsp;&nbsp;&nbsp;LoadModule&nbsp;database/<b>standard</b></tt>
+    <br>Also enable the <tt>misc/xml-import</tt> module if it is commented
+    out.
+<li>Import the XML data from step 2 into the new database format using the
+    command: <tt>ircservices&nbsp;-import=<i>database.xml</i></tt>
+<li>Start up Services.
+</ol>
+
+<p>Note that switching to the new database format is not required; you can
+continue to use your 5.0 databases by leaving the <tt>LoadModule
+database/version4</tt> configuration line alone.  However, the new database
+format allows you to recover more data even if the database files get
+corrupted, so its use is recommended.  (It is also possible to switch back
+to the old format from the new one in a similar manner, though all
+5.1-specific data will be lost if the databases are used in an older
+version of Services.)
+
+
+<p align=center><hr width="50%">
+
+<a name=5.0-2></a>
+<h3 align=center>2. Channel memos</h3>
+
+<p>Version 5.1 includes a redesigned channel memo system which distributes
+channel memos to users of the channel (based on the channel access list)
+rather than storing the memos with the channel.  As a result of this
+change, all stored channel memos will be deleted when starting up version
+5.1.  Users should be instructed to save any needed information before the
+upgrade.
+
+<p align=center><hr width="50%">
+
+<a name=5.0-3></a>
+<h3 align=center>3. Encryption handling</h3>
+
+<p>Version 5.1 allows passwords encrypted with different ciphers (or not
+encrypted at all) to coexist in the same database, by keeping track of
+what cipher was used to encrypt the password; this allows for enabling or
+disabling encryption, or changing the encryption type used, without
+concerns of old passwords becoming unusable.
+
+<p>However, since this ability was not present in version 5.0 and earlier,
+Services has no way to know what encryption type was used in databases from
+those versions, and simply defaults to the cipher given in the
+<a href="a.html#EncryptionType"><tt>EncryptionType</tt></a> directive in
+<tt>ircservices.conf</tt> for all passwords.  Therefore, if you continue to
+use the <tt>database/version4</tt> database module in version 5.1, you must
+ensure that <tt>EncryptionType</tt> is set correctly when you first load
+the data; once you have saved the databases using version 5.1, such as with
+the OperServ <tt>UPDATE</tt> or <tt>SHUTDOWN</tt> commands, you can change
+<tt>EncryptionType</tt> freely.
+
+<p>This also applies, of course, to converting databases from 5.0 to the
+new <tt>database/standard</tt> module format; be certain that you do not
+change <tt>EncryptionType</tt> until after you have exported the databases
+to an XML file.
+
+<p align=center><hr width="50%">
+
+<a name=5.0-4></a>
+<h3 align=center>4. NickServ/ChanServ <tt>SENDPASS</tt></h3>
+
+<p>The NickServ and ChanServ <tt>SENDPASS</tt> commands have been removed
+in favor of the new NickServ <tt>REAUTH</tt> command, and the corresponding
+modules (<tt>nickserv/sendpass</tt> and <tt>chanserv/sendpass</tt>) have
+been deleted.  Make certain to remove these modules from your
+<tt>ircservices.conf</tt> file before starting Services 5.1.
+
+<p align=center><hr width="50%">
+
+<a name=5.0-5></a>
+<h3 align=center>5. NickServ <tt>SET</tt> and <tt>UNSET</tt></h3>
+
+<p>Services administrators should be aware that the NickServ <tt>SET</tt>
+and <tt>UNSET</tt> commands now require a "<tt>!</tt>" before the nickname;
+for example, instead of
+<br><tt>&nbsp;&nbsp;&nbsp;&nbsp;/msg NickServ SET nick NOEXPIRE ON</tt>
+<br>type
+<br><tt>&nbsp;&nbsp;&nbsp;&nbsp;/msg NickServ SET <b>!nick</b> NOEXPIRE ON</tt>
+<br>This is to avoid ambiguity where the nickname is the same as an option
+name.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<p align=right><font size=-1><a href=index.html>Table of Contents</a> |
+<a href="#top">Top</a></font>
+
+</body>
+</html>

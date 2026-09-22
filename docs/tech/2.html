@@ -1,0 +1,2864 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<!-- Annoyingly, <u> has been removed, so replacing it with <span style="text-decoration: underline"> -->
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 2. Core Services functionality</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">2. Core Services functionality</h2>
+
+<p class="section-toc">
+     2-1. <a href="#s1">How does Services work?</a>
+<br/>2-2. <a href="#s2">Utility headers and functions</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-2-1. <a href="#s2-1">Header file overview</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-2-2. <a href="#s2-2">Compatibility functions</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-2-3. <a href="#s2-3">Memory allocation</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-2-4. <a href="#s2-4">List and array macros</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-2-5. <a href="#s2-5">Generic hash tables</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-2-6. <a href="#s2-6">Other utility functions</a>
+<br/>2-3. <a href="#s3">Program startup and termination</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-3-1. <a href="#s3-1">Initialization</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-3-2. <a href="#s3-2">Configuration files</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-3-3. <a href="#s3-3">The main loop</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-3-4. <a href="#s3-4">Signals</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-3-5. <a href="#s3-5">Termination</a>
+<br/>2-4. <a href="#s4">Logging</a>
+<br/>2-5. <a href="#s5">Message sending and receiving</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-5-1. <a href="#s5-1">Sending messages</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-5-2. <a href="#s5-2">Receiving messages</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-5-3. <a href="#s5-3">Processing messages</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-5-4. <a href="#s5-4">The ignore list</a>
+<br/>2-6. <a href="#s6">Servers, clients, and channels</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-6-1. <a href="#s6-1">Servers</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-6-2. <a href="#s6-2">Clients</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-6-3. <a href="#s6-3">Channels</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-6-4. <a href="#s6-4">Client and channel modes</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-6-5. <a href="#s6-5">High-level actions</a>
+<br/>2-7. <a href="#s7">Timed events</a>
+<br/>2-8. <a href="#s8">Multilingual support</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-8-1. <a href="#s8-1">Overview</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-8-2. <a href="#s8-2">Using multilingual strings</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-8-3. <a href="#s8-3">Modifying the string table at runtime</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-8-4. <a href="#s8-4">The language file compiler</a>
+<br/>2-9. <a href="#s9">Module interfaces</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-9-1. <a href="#s9-1">Encryption</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;2-9-2. <a href="#s9-2">Database storage</a>
+<br/>2-10. <a href="#s10">Module command list maintenance</a>
+</p>
+
+<p class="backlink"><a href="1.html">Previous section: About this manual</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="3.html">Next section: Communication (socket) handling</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">2-1. How does Services work?</h3>
+
+<p>Services is, at its simplest, simply an IRC server with built-in "bots"
+("pseudoclients"&mdash;fake clients&mdash;in this documentation).  The core
+of Services consists of code to connect to a given IRC server and register
+in the same way as an ordinary IRC server would, then process IRC messages
+that arrive from the remote server; instead of listening for client
+connections and mediating client-to-client conversation, however, Services
+instead passes received messages to its pseudoclients, which take
+appropriate action based on the message (for example, sending a
+<tt>/msg</tt> containing "<tt>REGISTER mypassword</tt>" to NickServ, the
+nickname registration pseudoclient, causes NickServ to register the
+nickname of the user who sent the message).  In this sense, Services can be
+considered an extension of the traditional IRC bot, but since its many
+capabilities require knowledge of the state of the entire IRC
+network&mdash;information not available to clients&mdash;it is implemented
+as a server instead.</p>
+
+<p>Services is composed of a core set of functionality, discussed in this
+section and in sections 3 and 4, on top of which sit modules implementing
+features such as pseudoclients and database storage, discussed in sections
+5 through 8.  This section discusses the overall flow of execution, and
+the implementation details of each set of core functions.</p>
+
+<p>The source code for the core functionality is located in the top source
+directory.  The style guidelines used in writing the Services code can be
+found in <a href="d.html">Appendix D</a>; one point that should be noted in
+particular is that each source file contains a trailer instructing the
+Emacs and Vim text editors to indent properly and not use tab characters,
+and this trailer should be appended to any new source files created:</p>
+
+<div class="code">/*
+ * Local variables:
+ *   c-file-style: "stroustrup"
+ *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
+ *   indent-tabs-mode: nil
+ * End:
+ *
+ * vim: expandtab shiftwidth=4:
+ */</div>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">2-2. Utility headers and functions</h3>
+
+<p>Before beginning a discussion of the code itself, it is worth noting the
+common header files used by most of the source code.  The various utility
+routines implemented in Services, are also mentioned, as these are often
+used in place of traditional C library functions.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-1">2-2-1. Header file overview</h4>
+
+<p>While many of the core function groups have their own header files, as
+noted below, some of the more common routines and structure definitions are
+collected into a few main header files to reduce file clutter.  These files
+are:</p>
+
+<ul>
+
+<li class="spaced"><b><tt>services.h</tt>:</b> The main Services header
+file, included by every source file.  This file includes the following
+header files automatically:
+	<ul style="margin-top: 0; margin-bottom: 0">
+	<li><tt>config.h</tt></li>
+	<li><tt>defs.h</tt></li>
+	<li><tt>memory.h</tt></li>
+	<li><tt>list-array.h</tt></li>
+	<li><tt>log.h</tt></li>
+	<li><tt>sockets.h</tt></li>
+	<li><tt>send.h</tt></li>
+	<li><tt>modes.h</tt></li>
+	<li><tt>users.h</tt></li>
+	<li><tt>channels.h</tt></li>
+	<li><tt>servers.h</tt></li>
+	<li><tt>extern.h</tt></li>
+	</ul>
+<tt>services.h</tt> also declares type names for several common data
+structures, as well as constants for the <tt>clear_channel()</tt> function
+(see <a href="#s6-5">section 2-6-5</a>).</li>
+
+<li class="spaced"><b><tt>config.h</tt>:</b> Contains basic information
+about the compilation and execution environment, along with compilation
+options selected by the user.  Generated automatically by the
+<tt>configure</tt> script (see <a href="10.html#s2">section 10-2</a>).
+Among the definitions in this file are types for integers of specific
+sizes: <tt>int8</tt>, <tt>int16</tt>, and <tt>int32</tt> for signed 8-bit,
+16-bit, and 32-bit integers respectively, and <tt>uint8</tt>,
+<tt>uint16</tt>, and <tt>uint32</tt> for unsigned integers.  (See
+<a href="11.html#s1">section 11-1</a> for why the standard <tt>int8_t</tt>
+and similar types were not used.)</li>
+
+<li class="spaced"><b><tt>defs.h</tt>:</b> Contains basic constants and
+macros used by Services.  The top part of this file, through the line that
+reads "<tt>There should be no need to modify anything below this
+line.</tt>", contains settings that can be edited by users with special
+needs but are considered esoteric enough that they do not warrant an extra
+option to the <tt>configure</tt> script.  The <tt>NICKMAX</tt>,
+<tt>CHANMAX</tt>, and <tt>PASSMAX</tt> constants, in particular, set the
+size of buffers (including the trailing null on strings) used for
+nicknames, channels, and passwords; the databases rely on these remaining
+constant for a given set of data, and changing them will result in the
+data files becoming unusable.  For the <tt>convert-db</tt> utility (see
+<a href="9.html">section 9</a>), they are defined to values large enough
+to handle any data found in other programs' data files, and should never be
+changed.  The latter half of this file consists of including proper system
+header files, based on the contents of <tt>config.h</tt>, and ensuring that
+some basic system constants are defined.  A few other simple macros are
+defined as well:
+	<ul style="margin-top: 0; margin-bottom: 0">
+	<li><tt>sizeof(<i>v</i>)</tt> is redefined to return a signed
+		<tt>int</tt> value, to avoid unnecessary warnings about
+		signed/unsigned conversion.</li>
+	<li><tt>lenof(<i>a</i>)</tt> gives the length of an array in
+		elements (this must be a C array, not a pointer).</li>
+	<li><tt>sgn(<i>n</i>)</tt> returns -1 if its parameter is negative,
+		1 if positive, and 0 if zero; note that <tt><i>n</i></tt>
+		may be evaluated twice.</li>
+	<li><tt>FORMAT(<i>type</i>,<i>fmt</i>,<i>start</i>)</tt>
+		encapsulates GCC's "format" attribute, used for checking
+		arguments to functions that take format strings, without
+		causing errors on other compilers.</li>
+	<li><tt>FUNCPTR</tt> and <tt>E_FUNCPTR</tt> are used to get around
+		an apparent GCC problem in attributes on function
+		pointers.</li>
+	<li><tt>PTR_INVALID</tt> is a pointer value that can be used when
+		an invalid pointer value other than <tt>NULL</tt> is
+		required.</li>
+	</ul>
+</li>
+
+<li class="spaced"><b><tt>extern.h</tt>:</b> Contains <tt>extern</tt>
+declarations for core source files which do not have their own separate
+header files.  Also defines <tt>E</tt> as an abbreviation for
+<tt>extern</tt>.</li>
+
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-2">2-2-2. Compatibility functions</h4>
+
+<p>While most modern compilation environments have a fairly wide range of
+standard functions included, such functions may not be available on some
+platforms, or their implementations may contain bugs.  To work around such
+problems, Services includes local versions of several common functions in
+<tt>compat.c</tt>, and enables them as necessary based on the configuration
+results stored in <tt>config.h</tt>.  These functions are:</p>
+<ul>
+<li><tt>hstrerror()</tt> (<tt>strerror()</tt> for hostname resolution)</li>
+<li><tt>snprintf()</tt> / <tt>vsnprintf()</tt> (defined in <tt>vsnprintf.c</tt>)</li>
+<li><tt>strtok()</tt></li>
+<li><tt>stricmp()</tt> / <tt>strnicmp()</tt></li>
+<li><tt>strdup()</tt></li>
+<li><tt>strspn()</tt> / <tt>strcspn()</tt></li>
+<li><tt>strerror()</tt></li>
+<li><tt>strsignal()</tt></li>
+</ul>
+<p><tt>strtok()</tt>, in particular, bears mentioning as its behavior in
+certain cases does not seem to be well-defined by the standard (see, for
+example, the definition in
+<a href="http://www.opengroup.org/onlinepubs/009695399/functions/strtok.html">IEEE Std 1003.1-2001</a>
+<span class="remotehost">[www.opengroup.org]</span>).  The Services
+pseudoclients use <tt>strtok()</tt> to parse commands from clients; in some
+cases, where a final parameter may contain space characters, this results
+in the following sequence of calls:</p>
+<div class="code">char *param1 = strtok(NULL, " ");
+char *param2 = strtok(NULL, "");</div>
+<p>For conciseness, Services does not check the value of each
+<tt>strtok()</tt> call, assuming that if at some point the end of the
+string is reached, all subsequent calls will return <tt>NULL</tt>.
+However, if the remainder of the string contains multiple space characters,
+some implementations will return the remaining whitespace for the second
+call despite returning <tt>NULL</tt> for the first (others, such as old
+versions of glibc, have been known to crash on the second call).  I have
+not confirmed whether this difference in behavior still has an effect on
+Services, but it did cause problems at one point; hence this behavior is
+checked for, and the compatibility <tt>strtok()</tt> is enabled if the
+system <tt>strtok()</tt> does not behave as Services expects.</p>
+
+<p>Also, the <tt>stricmp()</tt> and <tt>strnicmp()</tt> functions are
+alternate names for the POSIX <tt>strcasecmp()</tt> and
+<tt>strncasecmp()</tt> functions (the "i" is for "case-insensitive").  I
+prefer the former pair of names because I find them to be both concise and
+clearer about the function's purpose&mdash;to me, "case" says
+"case-<i>sensitive</i>", and I have to recall that <tt>strcmp()</tt> itself
+is case-sensitive to avoid confusion.  Some compilation environments do in
+fact provide <tt>stricmp()</tt> and <tt>strnicmp()</tt> functions, and they
+are used if present; if the <tt>strcasecmp()</tt> pair is instead found,
+<tt>stricmp</tt> and <tt>strnicmp</tt> are defined to be aliases for them.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-3">2-2-3. Memory allocation</h4>
+
+<p>Services implements wrappers for the four primary memory allocation
+functions:</p>
+<ul>
+<li><tt><b>smalloc</b>(long <i>size</i>)</tt></li>
+<li><tt><b>scalloc</b>(long <i>els</i>, long <i>elsize</i>)</tt></li>
+<li><tt><b>srealloc</b>(void *<i>oldptr</i>, long <i>newsize</i>)</tt></li>
+<li><tt><b>sstrdup</b>(const char *<i>s</i>)</tt></li>
+</ul>
+<p>The "s" prefix in these function names is short for "safe": if one of
+these functions fails to allocate memory, it will abort the program by
+generating a <tt>SIGUSR1</tt> signal (see <a href="#s3-4">section 2-3-4</a>)
+rather than returning <tt>NULL</tt>, so the caller can safely assume that
+if the memory size requested was not zero, the return value will not be
+<tt>NULL</tt>.  (This concept is carried over from the earliest days of
+Services development, when it was known that memory allocation would never
+fail barring a program bug; however, it is arguably a bad design and could
+be improved.  See <a href="11.html#s1">section 11-1</a>.)  These functions
+are implemented in the file <tt>memory.c</tt>, with declarations in
+<tt>memory.h</tt> (included by <tt>services.h</tt>).</p>
+
+<p>Services also has a simple memory misuse checker, activated by the
+<tt>-memchecks</tt> option to <tt>configure</tt>; this code is not very
+thorough, but can detect some cases of access to unallocated memory, such
+as trying to free an already-free block of memory, and report the source
+code file and line where the problem occurred via macros in
+<tt>memory.h</tt>.  In addition, if the <tt>-showallocs</tt> option is
+given to <tt>configure</tt>, these functions will log every memory
+allocation and release to the log file, again with the relevant source code
+file and line, and report on exit whether any memory was leaked.  If a leak
+is found, the log file can be parsed to find allocations which were not
+reallocated or freed.</p>
+
+<p>The <tt>FILELINE</tt> macro used in the definitions of
+<tt>smalloc()</tt> and related functions is used to add filename and line
+number parameters only when memory checking is enabled; if so, the actual
+functions receive an extra two parameters, <tt>const char *<i>file</i></tt>
+and <tt>int <i>line</i></tt>, which are passed to the corresponding
+allocation function (<tt>MCmalloc()</tt>, etc.).  Macros are used in
+<tt>memory.h</tt> to pass the current file and line (<tt>__FILE__</tt>,
+<tt>__LINE__</tt>) in these parameters, so that the external interface does
+not change.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-4">2-2-4. List and array macros</h4>
+
+<p>The header file <tt>list-array.h</tt> defines several macros useful in
+handling lists and variable-length arrays, with macros for adding and
+removing elements, iterating over lists and arrays, and searching for an
+element with a given key (either scalar or complex).</p>
+
+<p>The list-related macros implement a doubly-linked list.  The
+<tt>list</tt> parameter to each of these macros is assumed to be an lvalue
+(that is, a variable, structure field, pointer indirection, etc.) with no
+side effects of the same type as the individual list nodes; this parameter
+is modified by the insertion and removal macros.  The nodes are assumed to
+be (pointers to) structures containing at least <tt>next</tt> and
+<tt>prev</tt> fields, which are used by these macros to implement the list.
+The macros are:</p>
+
+<dl>
+<dt><tt><b>LIST_INSERT</b>(<i>node</i>, <i>list</i>)</tt></dt>
+    <dd>Inserts <tt><i>node</i></tt> into the beginning of
+	<tt><i>list</i></tt>.  Insertion is performed in constant time.</dd>
+
+<dt><tt><b>LIST_APPEND</b>(<i>node</i>, <i>list</i>)</tt></dt>
+    <dd>Appends <tt><i>node</i></tt> to the end of of <tt><i>list</i></tt>.
+	Insertion is performed in linear time with the length of the list.</dd>
+
+<dt><tt><b>LIST_INSERT_ORDERED</b>(<i>node</i>, <i>list</i>, <i>compare</i>,
+	<i>field</i>)</tt></dt>
+    <dd>Inserts <tt><i>node</i></tt> into <tt><i>list</i></tt> so that
+	<tt><i>list</i></tt> maintains its order as determined by the
+	function <tt><i>compare</i></tt> called on the field
+	<tt><i>field</i></tt> of each node.  <tt><i>field</i></tt> must be
+	a field of <tt><i>node</i></tt>, and <tt><i>compare</i></tt> must
+	be a function that takes two <tt><i>field</i></tt> values and
+	returns -1, 0, or 1 indicating whether the first argument is
+	ordered before, equal to, or after the second (<tt>strcmp()</tt>,
+	for example).  If an equal node is found, <tt><i>node</i></tt> is
+	inserted after it.  Insertion is performed in linear time with the
+	length of the list, disregarding the execution time of the
+	comparison function.</dd>
+
+<dt><tt><b>LIST_REMOVE</b>(<i>node</i>, <i>list</i>)</tt></dt>
+    <dd>Removes <tt><i>node</i></tt> from <tt><i>list</i></tt>.
+	<tt><i>node</i></tt> is assumed to already be a part of
+	<tt><i>list</i></tt>.  Removal is performed in constant time.</dd>
+
+<dt><tt><b>LIST_FOREACH</b>(<i>iter</i>, <i>list</i>)</tt></dt>
+    <dd>Iterates over every element in <tt><i>list</i></tt>, using
+	<tt><i>iter</i></tt> as the iterator.  The macro has the same
+	properties as a <tt>for()</tt> loop; see the implementation of
+	<tt>LIST_SEARCH</tt> for an example of usage.  <tt><i>iter</i></tt>
+	must be an lvalue.</dd>
+
+<dt><tt><b>LIST_FOREACH_SAFE</b>(<i>iter</i>, <i>list</i>, <i>temp</i>)</tt></dt>
+    <dd>Iterates over <tt><i>list</i></tt> using an extra variable
+	(<tt><i>temp</i></tt>) to hold the next element, ensuring proper
+	operation even when the current element is deleted.
+	<tt><i>iter</i></tt> and <tt><i>temp</i></tt> must be lvalues.</dd>
+
+<dt><tt><b>LIST_SEARCH</b>(<i>list</i>, <i>field</i>, <i>target</i>,
+	<i>compare</i>, <i>result</i>)</tt></dt>
+    <dd>Searches <tt><i>list</i></tt> for a node with <tt><i>field</i></tt>
+	equal to <tt><i>target</i></tt> (as evaluated by
+	<tt><i>compare</i></tt>) and places a pointer to the node found, or
+	<tt>NULL</tt> if none found, in <tt><i>result</i></tt>.
+	<tt><i>field</i></tt> must be a field of the nodes in
+	<tt><i>list</i></tt>; <tt><i>target</i></tt> must be an expression
+	of the type of <tt><i>field</i></tt> with no side effects;
+	<tt><i>result</i></tt> must be an lvalue; and
+	<tt><i>compare</i></tt> must be a <tt>strcmp()</tt>-like functio
+	(see <tt>LIST_INSERT_ORDERED</tt>).  The search is performed in
+	linear time, disregarding the execution time of the comparison
+	function.</dd>
+
+<dt><tt><b>LIST_SEARCH_SCALAR</b>(<i>list</i>, <i>field</i>, <i>target</i>,
+	<i>result</i>)</tt></dt>
+    <dd>Searches <tt><i>list</i></tt> as <tt>LIST_SEARCH</tt> does, but for
+	a scalar value.  The search is performed in linear time.</dd>
+
+<dt><tt><b>LIST_SEARCH_ORDERED</b>(<i>list</i>, <i>field</i>, <i>target</i>,
+	<i>compare</i>, <i>result</i>)</tt></dt>
+    <dd>Searches <tt><i>list</i></tt> as <tt>LIST_SEARCH</tt> does, but for
+	a list known to be ordered.  The search is performed in linear
+	time, disregarding the execution time of the comparison function.</dd>
+
+<dt><tt><b>LIST_SEARCH_ORDERED_SCALAR</b>(<i>list</i>, <i>field</i>,
+	<i>target</i>, <i>result</i>)</tt></dt>
+    <dd>Searches <tt><i>list</i></tt> as <tt>LIST_SEARCH_ORDERED</tt> does,
+	but for a scalar value.  The search is performed in linear time.</dd>
+</dl>
+
+<p>The variable-length array macros are similar in nature; however, since
+arrays require both a pointer and an element count, the base macros take
+two arguments designating the array, <tt><i>array</i></tt> (the pointer)
+and <tt><i>count</i></tt> (the count of elements), both of which must be
+lvalues.  These macros are named <tt>ARRAY2_*</tt>, indicating that the
+array to be operated on is specified by two arguments.  A shorthand form of
+each macro, named <tt>ARRAY_*</tt>, is also available; this form assumes
+that the element count is stored in a variable (or field, etc.) named with
+the name of the array suffixed with "<tt>_count</tt>".  Thus, for example,
+<tt>ARRAY_EXTEND(mystruct-&gt;some_array)</tt> is exactly equivalent to
+<tt>ARRAY2_EXTEND(mystruct-&gt;some_array, mystruct-&gt;some_array_count)</tt>.
+Note that this implies that if the array pointer is itself an array
+element (with the element counts presumably stored in a separate array),
+then the two-argument forms of the macros must be used.  As with lists, the
+array pointer and element count must be lvalues.  The macros (only the
+one-argument forms are shown for conciseness) are as follows:</p>
+
+<dl>
+<dt><tt><b>ARRAY_EXTEND</b>(<i>array</i>)</tt></dt>
+    <dd>Extends a variable-length array by one entry.  Execution time is no
+	greater than linear with the length of the array (depending on
+	whether <tt>realloc()</tt> has to move the array data).</dd>
+
+<dt><tt><b>ARRAY_INSERT</b>(<i>array</i>, <i>index</i>)</tt></dt>
+    <dd>Inserts a slot at position <tt><i>index</i></tt> in a
+	variable-length array.  Execution time is linear with the length of
+	the array.</dd>
+
+<dt><tt><b>ARRAY_REMOVE</b>(<i>array</i>, <i>index</i>)</tt></dt>
+    <dd>Deletes entry number <tt><i>index</i></tt> from a variable-length
+	array.  Execution time is linear with the length of the array.</dd>
+
+<dt><tt><b>ARRAY_FOREACH</b>(<i>array</i>, <i>iter</i>)</tt></dt>
+    <dd>Iterates over every element in a variable-length array.</dd>
+
+<dt><tt><b>ARRAY_SEARCH</b>(<i>array</i>, <i>field</i>, <i>target</i>,
+	<i>compare</i>, <i>result</i>)</tt></dt>
+    <dd>Searches a variable-length array for a value.  Operates like
+	<tt>LIST_SEARCH</tt>.  <tt><i>result</i></tt> must be an integer
+	lvalue.  If nothing is found, <tt><i>result</i></tt> will be set
+	equal to the array's element count (<tt><i>array</i>_count</tt>).
+	The search is performed in linear time, disregarding the execution
+	time of the comparison function.</dd>
+
+<dt><tt><b>ARRAY_SEARCH_PLAIN</b>(<i>array</i>, <i>target</i>,
+	<i>compare</i>, <i>result</i>)</tt></dt>
+    <dd>Searches a variable-length array for a value, when the array
+	elements do not have fields.  The search is performed in linear
+	time, disregarding the execution time of the comparison function.</dd>
+
+<dt><tt><b>ARRAY_SEARCH_SCALAR</b>(<i>array</i>, <i>field</i>, <i>target</i>,
+	<i>result</i>)</tt></dt>
+    <dd>Searches a variable-length array for a scalar value.  The search is
+	performed in linear time.</dd>
+
+<dt><tt><b>ARRAY_SEARCH_PLAIN_SCALAR</b>(<i>array</i>, <i>target</i>,
+	<i>result</i>)</tt></dt>
+    <dd>Searches a variable-length array for a scalar value, when the array
+	elements do not have fields.  The search is performed in linear
+	time.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-5">2-2-5. Generic hash tables</h4>
+
+<p>The header file <tt>hash.h</tt> defines macros that can be used to
+implement a simple hash table, and is used by the core code to maintain the
+network client, channel, and server lists, as well as by modules such as
+NickServ and ChanServ for in-memory databases.  The file is set up so that
+a hash table can be defined with a single macro, <tt>DEFINE_HASH</tt> (for
+a string key) or <tt>DEFINE_HASH_SCALAR</tt> (for a scalar key), using
+these formats:</p>
+
+<div class="code"><b>DEFINE_HASH</b>(<i>name</i>, <i>type</i>, <i>keyfield</i>)
+<b>DEFINE_HASH_SCALAR</b>(<i>name</i>, <i>type</i>, <i>keyfield</i>, <i>keytype</i>)</div>
+
+<p>The <tt><i>name</i></tt> parameter to the macros gives the name to be
+used in the hash table's access functions (see below).  <tt><i>type</i></tt>
+gives the data type of the nodes to be stored in the hash table, which must
+be a structured type containing at least <tt><i>next</i></tt> and
+<tt><i>prev</i></tt> fields (for maintaining the hash table's collision
+lists), and <tt><i>keyfield</i></tt> specifies which field of
+<tt><i>type</i></tt> contains each node's key value.  For scalar keys, the
+additional parameter <tt><i>keytype</i></tt> gives the type of
+<tt><i>keyfield</i></tt> (string keys are always of type
+<tt>char&nbsp;*</tt>).</p>
+
+<p>These macros each define the following functions (parameters to the
+<tt>DEFINE_HASH</tt> or <tt>DEFINE_HASH_SCALAR</tt> macros are given in <tt><span style="text-decoration: underline"><i>underlined italic</i></span></tt>
+to differentiate them from the function parameters):</p>
+
+<dl>
+<dt><tt>void <b>add_<span style="text-decoration: underline"><i>name</i></span></b>(<span style="text-decoration: underline"><i>type</i></span> *<i>node</i>)</tt></dt>
+    <dd>Adds the given node to the hash table.</dd>
+
+<dt><tt>void <b>del_<span style="text-decoration: underline"><i>name</i></span></b>(<span style="text-decoration: underline"><i>type</i></span> *<i>node</i>)</tt></dt>
+    <dd>Removes the given node from the hash table.</dd>
+
+<dt><tt><span style="text-decoration: underline"><i>type</i></span> *<b>get_<span style="text-decoration: underline"><i>name</i></span></b>(const char *<i>key</i>)</tt>
+<br/><tt><span style="text-decoration: underline"><i>type</i></span> *<b>get_<span style="text-decoration: underline"><i>name</i></span></b>(<span style="text-decoration: underline"><i>keytype</i></span> *<i>key</i>)</tt></dt>
+    <dd>If an element with the given key is stored in the hash table,
+	returns a pointer to that element; otherwise, returns
+	<tt>NULL</tt>.  The first format is used for hashes with string
+	keys, while the second is used for hashes with scalar keys.</dd>
+
+<dt><tt><span style="text-decoration: underline"><i>type</i></span> *<b>first_<span style="text-decoration: underline"><i>name</i></span></b>()</tt>
+<br/><tt><span style="text-decoration: underline"><i>type</i></span> *<b>next_<span style="text-decoration: underline"><i>name</i></span></b>()</tt></dt>
+    <dd>Iterate over all elements in the hash table.  For hashes with
+	string keys, elements are returned in lexical order by key if
+	<tt>HASH_SORTED</tt> is defined (see below).
+	<tt>first_<span style="text-decoration: underline"><i>name</i></span>()</tt>
+	initializes the iterator to the first element in the hash table and
+	returns it; <tt>next_<span style="text-decoration: underline"><i>name</i></span>()</tt>
+	returns subsequent elements, one at a time, until all elements have
+	been returned, at which point it returns <tt>NULL</tt> until
+	<tt>first_<span style="text-decoration: underline"><i>name</i></span>()</tt>
+	is called again.  If there are no elements in the hash table,
+	<tt>first_<span style="text-decoration: underline"><i>name</i></span>()</tt>
+	will return <tt>NULL</tt> (as will <tt>next_<span style="text-decoration: underline"><i>name</i></span>()</tt>).
+	It is safe to delete elements, including the current element, while
+	iterating.  If an element is added while iterating, it is undefined
+	whether that element will be returned by
+	<tt>next_<span style="text-decoration: underline"><i>name</i></span>()</tt>
+	before the end of the hash table is reached.</dd>
+</dl>
+
+<p>The following preprocessor macros can be defined to modify the behavior
+of the hash table functions.  Except as otherwise noted, these macros take
+effect when the <tt>DEFINE_HASH</tt> and <tt>DEFINE_HASH_SCALAR</tt> macros
+are invoked.</p>
+
+<dl>
+<dt><tt><b>EXPIRE_CHECK</b>(<i>node</i>)</tt></dt>
+    <dd>Returns a boolean value (zero if false, nonzero if true) indicating
+	whether the given node has expired.  If the macro evaluates to a
+	true (nonzero) value, the <tt>get_<span style="text-decoration: underline"><i>name</i></span>()</tt>,
+	<tt>first_<span style="text-decoration: underline"><i>name</i></span>()</tt>, and <tt>next_<span style="text-decoration: underline"><i>name</i></span>()</tt>
+	macros will ignore the corresponding node when processing.  (This
+	is used, for example, by NickServ and ChanServ to automatically
+	delete nicknames and channels which have expired; in these cases,
+	<tt>EXPIRE_CHECK</tt> is set to a function which deletes the record
+	and returns nonzero if the record has expired.)  Defaults to 0,
+	<i>i.e.</i>, no expiration.</dd>
+
+<dt><tt><b>HASH_STATIC</b></tt></dt>
+    <dd>Controls whether the hash table functions are defined as static or
+	global functions.  This macro is prefixed directly to the function
+	definitions, so it should be defined to either <tt>static</tt> or
+	an empty value (not an empty string).  Defaults to nothing, making
+	the functions globally visible.</dd>
+
+<dt><tt><b>HASHFUNC</b>(<i>key</i>)</tt></dt>
+    <dd>Hashes the given key to a value used as an index into the hash
+	table.  Defaults to <tt>DEFAULT_HASHFUNC(<i>key</i>)</tt>, defined
+	by <tt>hash.h</tt>.</dd>
+
+<dt><tt><b>HASHSIZE</b></tt></dt>
+    <dd>Sets the size of the hash table.  Should be set to the range of
+	values returned by <tt>HASHFUNC()</tt>.  Defaults to
+	<tt>DEFAULT_HASHSIZE</tt>, defined by <tt>hash.h</tt>.</dd>
+
+<dt><tt><b>HASH_SORTED</b></tt></dt>
+    <dd>Controls whether the
+	<tt>first_<span style="text-decoration: underline"><i>name</i></span>()</tt> and <tt>next_<span style="text-decoration: underline"><i>name</i></span>()</tt>
+	functions return elements in lexical order, as described above; if
+	defined to a nonzero value, lexical sorting for hash tables with
+	string keys is enabled.  This macro affects the
+	<tt>DEFAULT_HASHFUNC()</tt> and <tt>DEFAULT_HASHSIZE</tt> macros,
+	and must be defined before <tt>hash.h</tt> is included.
+	Ordinarily, this is set in <tt>config.h</tt> by the
+	<tt>-sorted-lists</tt> option to the <tt>configure</tt> script (see
+	<a href="10.html#s2">section 10-2</a>).</dd>
+</dl>
+
+<p>Internally, the hash table itself is stored in an array defined as
+<tt><span style="text-decoration: underline"><i>type</i></span> *hashtable_<span style="text-decoration: underline"><i>name</i></span>[HASHSIZE]</tt>, with
+each element pointing to list of elements that hash to the value of the
+array index.  This array is defined by the <tt>DEFINE_HASHTABLE</tt> macro,
+invoked via <tt>DEFINE_HASH</tt> or <tt>DEFINE_HASH_SCALAR</tt>.  The
+<tt>add</tt>, <tt>del</tt>, <tt>get</tt>, and <tt>first</tt>/<tt>last</tt>
+functions are likewise defined by the <tt>DEFINE_HASH_ADD</tt> (or
+<tt>DEFINE_HASH_ADD_SCALAR</tt>), <tt>DEFINE_HASH_DEL</tt>,
+<tt>DEFINE_HASH_GET</tt> (or <tt>DEFINE_HASH_GET_SCALAR</tt>), and
+<tt>DEFINE_HASH_ITER</tt>; the iterator functions
+(<tt>first</tt>/<tt>next</tt>) are defined first, so that the <tt>del</tt>
+function can advance the iterator if the element pointed to by the iterator
+is removed.</p>
+
+<p>The <tt>add</tt>, <tt>del</tt>, and <tt>get</tt> functions are fairly
+straightforward, adding to, removing from, or searching the appropriate
+list as given by the hash value of the relevant element's key.  The
+<tt>first</tt> and <tt>next</tt> functions are implemented in terms of a
+common iterator subfunction, <tt>_next_<span style="text-decoration: underline"><i>name</i></span>()</tt>, which
+advances the iterator (stored as a hash value in
+<tt>hashpos_<span style="text-decoration: underline"><i>name</i></span></tt> and a pointer within that hash value's
+list in <tt>hashiter_<span style="text-decoration: underline"><i>name</i></span></tt>) to the next element in the
+hash, leaving the pointer to that element in
+<tt>hashiter_<span style="text-decoration: underline"><i>name</i></span></tt>.  The <tt>first</tt> function
+initializes the iterator's hash value to -1 and pointer to <tt>NULL</tt>
+(a <tt>NULL</tt> pointer triggers the iterator to advance to the next hash
+value), calls the iterator function once to load the first element into the
+iterator, then returns the return value of the <tt>next</tt> function.  The
+<tt>next</tt> function saves the current pointer value of the iterator,
+advances the iterator, then returns the saved pointer value.</p>
+
+<p>The default hash function works only for string keys, and varies
+depending on whether <tt>HASH_SORTED</tt> is set.  If it is, the hash
+function uses an internal lookup table (<tt>__hashlookup[]</tt>) to convert
+the first two characters of the key to 5-bit values and concatenates those
+to form a 10-bit value, with the first character's hash value in the upper
+five bits.  The lookup table uses values that increase from 0 to 31 in
+lexical order, as modified by the RFC 1459 case-treatment rules; since the
+string-key <tt>add</tt> function keeps the hash table lists in order, this
+ensures that the iterator returns all elements in lexical order.  The hash
+table size in this case is 1024, the range of the 10-bit hash value.  If
+<tt>HASH_SORTED</tt> is not set, the function instead uses a hash table of
+65537 (2<sup>16</sup>+1) entries, and computes a hash value over all
+characters of the key string using an internal lookup table
+(<tt>__hashlookup_unsorted[]</tt>) based on the <tt>irc_lowertable[]</tt>
+array in <tt>misc.c</tt> (the same table used by the <tt>irc_tolower()</tt>
+function, as described in <a href="#s2-6">section 2-2-6</a>).  This
+provides more balanced usage of hash table entries, but loses the ability
+to iterate through the elements in lexical order.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-6">2-2-6. Other utility functions</h4>
+
+<p>The remainder of the utility functions are defined in <tt>misc.c</tt>,
+and can be broken down into several groups:</p>
+
+<p><b>String functions</b></p>
+
+<dl>
+<dt><tt>unsigned char <b>irc_tolower</b>(char <i>c</i>)</tt></dt>
+    <dd>Returns the lower-case version of the given character, like
+	<tt>tolower()</tt>, but follows IRC protocol rules; unless
+	modified by the protocol module, the three characters
+	<tt>[&nbsp;\&nbsp;]</tt> are translated to <tt>{&nbsp;|&nbsp;}</tt>,
+	as required by RFC 1459.</dd>
+
+<dt><tt>int <b>irc_stricmp</b>(const char *<i>s1</i>, const char *<i>s2</i>)</tt>
+<br/><tt>int <b>irc_strnicmp</b>(const char *<i>s1</i>, const char *<i>s2</i>, int <i>max</i>)</tt></dt>
+    <dd>Versions of <tt>stricmp()</tt> and <tt>strnicmp()</tt> that use IRC
+	protocol rules for upper/lower case conversion.</dd>
+
+<dt><tt>char *<b>strscpy</b>(char *<i>d</i>, const char *<i>s</i>, size_t <i>len</i>)</tt></dt>
+    <dd>Copies a string safely (the "<tt><b>s</b></tt>" in
+	<tt>str<b>s</b>cpy</tt>) into a buffer.  Similar to
+	<tt>strncpy()</tt>, except that the string is always
+	null-terminated (so that at most <tt><i>len</i>-1</tt> characters
+	of <tt><i>s</i></tt> are copied to <tt><i>d</i></tt>), and if
+	<tt><i>s</i></tt> is shorter than <tt><i>len</i>-1</tt> characters,
+	<tt><i>d</i></tt> is not padded with nulls.  Returns
+	<tt><i>d</i></tt>.</dd>
+
+<dt><tt>char *<b>strbcpy</b>(char *<i>d</i>, const char *<i>s</i>)</tt></dt>
+    <dd>A shortcut macro for using <tt>strscpy()</tt> with a buffer
+	declared as a character array (<tt>char <i>buffer</i>[<i>N</i>]</tt>),
+	intended to reduce the potential for buffer overflows due to size
+	mismatches.  Equivalent to <tt>strscpy(<i>d</i>, <i>s</i>,
+	sizeof(<i>d</i>))</tt>.</dd>
+
+<dt><tt>char *<b>strmove</b>(char *<i>d</i>, const char *<i>s</i>)</tt></dt>
+    <dd>A version of <tt>strcpy()</tt> that can handle overlapping memory
+	regions (for example, deleting characters from the beginning of a
+	string).  Returns <tt><i>d</i></tt>.</dd>
+
+<dt><tt>char *<b>stristr</b>(const char *<i>s1</i>, const char *<i>s2</i>)</tt></dt>
+    <dd>A case-insensitive version of <tt>strstr()</tt>.  Searches
+	case-insensitively for <tt><i>s2</i></tt> inside <tt><i>s1</i></tt>,
+	returning the first match found or <tt>NULL</tt> if no match is
+	found.</dd>
+
+<dt><tt>char *<b>strupper</b>(char *<i>s</i>)</tt></dt>
+    <dd>Converts the given string to upper case.  Returns <tt><i>s</i></tt>.</dd>
+
+<dt><tt>char *<b>strlower</b>(char *<i>s</i>)</tt></dt>
+    <dd>Converts the given string to lower case.  Returns <tt><i>s</i></tt>.</dd>
+
+<dt><tt>char *<b>strnrepl</b>(char *<i>s</i>, int32 <i>size</i>, const char *<i>old</i>, const char *<i>new</i>)</tt></dt>
+    <dd>Replaces all occurrences of <tt><i>old</i></tt> with
+	<tt><i>new</i></tt> within <tt><i>s</i></tt>.  Stops replacing if
+	the result would exceed <tt><i>size</i>-1</tt> bytes.  Returns
+	<tt><i>s</i></tt>.</dd>
+
+<dt><tt>char *<b>strtok_remaining</b>()</tt></dt>
+    <dd>Returns any remaining text in the string currently being processed
+	by <tt>strtok()</tt>, like <tt>strtok(NULL,"")</tt>, with any
+	leading or trailing whitespace stripped.</dd>
+
+<dt><tt>char *<b>merge_args</b>(int <i>argc</i>, char **<i>argv</i>)</tt></dt>
+    <dd>Joins the arguments in the given argument array with spaces, and
+	returns the result in a static buffer.</dd>
+
+<dt><tt>int <b>match_wild</b>(const char *<i>pattern</i>, const char *<i>str</i>)</tt>
+<br/><tt>int <b>match_wild_nocase</b>(const char *<i>pattern</i>, const char *<i>str</i>)</tt></dt>
+    <dd>Returns whether the given string <tt><i>str</i></tt> matches the
+	wildcard <tt><i>pattern</i></tt> (case-sensitively or
+	case-insensitively, respectively).  The <tt>*</tt> (match zero or
+	more characters) and <tt>?</tt> (match one character) wildcards are
+	recognized.</dd>
+
+<dt><tt>int <b>valid_nick</b>(const char *<i>str</i>)</tt>
+<br/><tt>int <b>valid_chan</b>(const char *<i>str</i>)</tt>
+<br/><tt>int <b>valid_domain</b>(const char *<i>str</i>)</tt>
+<br/><tt>int <b>valid_email</b>(const char *<i>str</i>)</tt>
+<br/><tt>int <b>valid_url</b>(const char *<i>str</i>)</tt></dt>
+    <dd>Checks whether the given string is a valid nickname, channel name,
+	domain name, E-mail address, or URL, respectively.  Nickname and
+	channel checking behavior default to the behavior defined by the
+	reference IRC server implementation (note that this differs
+	slightly from RFC 1459 for nicknames; the reference implementation
+	is treated as canonical), but may be modified by protocol modules.</dd>
+<dt><tt>int <b>rejected_email</b>(const char *<i>email</i>)</tt></dt>
+    <dd>Checks whether the given E-mail address matches any address masks
+	given with the <tt>RejectEmail</tt> configuration directive.</dd>
+</dl>
+
+<p><b>Time-related functions</b></p>
+
+<dl>
+<dt><tt>uint32 <b>time_msec</b>()</tt></dt>
+    <dd>Returns the current time to millisecond resolution.  The epoch is
+	arbitrary, so returned values can only be used to measure time
+	differences.</dd>
+
+<dt><tt>time_t <b>strtotime</b>(const char *<i>str</i>, char **<i>endptr</i>)</tt></dt>
+    <dd>Converts a string to a <tt>time_t</tt> value, assuming base 10, and
+	sets <tt>*<i>endptr</i></tt> to the first character after the
+	parsed time value, as for <tt>strtol()</tt> and similar functions.
+	Sets <tt>errno</tt> to <tt>ERANGE</tt> if the parsed value cannot
+	be represented in a <tt>time_t</tt>.</dd>
+
+<dt><tt>int <b>dotime</b>(const char *s)</tt></dt>
+    <dd>Returns the number of seconds represented by the given time string,
+	which is an integer followed by a unit specifier: "<tt>s</tt>" for
+	seconds, "<tt>m</tt>" for minutes, "<tt>h</tt>" for hours, or
+	"<tt>d</tt>" for days.  Multiple time strings can be concatenated,
+	such as "<tt>1h30m</tt>".  Returns -1 if the string is not a valid
+	time string.</dd>
+</dl>
+
+<p><b>IP address-related functions</b></p>
+
+<dl>
+<dt><tt>uint8 *<b>pack_ip</b>(const char *<i>ipaddr</i>)</tt></dt>
+    <dd>Converts an IPv4 address string into a 4-byte binary address, and
+	returns a pointer to the packed address (stored in a static
+	buffer), or <tt>NULL</tt> if the given string does not represent a
+	valid IPv4 address.</dd>
+
+<dt><tt>char *<b>unpack_ip</b>(const uint8 *<i>ip</i>)</tt></dt>
+    <dd>Converts a packed IPv4 address into an address string, and returns
+	a pointer to that string (stored in a static buffer).</dd>
+
+<dt><tt>uint8 *<b>pack_ip6</b>(const char *<i>ipaddr</i>)</tt>
+<br/><tt>char *<b>unpack_ip6</b>(const uint8 *<i>ip</i>)</tt></dt>
+    <dd>IPv6 versions of <tt>pack_ip()</tt> and <tt>unpack_ip()</tt>.</dd>
+</dl>
+
+<p><b>Base64 encoding and decoding</b></p>
+
+<dl>
+<dt><tt>int <b>encode_base64</b>(const void *<i>in</i>, int <i>insize</i>, char *<i>out</i>, int <i>outsize</i>)</tt></dt>
+    <dd>Encodes the buffer <tt><i>in</i></tt> of size <tt><i>insize</i></tt>
+	bytes into the buffer <tt><i>out</i></tt> as a base64 string,
+	truncating the result at <tt><i>outsize</i>-1</tt> bytes and
+	appending a null terminator.  Returns the number of bytes needed to
+	encode the entire input buffer.  The required output buffer size
+	can be determined with <tt>encode_base64(<i>in</i>, <i>insize</i>,
+	NULL, 0)</tt>.</dd>
+
+<dt><tt>int <b>decode_base64</b>(const char *<i>in</i>, void *<i>out</i>, int <i>outsize</i>)</tt></dt>
+    <dd>Decodes the base64 string <tt><i>in</i></tt> into the buffer
+	<tt><i>out</i></tt> of size <tt><i>outsize</i></tt>, truncating the
+	output if necessary.  Returns the number of bytes needed to store
+	the entire decoded output.  The required output buffer size can be
+	determined with <tt>decode_base64(<i>in</i>, NULL, 0)</tt>.</dd>
+</dl>
+
+<p><b>Other functions</b></p>
+
+<dl>
+<dt><tt>int <b>process_numlist</b>(const char *<i>numstr</i>, int *<i>count_ret</i>, range_callback_t <i>callback</i>, ...)</tt></dt>
+    <dd>Processes a number list of the form
+	"<tt><i>n1</i>[-<i>n2</i>][,<i>n3</i>[-<i>n4</i>]...]</tt>",
+	calling the given callback function once for each number contained
+	in the list.  Returns the sum of all values returned from the
+	callback function, and stores the number of times the callback
+	function was called in <tt><i>count_ret</i></tt> if it is not
+	<tt>NULL</tt>.  If the callback routine returns -1,
+	<tt>process_numlist()</tt> aborts processing and returns
+	immediately (the -1 is not included in the sum of the callback
+	return values).  The list is sorted so that the values passed to the
+	callback function for a particular list are in strictly increasing
+	order, with no duplicates.  Values outside the range 0 through
+	65536 are discarded to avoid excessive consumption of resources.
+	The callback function type is defined in <tt>extern.h</tt> as:
+	<div class="code">int (*<b>range_callback_t</b>)(int <i>num</i>, va_list <i>args</i>)</div>
+	where <tt><i>num</i></tt> is the number currently being processed
+	and <tt><i>args</i></tt> are the additional arguments passed to
+	<tt>process_numlist()</tt>.</dd>
+
+<dt><tt>long <b>atolsafe</b>(const char *<i>s</i>, long <i>min</i>, long <i>max</i>)</tt></dt>
+    <dd>Converts a string in base 10 to a <tt>long</tt> value, ensuring
+	that the string contains no invalid characters and that it is
+	within the inclusive range <tt><i>min</i></tt> through
+	<tt><i>max</i></tt>.  On error, sets <tt>errno</tt> to
+	<tt>EINVAL</tt> if the string contains invalid characters or
+	<tt>ERANGE</tt> if the value is outside of the specified range, and
+	returns <tt><i>min</i>-1</tt>.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">2-3. Program startup and termination</h3>
+
+<p>As with most C programs, Services starts execution at the <tt>main()</tt>
+routine, in <tt>main.c</tt>.  This routine performs program initialization
+(see <a href="#s3-1">section 2-3-1</a>), executes the main program loop
+(see <a href="#s3-3">section 2-3-3</a>), and performs cleanup when the
+main loop terminates (see <a href="#s3-5">section 2-3-5</a>).
+<tt>main()</tt> takes three parameters from the operating system:
+<tt><i>ac</i></tt>, the command-line argument count (called <tt>argc</tt>
+by some programs); <tt><i>av</i></tt>, the command-line argument vector
+(called <tt>argv</tt> by some programs); and <tt>envp</tt>, the environment
+pointer.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-1">2-3-1. Initialization</h4>
+
+<p>The bulk of initialization is performed by the <tt>init()</tt> routine,
+located in <tt>init.c</tt>.  This routine:</p>
+
+<ul>
+<li class="spaced">Initializes the logging subsystem, by calling
+<tt>open_memory_log()</tt> (the log file itself is not opened at this time;
+any log messages are saved in a memory buffer until a log file is
+available).</li>
+
+<li class="spaced">Initializes the memory subsystem (see
+<a href="#s2-3">section 2-2-3</a>).</li>
+
+<li class="spaced">Parses basic command-line options by calling
+<tt>parse_options(ac,av,0)</tt>, exiting if an error occurs.</li>
+
+<li class="spaced">Changes the current directory to the Services data
+directory, as specified by the <tt>-dir</tt> command-line option or set by
+the <tt>configure</tt> script.</li>
+
+<li class="spaced">Reads the primary configuration file,
+<tt>ircservices.conf</tt> in the data directory (see
+<a href="#s3-2">section 2-3-2</a>).</li>
+
+<li class="spaced">Re-parses basic command-line options, to override
+configuration file settings.</li>
+
+<li class="spaced">Opens the log file, as specified in the configuration
+file or by the <tt>-log</tt> command-line option, writing a warning to
+standard error if the file cannot be opened.</li>
+
+<li class="spaced">Writes a greeting message to the log file.</li>
+
+<li class="spaced">Records the current time in the <tt>start_time</tt>
+variable (this variable is used in responding to IRC <tt>INFO</tt> and
+<tt>STATS</tt> requests).</li>
+
+<li class="spaced">If Services was started in read-only mode (with the
+<tt>-readonly</tt> option), closes the log file again.</li>
+
+<li class="spaced">If configured to (with <tt>configure -dumpcore</tt>),
+attempts to remove any core dump size limits to ensure that a core dump is
+written when a segmentation fault occurs.</li>
+
+<li class="spaced">Initializes the system pseudo-random number generator,
+using a seed value based on the current time and the process IDs of the
+Services process and its parent process.</li>
+
+<li class="spaced">Initializes the socket subsystem (see
+<a href="3.html">section 3</a>).</li>
+
+<li class="spaced">Initializes the module subsystem (see
+<a href="4.html">section 4</a>).</li>
+
+<li class="spaced">Registers callbacks used in <tt>init.c</tt> and
+<tt>main.c</tt> (callbacks are described in <a href="4.html#s5">section
+4-5</a>):
+	<ul>
+	<li><tt>command line</tt></li>
+	<li><tt>introduce_user</tt></li>
+	<li><tt>connect</tt></li>
+	<li><tt>save data complete</tt></li>
+	</ul></li>
+
+<li class="spaced">Calls other subsystems' initialization routines.</li>
+
+<li class="spaced">Initializes multilingual support (see
+<a href="#s8">section 2-8</a>), and loads any external language files
+specified by the <tt>LoadLanguageText</tt> configuration directive, in
+the order they were encountered in the configuration file.</li>
+
+<li class="spaced">Loads all modules specified by the <tt>LoadModule</tt>
+configuration directive, in the order they were encountered in the
+configuration file.</li>
+
+<li class="spaced">Checks for unrecognized command-line options and passes
+them to modules via the "<tt>command line</tt>" callback.</li>
+
+<li class="spaced">Checks that a protocol module has been loaded, writing
+an error message to standard error and exiting if not.</li>
+
+<li class="spaced">If the <tt>-nofork</tt> option was not specified, writes
+a message to standard error indicating that initialization succeeded.</li>
+
+<li class="spaced">If the <tt>-nofork</tt> option was not specified, calls
+the system's <tt>fork()</tt> function to spawn a new process; if successful,
+the parent process immediately exits with code 0 (success), while execution
+continues in the child process.  <i>Note that from here on down, no fatal
+errors can occur; any unexpected conditions are reported to the log
+file.</i></li>
+
+<li class="spaced">Writes the process ID of the Services process to the
+file specified in the <tt>PIDFilename</tt> configuration directive.</li>
+
+<li class="spaced">Initializes signal handling (see <a href="#s3-4">section
+2-3-4</a>).</li>
+
+<li class="spaced">Creates a socket for communication with the remote
+server, and initiates the server connection (the connection is performed
+asynchronously, with the <tt>connect_callback()</tt> and
+<tt>disconnect_callback()</tt> functions in <tt>main.c</tt> handling
+connection success and failure, respectively).</li>
+
+</ul>
+
+<p>Once <tt>init()</tt> has successfully completed its work, <tt>main()</tt>
+initializes three timestamp variables used as second-resolution timers:
+<tt>last_send</tt> (defined in <tt>send.c</tt>), indicating when data was
+last sent to the server; <tt>last_update</tt>, indicating when the
+databases were last written to persistent storage; and <tt>last_check</tt>,
+indicating when timed events (see <a href="#s7">section 2-7</a>) were last
+checked for timeouts.</p>
+
+<p>Finally, <tt>main()</tt> initializes an error trap via
+<tt>sigsetjmp()</tt>, to which signal handlers can return (via
+<tt>siglongjmp()</tt>) when a signal causing program termination is
+received.  Ideally, this call would be located in the
+<tt>do_sigsetjmp()</tt> function in <tt>signals.c</tt>, along with the rest
+of the signal handling code.  However, since <tt>sigsetjmp()</tt> is not
+guaranteed to work if the function that called it returns, <tt>main()</tt>
+instead invokes the <tt>DO_SIGSETJMP</tt> macro, also located in
+<tt>main.c</tt>; this macro sets up a context buffer, calls
+<tt>sigsetjmp()</tt>, then calls <tt>do_sigsetjmp()</tt> to pass the
+context buffer pointer to the signal code.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-2">2-3-2. Configuration files</h4>
+
+<p>Configuration files are handled by code in <tt>conffile.c</tt>.  This
+file has two external interfaces: <tt>configure()</tt>, which reads in
+settings from a configuration file, and <tt>deconfigure()</tt>, which
+restores the settings to their default values.  (A third exported function,
+<tt>config_error()</tt>, is available for configuration directive handlers,
+described below, to call in order to print warning or error messages.)</p>
+
+<p>In order to avoid leaving configuration variables in an inconsistent
+state if an error is found, configuration files are processed in two
+passes: first all settings are read into temporary storage, then, if no
+errors were found, the new values are assigned to the appropriate
+configuration variables.  These two steps are both performed by
+<tt>configure()</tt>, with the third parameter (<tt>action</tt>) indicating
+which step is to be performed: <tt>CONFIGURE_READ</tt> to read in the
+configuration file, <tt>CONFIGURE_SET</tt> to store the new values in the
+configuration variables, or both (<tt>CONFIGURE_READ|CONFIGURE_SET</tt>) to
+perform both steps in one call.  Additionally, when configuring settings
+for the first time, the original value of each configuration variable is
+saved, allowing <tt>deconfigure()</tt> to restore those values later.</p>
+
+<p>Configuration information is stored in one of two text files:
+<tt>ircservices.conf</tt> for core configuration and <tt>modules.conf</tt>
+for module configuration (these filenames cannot be changed at runtime, but
+can be changed at compilation time via the <tt>IRCSERVICES_CONF</tt> and
+<tt>MODULES_CONF</tt> constants in <tt>defs.h</tt>).  The file to be used
+implied by the <tt><i>modulename</i></tt> parameter passed to
+<tt>configure()</tt>; if a non-<tt>NULL</tt> name is given,
+<tt>modules.conf</tt> is used, otherwise <tt>ircservices.conf</tt> is
+used.</p>
+
+<p>Both files use the same format: one configuration directive per line,
+with comments delimited by <tt>#</tt> (blank and comment-only lines are
+permitted).  The configuration directive and its parameters are each
+separated by a nonzero amount of whitespace.  If whitespace is needed
+inside a string parameter, the parameter can be enclosed in double quotes;
+in this case, double quotes must be used around the entire
+parameter&mdash;they are treated as ordinary characters in the middle of a
+parameter.  Configuration directives are treated case-insensitively.</p>
+
+<p>Aside from caller-specified configuration directives, three
+meta-directives are recognized in configuration files.  The
+<tt>IncludeFile</tt> directive allows nesting of configuration files,
+taking a single parameter which specifies the file to insert.  (Nesting
+is internally limited to 100 levels to avoid recursion loops.)  The
+<tt>Module</tt> directive is only recognized in <tt>modules.conf</tt>, and
+specifies the beginning of a particular module's section, with the module
+name given as a parameter to the directive; it must be matched by an
+<tt>EndModule</tt> directive (taking no parameters).  When the
+<tt><i>modulename</i></tt> parameter to <tt>configure()</tt> is not
+<tt>NULL</tt>, only the configuration directives in the section matching
+the given module name are processed.</p>
+
+<p>Configuration directives to be processed are specified by an array of
+<tt>ConfigDirective</tt> structures, passed as the <tt><i>directives</i></tt>
+parameter to <tt>configure()</tt>.  This structure is defined in
+<tt>conffile.h</tt>, and consists of a name parameter
+(<tt>const char *<b>name</b></tt>) followed by an fixed-size array of
+parameter substructures (the array is 8 elements long by default, which can
+be changed via the <tt>CONFIG_MAXPARAMS</tt> constant in <tt>defs.h</tt>).</p>
+
+<p>The string in the <tt>name</tt> field gives the name of the directive,
+which should consist of only alphanumeric characters, no punctuation or
+spaces.  Directives are treated case-insensitively, and if more than one
+entry has the same name, only the first will be used.  A value of
+<tt>NULL</tt> for the <tt><i>name</i></tt> field is used to terminate the
+array.</p>
+
+<p>The parameter substructure of <tt>ConfigDirective</tt> contains the
+following fields:</p>
+
+<dl>
+<dt><tt>int <b>type</b></tt></dt>
+    <dd>Specifies both the data type of the variable which holds the
+	parameter value and the format in which it is expressed in the
+	configuration file, using one of the <tt>CD_*</tt> constants
+	defined in <tt>conffile.h</tt>:
+	<ul>
+	<li><b><tt>CD_NONE</tt>:</b> No parameter present (processing of the
+		directive is terminated).  This constant is not used in
+		actual parameter definitions, but as it has a value of zero,
+		any parameters not specified in the <tt>ConfigDirective</tt>
+		structure will automatically end the parameter list, so no
+		explicit fencepost is required.</li>
+	<li><b><tt>CD_INT</tt>:</b> An integer parameter.  Any 32-bit
+		integer value is accepted, and the value is stored as type
+		<tt>int32</tt>.</li>
+	<li><b><tt>CD_POSINT</tt>:</b> A positive integer parameter.  As
+		for <tt>CD_INT</tt>, but zero and negative values are not
+		accepted.</li>
+	<li><b><tt>CD_PORT</tt>:</b> A TCP/UDP port number.  Integers from
+		1 through 65535 inclusive are accepted, and the value is
+		stored as type <tt>int32</tt>.</li>
+	<li><b><tt>CD_STRING</tt>:</b> A string parameter.  A pointer to
+		the string value is stored in the <tt>char&nbsp;*</tt>
+		configuration variable.  Strings are internally allocated
+		with <tt>malloc()</tt> and freed when necessary by
+		<tt>configure()</tt> and <tt>deconfigure()</tt>; they
+		should be treated as read-only by the caller.</li>
+	<li><b><tt>CD_TIME</tt>:</b> A time parameter, stored as type
+		<tt>time_t</tt>.  The parameter can be either an integer
+		number of seconds or a string of one or more value-unit
+		pairs, where units are "<tt>d</tt>" (days), "<tt>h</tt>"
+		(hours), "<tt>m</tt>" (minutes), or "<tt>s</tt>" (seconds).
+		For example, a time of 1 hour and 30 minutes could be
+		specified as "<tt>1h30m</tt>", "<tt>90m</tt>", or
+		"<tt>5400</tt>".</li>
+	<li><b><tt>CD_TIMEMSEC</tt>:</b> A time parameter, parsed as a
+		decimal number of seconds and converted to milliseconds.
+		The value is stored as type <tt>int32</tt>.</li>
+	<li><b><tt>CD_FUNC</tt>:</b> A parameter which is handled by an
+		external function (see below).</li>
+	<li><b><tt>CD_SET</tt>:</b> A pseudo-parameter (does not use up an
+		actual parameter to the directive), which sets a variable
+		of type <tt>int</tt> to 1 if the directive is seen.</li>
+	<li><b><tt>CD_DEPRECATED</tt>:</b> A pseudo-parameter, which causes
+		a warning to be written to the log that the directive is
+		deprecated if it is encountered in a configuration file.</li>
+	</ul></dd>
+
+<dt><tt>int <b>flags</b></tt></dt>
+    <dd>Specifies zero or more flags for the parameter:
+	<ul>
+	<li><b><tt>CF_OPTIONAL</tt>:</b> Indicates that the parameter is
+		optional, not required.  If the parameter is missing from
+		the configuration file, the variable's value is not
+		changed.</li>
+	<li><b><tt>CF_DIRREQ</tt>:</b> Indicates that the directive is
+		required; if the directive is not found when reading the
+		configuration file, an error will be generated.  This flag
+		is only valid when used with the first parameter.</li>
+	<li><b><tt>CF_SAVED</tt>:</b> <i>Used internally.</i>  Indicates
+		that the original value of the variable has been saved in
+		the <tt><i>prev</i></tt> field.</li>
+	<li><b><tt>CF_WASSET</tt>:</b> <i>Used internally.</i>  Indicates
+		that the <tt><i>new</i></tt> field has been set.</li>
+	<li><b><tt>CF_ALLOCED</tt>:</b> <i>Used internally.</i>  Indicates
+		that the current value of the string variable was allocated
+		by the configuration file parser.</li>
+	<li><b><tt>CF_ALLOCED_NEW</tt>:</b> <i>Used internally.</i>
+		Indicates that the string value in the <tt><i>new</i></tt>
+		field was allocated by the configuration file parser.</li>
+	</ul></dd>
+
+<dt><tt>void *<b>ptr</b></tt></dt>
+    <dd>Points to the variable into which the value read from the
+	configuration file is to be written (except for types
+	<tt>CD_FUNC</tt>, described below, and <tt>CD_DEPRECATED</tt>,
+	which does not set a value).  Note that for string variables, this
+	is a pointer to the <tt>char&nbsp;*</tt> variable that will receive
+	the new string pointer, so the effective type is
+	<tt>char&nbsp;**</tt>.</dd>
+
+<dt><tt>CDValue <b>prev</b></tt>
+<br/><tt>CDValue <b>new</b></tt></dt>
+    <dd>Used internally to hold the variable's original value and the new
+	value read in from the configuration file, respectively.  Callers
+	should not attempt to access these fields.</dd>
+</dl>
+
+<p>If the processing required for a parameter is more complex than the
+basic types listed above, an external function can be specified to process
+the parameter.  To do this. set the parameter's type to <tt>CD_FUNC</tt>,
+and in the <tt>ptr</tt> field, place a pointer to a handler function that
+takes three parameters and returns an <tt>int</tt>:</p>
+
+<div class="code">int <i>function</i>(const char *<i>filename</i>, int <i>linenum</i>, char *<i>param</i>);</div>
+
+<p>The first two parameters, <tt><i>filename</i></tt> and
+<tt><i>linenum</i></tt>, serve two purposes.  One is provide the filename
+and line number currently being processed, when reading the file; these can
+then be passed to <tt>config_error()</tt> if a warning or error message
+needs to be printed.  The other is to indicate the action requested of the
+function.  <i>(Note: This is poor design.  Ideally, the action requested
+should be specified by a separate parameter to the function.)</i>  If
+<tt><i>filename</i></tt> is not <tt>NULL</tt>, then the function is being
+called to process the parameter string and store any resulting values in a
+temporary location; if it is <tt>NULL</tt>, then the function should
+perform some other action as specified by <tt>linenum</tt>:</p>
+
+<ul>
+<li><b><tt>CDFUNC_INIT</tt>:</b> Prepare for processing a new value
+(<i>e.g.</i>, save variables' original values and clear any variables used
+for temporary value storage).</li>
+<li><b><tt>CDFUNC_SET</tt>:</b> Copy any temporary values to their final
+locations.</li>
+<li><b><tt>CDFUNC_DECONFIG</tt>:</b> Restore configuration variables'
+original values.</li>
+</ul>
+
+<p>The final parameter, <tt><i>param</i></tt>, is the parameter string read
+from the configuration file, and may be modified or destroyed (the parser
+will not make any further use of it).</p>
+
+<p>The function should return nonzero on success, zero on error.  However,
+errors are only checked for when reading/processing the parameter; the
+<tt>CDFUNC_INIT</tt>, <tt>CDFUNC_SET</tt>, and <tt>CDFUNC_DECONFIG</tt>
+operations are assumed to succeed.</p>
+
+<p><b>Configuration file processing details</b></p>
+
+<p>The calling pattern of <tt>configure()</tt> and <tt>deconfigure()</tt>
+looks roughly like the following:</p>
+
+<div class="code">configure(..., CONFIGURE_READ)
+   -&gt; read_config_file()
+         -&gt; do_read_config_file()
+             [ -&gt; do_read_config_file()... ]
+               -&gt; parse_config_line()
+configure(..., CONFIGURE_SET)
+   -&gt; do_all_directives(ACTION_COPYNEW)
+deconfigure()
+   -&gt; do_all_directives(ACTION_RESTORESAVED)</div>
+
+<p><tt>configure()</tt> with the <tt>CONFIGURE_SET</tt> flag and
+<tt>deconfigure()</tt> have basically the same function: to store a value
+into each configuration variable.  This is handled by the internal function
+<tt>do_all_directives</tt>, which uses the <tt><i>action</i></tt> parameter
+to select whether to copy the new value read in from the configuration file
+(<tt>ACTION_COPYNEW</tt>) or the saved original value
+(<tt>ACTION_RESTORESAVED</tt>).</p>
+
+<p><tt>configure()</tt> with the <tt>CONFIGURE_READ</tt> flag calls
+<tt>read_config_file()</tt>, which opens the proper configuration file,
+initializes all configuration parameters for reading, calls
+<tt>do_read_config_file()</tt> to actually process the file, and checks
+that all required directives were seen; the function returns nonzero on
+success, zero if an error was detected.</p>
+
+<p><tt>do_read_config_file()</tt> iterates through each line of the given
+file, calling <tt>parse_config_line()</tt> for each non-empty line (except
+that the meta-directives <tt>IncludeFile</tt>, <tt>Module</tt>, and
+<tt>EndModule</tt> are processed directly by <tt>do_read_config_file()</tt>).
+<tt>parse_config_line()</tt>, in turn, splits the given line into directive
+and parameters, locates the entry in the <tt>ConfigDirective</tt> array
+corresponding to the directive (generating an error if none is found), and
+processes each of the directive's parameters, returning success (nonzero)
+or failure (zero) to <tt>do_read_config_file()</tt>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-3">2-3-3. The main loop</h4>
+
+<p>Once initialization has completed, Services enters the main loop.  This
+fairly simple loop performs the following functions:</p>
+
+<ul>
+<li class="spaced">Saves the current databases to persistent storage, if the
+<tt>save_data</tt> global flag has been set to a nonzero value or the time
+specified by the <tt>UpdateTimeout</tt> configuration directive has passed
+since the last time the databases were saved.  After saving, the
+<tt>save_data</tt> flag is cleared and the last database save time is
+stored in <tt>last_update</tt>.</li>
+
+<li class="spaced">Exits the loop if the <tt>delayed_quit</tt> global flag
+has been set to a nonzero value.  (This flag is used to cause Services to
+save its databases before exiting, and can be set by the <tt>SIGTERM</tt>
+signal, as described below in <a href="#s3-4">section 2-3-4</a>, or by the
+OperServ <tt>SHUTDOWN</tt> and <tt>RESTART</tt> commands, as described in
+<a href="../4.html">section 4 of the user's manual</a>.)</li>
+
+<li class="spaced">Sends a <tt>PING</tt> message to the remote server if
+the connection to the server is active and periodic pinging has been
+enabled via the the <tt>PingFrequency</tt> configuration directive.</li>
+
+<li class="spaced">Checks active timers for timeout events (see
+<a href="#s7">section 2-7</a>), if the time specified by the
+<tt>TimeoutCheck</tt> configuration directive has passed since the last
+such check.</li>
+
+<li class="spaced">Checks sockets for activity (see
+<a href="3.html#s6">section 3-6</a>).</li>
+
+<li class="spaced">Flushes out all accumulated channel mode changes, if
+channel mode merging has not been enabled by the <tt>MergeChannelModes</tt>
+configuration directive (see <tt>set_cmode()</tt> in
+<a href="#s6-5">section 2-6-5</a>).</li>
+</ul>
+
+<p>The main loop terminates when the <tt>quitting</tt> global flag becomes
+nonzero, and can also abort via the <tt>delayed_quit</tt> flag as described
+above.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-4">2-3-4. Signals</h4>
+
+<p>Services makes use of the following signals to perform certain actions:</p>
+
+<ul>
+<li><b><tt>SIGTERM</tt>:</b> Causes Services to save its databases and
+terminate, as if the OperServ <tt>SHUTDOWN</tt> command had been given.</li>
+<li><b><tt>SIGINT</tt>, <tt>SIGQUIT</tt>:</b> Causes Services to terminate
+immediately without saving its databases, as if the OperServ <tt>QUIT</tt>
+command had been given.</li>
+<li><b><tt>SIGHUP</tt>:</b> Causes Services to save its databases and
+reread the configuration file, as if the OperServ <tt>UPDATE</tt> and
+<tt>REHASH</tt> commands had been given.  Rehashing is done via the
+<tt>reconfigure()</tt> function provided by <tt>init.c</tt>.</li>
+<li><b><tt>SIGUSR2</tt>:</b> Causes Services to close the log file and
+reopen it immediately; this can be useful if the log file has been moved.</li>
+</ul>
+
+<p>To catch program or system faults, the <tt>SIGSEGV</tt>, <tt>SIGBUS</tt>,
+<tt>SIGILL</tt>, <tt>SIGTRAP</tt>, <tt>SIGFPE</tt>, and (if defined)
+<tt>SIGIOT</tt> signals are directed to a generic termination handler
+(<tt>weirdsig_handler()</tt>, also used for <tt>SIGINT</tt> and
+<tt>SIGQUIT</tt>).  However, if the <tt>-dumpcore</tt> option was given to
+<tt>configure</tt>, <tt>SIGSEGV</tt> is instead left alone, causing the
+operating system to abort the program and dump a core file if a
+segmentation fault occurs.</p>
+
+<p>In addition, <tt>SIGUSR1</tt> is used by the memory subsystem to cause
+the program to abort if an out-of-memory condition is detected by the
+<tt>smalloc()</tt>, <tt>scalloc()</tt>, or <tt>srealloc()</tt> functions.</p>
+
+<p>All signals not mentioned above are set to "ignore" by the
+<tt>init_signals()</tt> function.  (However, the <tt>SIGPROF</tt> and
+<tt>SIGCHLD</tt> signals are left alone: <tt>SIGPROF</tt> so that
+profiling can be performed, and <tt>SIGCHLD</tt> so that any child
+processes can be properly reaped.)</p>
+
+<p>The handlers for each of these signals, as well as the
+<tt>init_signals()</tt> function which sets them up, are in
+<tt>signals.c</tt>.  This source file has two additional external
+interfaces, <tt>enable_signals()</tt> and <tt>disable_signals()</tt>,
+which enable and disable, respectively, processing of the <tt>SIGTERM</tt>,
+<tt>SIGHUP</tt>, and <tt>SIGUSR2</tt> signals, to prevent any action being
+taken when Services' internal data may be in an inconsistent state.  The
+signals are not ignored, only blocked, so if one of these signals is
+received between a <tt>disable_signals()</tt> call and the corresponding
+<tt>enable_signals()</tt> call, it will be processed immediately when
+<tt>enable_signals()</tt> is called.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-5">2-3-5. Termination</h4>
+
+<p>Once the main loop terminates, Services calls the <tt>cleanup()</tt>
+function (defined in <tt>init.c</tt>), which performs the following
+actions&mdash;more or less the reverse of <tt>init()</tt>:</p>
+
+<ul>
+<li class="spaced">Writes a log entry with the quit message (stored in
+the global variable <tt>quitmsg</tt>); a default message is written if none
+has been provided, but any code that causes Services to exit should provide
+an appropriate quit message.</li>
+
+<li class="spaced">Flushes out any unsent mode changes.</li>
+
+<li class="spaced">Unloads all modules.</li>
+
+<li class="spaced">If the remote server socket has been opened, sends an
+<tt>SQUIT</tt> to the remote server (if connected) and closes the socket.</li>
+
+<li class="spaced">Calls <tt>lang_cleanup()</tt> to free all memory used
+by multilingual support.</li>
+
+<li class="spaced">Calls other subsystems' cleanup routines.</li>
+
+<li class="spaced">Unregisters callbacks registered by <tt>init()</tt>.</li>
+
+<li class="spaced">Calls the module subsystem's cleanup routine.</li>
+
+<li class="spaced">Calls <tt>deconfigure()</tt> to reset all configuration
+variables to their original values and free any strings allocated by the
+configuration file parser.  However, the value of <tt>LogFilename</tt> is
+preserved in a static buffer, in case the log needs to be reopened (as can
+happen when restarting; see below).</li>
+
+<li class="spaced">Closes the log file.</li>
+</ul>
+
+<p>Finally, Services terminates by returning from <tt>main()</tt>; however,
+if a restart has been requested (by setting the <tt>restart</tt> global
+flag to a nonzero value), Services first attempts to re-execute itself via
+the <tt>execve</tt> system call.  If this fails, the log file is reopened
+and an error message is written (regardless of whether read-only mode was
+enabled or not).</p>
+
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s4">2-4. Logging</h3>
+
+<p>Logging functionality is provided by the functions in <tt>log.c</tt>
+(and the corresponding <tt>log.h</tt> header file, included by
+<tt>services.h</tt>).</p>
+
+<p>The logging subsystem does not include explicit initialization or
+cleanup routines; all necessary processing is carried out in the
+<tt>open_log()</tt> and <tt>close_log()</tt> functions, which are (as the
+names imply) used to open and close the log file; <tt>open_log()</tt> in
+particular relies on the <tt>LogFilename</tt> global variable (which
+reflects the same-named configuration directive) for the name of the file
+to open (see below).  There is also an <tt>open_memory_log()</tt> function,
+which can be used to set up a memory buffer to hold log messages when the
+log filename is not yet known; a <tt>reopen_log()</tt> function, to close
+and reopen the log file (in case the file has been moved and needs to be
+recreated, or if <tt>LogFilename</tt> has changed, for example); and a
+<tt>log_is_open()</tt> function, which returns whether a log file or buffer
+is currently open.</p>
+
+<p>The log filename specified in the <tt>LogFilename</tt> configuration is
+taken to be a template containing one or more of the following tokens:</p>
+
+<ul>
+<li><b><tt>%y</tt>:</b> The current year (4 digits).</li>
+<li><b><tt>%m</tt>:</b> The current month, 01-12 (2 digits).</li>
+<li><b><tt>%d</tt>:</b> The current day of the month, 01-31 (2 digits).</li>
+<li><b><tt>%%</tt>:</b> A literal "<tt>%</tt>" character.</li>
+</ul>
+
+<p>The template is processed by the <tt>gen_log_filename()</tt> function,
+called by <tt>open_log()</tt> and <tt>reopen_log()</tt>; the function
+replaces the tokens with their appropriate values and returns the resulting
+filename.</p>
+
+<p>Actual logging of messages is done via a set of ten functions, depending
+on the particulars of the message:</p>
+
+<div class="code">                    log(<i>format</i>, ...)
+              log_debug(<i>debuglevel</i>, <i>format</i>, ...)
+             log_perror(<i>format</i>, ...)
+       log_perror_debug(<i>debuglevel</i>, <i>format</i>, ...)
+             module_log(<i>format</i>, ...)
+       module_log_debug(<i>debuglevel</i>, <i>format</i>, ...)
+      module_log_perror(<i>format</i>, ...)
+module_log_perror_debug(<i>debuglevel</i>, <i>format</i>, ...)
+                  fatal(<i>format</i>, ...)
+           fatal_perror(<i>format</i>, ...)
+</div>
+
+<p>Of these, the first eight (all but <tt>fatal()</tt> and
+<tt>fatal_perror()</tt>) are implemented as macros defined in
+<tt>log.h</tt> which call the <tt>do_log()</tt> function.  The
+<tt>module_</tt> functions are intended for use in modules, and insert the
+module name before the log message (using the <tt>MODULE_NAME</tt> macro,
+as described in <a href="4.html#s2-2">section 4-2-2</a>); the
+<tt>_perror</tt> functions append a system error string to the end of the
+message, like <tt>perror()</tt>; and the <tt>_debug</tt> functions allow a
+minimum debug level for the message to be specified (and also cause the
+string "debug:" to be inserted at the beginning of the message if the given
+level is greater than zero).  To illustrate the format of messages written
+by these functions, a sample message from <tt>module_log_perror_debug(1,"message")</tt> might be:</p>
+
+<div class="code">[Jan 01 12:34:56 2000] debug: (module_name) message: System error</div>
+
+<p>When running in debug mode, the time is printed to microsecond
+resolution.</p>
+
+<p><i>Implementation note: One reason these are implemented as
+macros is to avoid GCC warning about <tt>log()</tt> conflicting with the
+built-in mathematical function <tt>log()</tt>; another is to make it
+unnecessary for modules to have to manually specify <tt>MODULE_NAME</tt>
+when calling the module logging functions.</i></p>
+
+<p>The last two logging functions, <tt>fatal()</tt> and
+<tt>fatal_perror()</tt>, are intended for conditions under which a
+catastrophic failure cannot be avoided; they write the given message to the
+log file (prefixed by a timestamp and the string "FATAL:"), send a
+<tt>WALLOPS</tt> message to the remote server if connected, and call
+<tt>exit(1)</tt> to abort the program, without performing any of the
+ordinary cleanup procedure.</p>
+
+<p>All of the logging functions above first check whether the log file
+needs to be rotated, by calling <tt>check_log_rotate()</tt> if the log file
+is open.  This function calls <tt>gen_log_filename()</tt> and compares the
+result against the name of the currently open log file; if the filenames
+differ, then the current log file is closed, and a new one is opened with
+the new name.</p>
+
+<p>Actual writing to the log file is performed by the <tt>vlogprintf()</tt>
+function, which can be thought of as a <tt>vfprintf()</tt> with an implied
+file parameter (the log file).  There are also <tt>logprintf()</tt> and
+<tt>logputs()</tt> functions, which similarly function as <tt>fprintf()</tt>
+and <tt>fputs()</tt> do.  (Note that <tt>logputs()</tt> does <i>not</i>
+output a trailing newline, like <tt>fputs()</tt> and unlike <tt>puts()</tt>.)
+These functions first write the given string to standard error if the
+program is running in no-fork mode (from the <tt>-nofork</tt> command-line
+option).  The string is then written to the currently open log file; if no
+log file is open but the memory buffer is available (and not full), the
+string is written to the buffer instead.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s5">2-5. Message sending and receiving</h3>
+
+<p>In order to operate, Services must be able to send messages to and
+receive messages from the remote IRC server.  While each IRC server has its
+own idiosyncrasies (which are handled by IRC protocol modules, as described
+in <a href="5.html">section 5</a>), all share the same text-based,
+line-oriented format described in RFC 1459, and the Services core includes
+several functions for handling basic message sending and receiving.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s5-1">2-5-1. Sending messages</h4>
+
+<p>Message sending routines are located in <tt>send.c</tt> and
+<tt>send.h</tt>.  The most basic of these is <tt>vsend_cmd()</tt> (and its
+companion <tt>send_cmd()</tt>), which takes an optional message source, a
+message format string, and format arguments, and formats them into an IRC
+message which it then sends to the remote server.  (These functions would
+have been better named <tt>[v]send_msg()</tt>, but <i>c'est la vie</i>.)
+For example, a <tt>PING</tt> message could be sent to the remote server
+with:</p>
+
+<div class="code">send_cmd(NULL, "PING :%s", ServerName);</div>
+
+<p>Since it would be overly repetitive to write out the entire message
+format every time a message was to be sent, and since some protocols use
+different message formats for some messages, there are a number of
+shortcut routines which send a certain type of message to the remote
+server.  For example, <tt>PRIVMSG</tt>, <tt>NOTICE</tt>, and
+<tt>WALLOPS</tt> messages can be sent using the routines of the same
+names:</p>
+
+<dl>
+<dt><tt>void <b>privmsg</b>(const char *<i>source</i>, const char *<i>dest</i>,
+	const char *<i>fmt</i>, ...)</tt></dt>
+    <dd>Sends a <tt>PRIVMSG</tt> message from <tt><i>source</i></tt> to
+	<tt><i>dest</i></tt>.</dd>
+<dt><tt>void <b>notice</b>(const char *<i>source</i>, const char *<i>dest</i>,
+	const char *<i>fmt</i>, ...)</tt></dt>
+    <dd>Sends a <tt>NOTICE</tt> message from <tt><i>source</i></tt> to
+	<tt><i>dest</i></tt>.</dd>
+<dt><tt>void <b>wallops</b>(const char *<i>source</i>,
+	const char *<i>fmt</i>, ...)</tt></dt>
+    <dd>Sends a <tt>WALLOPS</tt> message (or an equivalent message for the
+	protocol in use) to the network.</dd>
+</dl>
+
+<p>Of these, <tt>NOTICE</tt> is used most commonly by far, and it has
+several variations of its own:</p>
+
+<dl>
+<dt><tt>void <b>notice_list</b>(const char *<i>source</i>,
+	const char *<i>dest</i>, const char **<i>text</i>)</tt></dt>
+    <dd>Sends each string in the <tt>NULL</tt>-terminated array
+	<tt><i>text</i></tt> as a <tt>NOTICE</tt> message from
+	<tt><i>source</i></tt> to <tt><i>dest</i></tt>.</dd>
+<dt><tt>void <b>notice_all</b>(const char *<i>source</i>,
+	const char *<i>fmt</i>, ...)</tt></dt>
+    <dd>Sends a <tt>NOTICE</tt> message from <tt><i>source</i></tt> to
+	all clients on the network.</dd>
+<dt><tt>void <b>notice_lang</b>(const char *<i>source</i>,
+	const User *<i>dest</i>, int *<i>index</i>, ...)</tt></dt>
+    <dd>Sends a <tt>NOTICE</tt> message from <tt><i>source</i></tt> to
+	<tt><i>dest</i></tt>, taking into account the language preference
+	of the target client and splitting the text into separate messages
+	at newline boundaries.</dd>
+<dt><tt>void <b>notice_help</b>(const char *<i>source</i>,
+	const User *<i>dest</i>, int *<i>index</i>, ...)</tt></dt>
+    <dd>Sends a <tt>NOTICE</tt> message from <tt><i>source</i></tt> to
+	<tt><i>dest</i></tt> like <tt>notice_lang()</tt>, but also replaces
+	each occurrence of <tt>%S</tt> (with an upper-case "S") in the
+	format string with the value of <tt><i>source</i></tt>.</dd>
+</dl>
+
+<p>The latter two functions, <tt>notice_lang()</tt> and
+<tt>notice_help()</tt>, take advantage of multilingual support (see
+<a href="#s8-2">section 2-8-2</a>) to send messages in the user's selected
+language; in this case the destination is passed as a <tt>User</tt>
+structure (see <a href="#s6-2">section 2-6-2</a>) rather than a string.
+These functions also process <tt>printf()</tt>-style formatting tokens in
+the specified message.</p>
+
+<p>Other sending functions include:</p>
+
+<dl>
+<dt><tt>void <b>send_channel_cmd</b>(const char *<i>source</i>,
+	const char *<i>fmt</i>, ...)</tt></dt>
+    <dd>Sends a message that changes a channel's status.  Some protocols
+	do not allow pseudoclients to change channel status directly, and
+	substitute the server name for the nickname given in the
+	<tt><i>source</i></tt> parameter.</dd>
+<dt><tt>void <b>send_cmode_cmd</b>(const char *<i>source</i>,
+	const char *<i>channel</i>, const char *<i>fmt</i>, ...)</tt></dt>
+    <dd>Sends a <tt>MODE</tt> message for a channel.  The format string
+	should start with the mode parameter ("<tt>+...</tt>" or
+	"<tt>-...</tt>").</dd>
+<dt><tt>void <b>send_error</b>(const char *<i>fmt</i>, ...)</tt></dt>
+    <dd>Sends an <tt>ERROR</tt> message to the remote server, and
+	disconnects.</dd>
+<dt><tt>void <b>send_namechange</b>(const char *<i>nick</i>,
+	const char *<i>newname</i>)</tt></dt>
+    <dd>Sends a message to change the "real name" of a pseudoclient.
+	<i>Not supported by some protocols.</i></dd>
+<dt><tt>void <b>send_nick</b>(const char *<i>nick</i>, const char *<i>user</i>,
+	const char *<i>host</i>, const char *<i>server</i>,
+	const char *<i>name</i>, const char *<i>modes</i>)</tt></dt>
+    <dd>Sends messages to introduce a client to the network.</dd>
+<dt><tt>void <b>send_nickchange</b>(const char *<i>nick</i>,
+	const char *<i>newnick</i>)</tt></dt>
+    <dd>Sends a message to change the nickname of a pseudoclient.</dd>
+<dt><tt>send_nickchange_remote(const char *<i>nick</i>,
+	const char *<i>newnick</i>)</tt></dt>
+    <dd>Sends a message to change the nickname of a client on another
+	server.  <i>Not supported by some protocols.</i></dd>
+<dt><tt>void <b>send_pseudo_nick</b>(const char *<i>nick</i>,
+	const char *<i>realname</i>, int <i>flags</i>)</tt></dt>
+    <dd>Introduces a pseudoclient to the network.</dd>
+<dt><tt>void <b>send_server</b>()</tt></dt>
+    <dd>Sends the initial messages required upon connection to the remote
+	server.</dd>
+<dt><tt>void <b>send_server_remote</b>(const char *<i>server</i>,
+	const char *<i>desc</i>)</tt></dt>
+    <dd>Sends a message to introduce a new (fake) server to the network.</dd>
+</dl>
+
+<p>Note that some of these functions are actually implemented by protocol
+modules, as described in <a href="5.html">section 5</a>.  This means that
+they may not have exactly the same result on different protocols (for
+example, <tt>send_nickchange_remote()</tt> won't do anything if the
+protocol doesn't support remote nickname changing), and that the functions
+cannot be used before a protocol module is loaded (any attempt to do so
+will cause the program to abort).</p>
+
+<p><tt>send.c</tt> also defines several variables used to indicate
+characteristics of the protocol in use:</p>
+
+<ul>
+<li><b><tt>protocol_name</tt>:</b> A string describing the protocol.</li>
+<li><b><tt>protocol_version</tt>:</b> A string describing the versions of
+	the protocol supported by the module.</li>
+<li><b><tt>protocol_features</tt>:</b> A bitmask of features supported by
+	the protocol.</li>
+<li><b><tt>protocol_nickmax</tt>:</b> The maximum nickname length supported
+	by the protocol.</li>
+</ul>
+
+<p>These variables are set by the protocol module in its initialization
+routine; see <a href="5.html#s2">section 5-2</a> for details.
+<tt>send.c</tt> hooks into the "<tt>load module</tt>" callback to watch
+for a protocol module being loaded, and ensures that the protocol has set
+all protocol variables and functions properly.  <i>Implementation note:
+since there is nothing to specify that a particular module is a protocol
+module, the function simply assumes that the first module loaded is a
+protocol module.</i></p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s5-2">2-5-2. Receiving messages</h4>
+
+<p>Message reception is handled by the socket callbacks
+<tt>readfirstline_callback()</tt> and <tt>readline_callback()</tt>, which
+are called when a line of text is available to be read from the network
+(see <a href="3.html">section 3</a> for a description of how socket
+processing works).  When the socket is created, its <tt>READLINE</tt>
+callback is set to <tt>readfirstline_callback()</tt>; this routine reads
+the first line of data from the network, sets the <tt>linked</tt> global
+flag (if the first line was not an <tt>ERROR</tt> message) to indicate
+that Services has connected to the network, introduces all pseudoclients
+(using the <tt>introduce_user()</tt> function in <tt>init.c</tt>&mdash;see
+<a href="7.html#s1">section 7-1</a> for details), calls the
+"<tt>connect</tt>" callback, and changes the socket's callback function to
+<tt>readline_callback()</tt> to read subsequent messages.</p>
+
+<p>Each line of data read in this way is sent to the <tt>process()</tt>
+function, discussed in <a href="#s5-3">section 2-5-3</a> below, for parsing
+and processing.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s5-3">2-5-3. Processing messages</h4>
+
+<p>Once a message has been received from the remote server, it is passed to
+the <tt>process()</tt> function, defined in <tt>process.c</tt>, for
+processing.  (Technically, <tt>process()</tt> takes no arguments, and reads
+the message from the global <tt>inbuf</tt> variable; this approach is taken
+to allow signal handlers to log the current buffer in case the program
+crashes during processing of a message.)  <tt>process()</tt> first extracts
+the sender, if any, from the beginning of the buffer and splits the rest of
+the buffer into fields in the RFC 1459 style&mdash;note that there is no
+facility for handling protocols which do not use RFC 1459-style messages.
+<tt>process()</tt> then calls the "<tt>receive message</tt>" callback,
+which is the lowest-level method of hooking into input messages; if no
+callback function handles the message, it is then processed in the ordinary
+manner, which involves looking up the message name using
+<tt>find_message()</tt> and calling the message's handler function if one
+exists.  The handler receives the message's source as a string, and the
+message's parameters as a count/vector pair (the command itself is not
+passed to the function).</p>
+
+<p><tt>find_message()</tt> is located in <tt>messages.c</tt>, along with
+other routines for managing messages.  Message handlers are organized into
+tables of <tt>Message</tt> structures, each of which is a pair of a message
+name and a handler for that message.  These tables can be registered with
+the message processing code using the <tt>register_messages()</tt>
+function, and removed again with the <tt>unregister_messages()</tt>
+function (the default handlers are installed by the
+<tt>messages_init()</tt> function).  This is the method by which protocol
+modules (see <a href="5.html">section 5</a>) typically handle
+protocol-specific messages, though in some cases it is necessary to hook
+into the "<tt>receive message</tt>" callback instead.</p>
+
+<p>When called, <tt>find_message()</tt> searches all registered tables for
+a handler for the given message (case-insensitive), and returns it if
+found.  If two or more tables have handlers for the same message, the one
+in the most recently registered table is used, allowing previously-installed
+handlers to be overridden (however, there is no facility for calling the
+overridden handler).</p>
+
+<p>Internally, <tt>find_message()</tt> uses a doubly-linked list of message
+names and associated <tt>Message</tt> structures to locate messages; this
+list is created by <tt>init_message_list()</tt> called each time a message
+table is registered or unregistered.  When a message is found, it is
+shifted one element toward the head of the list (if it is not already at
+the head), so that subsequent searches can find that message faster.  This
+allows frequently-seen messages to "bubble" up to the top of the list,
+reducing the time spent looking up each message.  (A decent hash table
+would probably be more efficient still, if more complex.)</p>
+
+<p>The default message handlers are also defined in <tt>messages.c</tt>,
+and cover the basic set of IRC messages, such as <tt>PRIVMSG</tt> (which
+calls the "<tt>m_privmsg</tt>" callback for processing), <tt>JOIN</tt>, and
+<tt>SERVER</tt>.  There are also entries in the table for ignored messages,
+such as <tt>NOTICE</tt> and <tt>PONG</tt>, with no handler specified; these
+are present to prevent <tt>process()</tt> from logging an "unknown message"
+warning.</p>
+
+<p>Noticeably absent from the message table are <tt>NICK</tt> and
+<tt>USER</tt>.  Client registration is one of the greatest points of
+difference between IRC protocols, and attempting to use the default RFC
+1459 method does not work on most modern protocols, so handling of these
+messages is left entirely to the protocol module.  As a corollary, if the
+protocol module does not handle these (or whatever other message may be
+used for introducing clients to the network), Services will not be able to
+recognize any clients.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s5-4">2-5-4. The ignore list</h4>
+
+<p>In order to provide some measure of protection against users "spamming"
+Services with messages in order to cause a denial of service, the default
+<tt>PRIVMSG</tt> handler includes logic which keeps track of how much load
+each client is placing on Services, and ignores <tt>PRIVMSG</tt> messages
+from clients who exceed a certain threshold.  The ignore data is not kept
+in a "list" per se, but is instead stored as part of each <tt>User</tt>
+structure (see <a href="#s6-2">section 2-6-2</a>); the
+<tt>ignore_init()</tt> routine initializes the fields in this structure
+used for ignore data, and the <tt>ignore_update()</tt> routine updates the
+fields after work has been done on behalf of the client.  Both of these
+routines are contained in <tt>ignore.c</tt>.</p>
+
+<p>The "ignore value" for a client, stored in the <tt>ignore</tt> field of
+the <tt>User</tt> structure, is calculated roughly as the average over
+time of a function whose value is 1 when Services is executing code on
+behalf ot the client and 0 at all other times, with recent values given
+more weight.  Rather than keep track of the exact time values, however, a
+decaying average is computed, with the value decaying by half every time
+interval specified by the <tt>IgnoreDecay</tt> configuration directive.  If
+this average value exceeds the threshold specified by
+<tt>IgnoreThreshold</tt>, the <tt>PRIVMSG</tt> handler will ignore the
+client's message.</p>
+
+<p>This approach is obviously limited in its effectiveness&mdash;for
+example, it cannot deal with a botnet or other large group of clients
+attacking Services if each client stays below the ignore threshold&mdash;but
+it can serve as a first line of defense against malicious users.</p>
+
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s6">2-6. Servers, clients, and channels</h3>
+
+<p>Since Services connects to the IRC network as a server, it must keep
+track of the IRC network's state&mdash;the servers, clients, and channels
+on the network&mdash;just as other servers do.  This section discusses the
+way in which this state is stored and the routines used for managing it.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-1">2-6-1. Servers</h4>
+
+<p>Server management routines are contained in <tt>servers.c</tt> and
+<tt>servers.h</tt>.  The important routines (other than initialization
+and cleanup) are <tt>do_server()</tt> and <tt>do_squit()</tt>, which are
+called from their respective message handlers to add and remove servers.
+The server records themselves are stored in a hash table, created using
+the <tt>hash.h</tt> header file.  Each record is a <tt>Server</tt>
+structure, containing the server's name, network join time, and client list
+(see <a href="#s6-2">section 2-6-2</a> below); there is also a flag
+indicating whether the record represents a real server on the network or a
+fake server created by Services (such as with the OperServ <tt>JUPE</tt>
+command).  Services also creates a fake server record for itself, using the
+empty string for the server name.</p>
+
+<p>When adding a server, parent/child links are established between the
+originating server and the new server.  This allows easy removal of an
+entire subtree of servers when an <tt>SQUIT</tt> message is received:
+<tt>do_squit()</tt> calls <tt>squit_server()</tt> on the quitting server,
+which calls <tt>recursive_squit()</tt> to delete any child servers (from
+Services' point of view) before deleting the quitting server itself.  In
+turn, <tt>recursive_squit()</tt>, as its name suggests, recursively calls
+<tt>squit_server()</tt> for each child server.  Since the IRC protocol
+mandates a tree structure for the network&mdash;cycles are not
+permitted&mdash;there is no danger of infinite recursion.</p>
+
+<p>In addition, there are some protocols which do not explicitly send
+<tt>QUIT</tt> messages for clients on disconnecting servers, a
+bandwidth-saving feature commonly known as "NOQUIT" from the token used in
+protocol negotiation to indicate that the feature is available.  If the
+protocol module signals, via the <tt>PF_NOQUIT</tt> protocol feature flag
+(see <a href="5.html#s2">section 5-2</a>), that it supports this feature,
+<tt>squit_server()</tt> will take care of removing all clients on each
+deleted server before deleting the server itself.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-2">2-6-2. Clients</h4>
+
+<p>Clients are also called "users" in IRC.  It is common to use the term
+"client" to refer to any program which connects to an IRC server and "user"
+to refer in particular to a human operating a client (or a client operated
+by a human), but through an unfortunate choice of terminology, clients are
+called "users" in the Services source code.  (In this documentation, the
+term "client" is used to refer to an IRC client on the network, while
+"user" refers more generally to the human controlling a client.)</p>
+
+<p>Be that as it may, each client (user) that connects to the network is
+given a <tt>User</tt> record, as defined in <tt>users.h</tt>, which is
+managed by code in <tt>users.c</tt>; as with server management,
+<tt>users.c</tt> uses a hash table to hold the client records.  Each client
+record contains:</p>
+
+<ul>
+<li class="spaced">The client's nickname, username, hostname, and "real
+	name" strings.  "Fake hostname" (the hostname shown to non-operator
+	clients) and IP address are also recorded for protocols which
+	support them.</li>
+
+<li class="spaced">Next/previous links for linking all clients on the same
+	server (the <tt>snext</tt> and <tt>sprev</tt> fields).</li>
+
+<li class="spaced">Nickname registration data (see
+	<a href="7.html#s3-1-1">section 7-3-1-1</a>).</li>
+
+<li class="spaced">The client's connection timestamp as passed from the
+	remote server, as well as the local timestamp when Services
+	received the client registration message.  There is also a
+	"Services stamp" field, a unique integer assigned by Services and
+	maintained by the IRC servers (if supported) to identify clients
+	across netsplits; this is used by the NickServ pseudoclient in
+	nickname authentication.</li>
+
+<li class="spaced">The client's IRC modes, and flags used by Services.</li>
+
+<li class="spaced">The client's ignore data (see <a href="#s5-4">section
+2-5-4</a>).</li>
+
+<li class="spaced">Various counters and timers, such as for counting bad
+passwords.</li>
+
+<li class="spaced">An array of registered nickname group IDs for which the
+	client has identified (used by NickServ).</li>
+
+<li class="spaced">A list of channels the client is currently in.</li>
+
+<li class="spaced">A list of channels the client has identified for (used
+	by ChanServ).</li>
+</ul>
+
+<p>As can be seen above, the <tt>User</tt> structure contains a few fields
+which are used only by modules.  From a design standpoint, these fields
+would be ideally stored in separate tables set up by those modules, but
+they are aggregated into the <tt>User</tt> structure for the sake of
+convenience.  The core code does not access any of the module-based data,
+with the exception of the multilingual code, which uses the language
+setting stored in the nickname's registration data, if any (see
+<a href="#s8-2">section 2-8-2</a>).</p>
+
+<p>The primary interface into the client management code is through the IRC
+message processing functions, as with servers.  In the case of clients,
+there are several messages that need to be handled: <tt>NICK</tt>,
+<tt>MODE</tt> (for a client target), <tt>KILL</tt>, <tt>QUIT</tt>,
+<tt>JOIN</tt>, <tt>PART</tt>, and <tt>KICK</tt>.  (The latter three are
+technically channel-related messages, but as they also operate on client
+data, they are handled here and call functions from the channel management
+subsystem to do their work.)  As some of these messages have large parts in
+common, they often call local subroutines to perform their work:
+<tt>QUIT</tt> and <tt>KILL</tt> both use <tt>quit_user()</tt> to clean up
+after the departing client, and <tt>PART</tt> and <tt>KICK</tt> call
+<tt>part_channel()</tt> to remove the client from the specified channel.
+(The infamous "<tt>JOIN&nbsp;0</tt>" message, which causes a client to
+leave all channels it is currently in, is similarly implemented.)</p>
+
+<p>In addition to the processing functions, <tt>users.c</tt> provides a
+number of client-related utility functions.  These include informational
+functions that return a client's status on the network or on a particular
+channel:</p>
+
+<dl>
+<dt><tt>int <b>is_oper</b>(const User *<i>user</i>)</tt></dt>
+    <dd>Returns whether the client is an IRC operator.</dd>
+<dt><tt>int <b>is_on_chan</b>(const User *<i>user</i>, const char *<i>chan</i>)</tt></dt>
+    <dd>Returns whether the client is on the specified channel.</dd>
+<dt><tt>int <b>is_chanop</b>(const User *<i>user</i>, const char *<i>chan</i>)</tt></dt>
+    <dd>Returns whether the client is a channel operator on the specified
+	channel.</dd>
+<dt><tt>int <b>is_voiced</b>(const User *<i>user</i>, const char *<i>chan</i>)</tt></dt>
+    <dd>Returns whether the client is voiced on the specified channel.</dd>
+</dl>
+
+<p>Functions for handling user/host masks:</p>
+
+<dl>
+<dt><tt>int <b>match_usermask</b>(const char *<i>mask</i>, const User *<i>user</i>)</tt></dt>
+    <dd>Returns whether the client's username and hostname information
+	match the given <tt><i>user</i>@<i>host</i></tt> mask.</dd>
+<dt><tt>void <b>split_usermask</b>(const char *<i>mask</i>,
+	char **<i>nick</i>, char **<i>user</i>, char **<i>host</i>)</tt></dt>
+    <dd>Returns the nickname, username, and hostname parts of a mask as
+	separate strings.</dd>
+<dt><tt>char *<b>create_mask</b>(const User *<i>user</i>, int <i>use_fakehost</i>)</tt></dt>
+    <dd>Creates a new mask based on the client's username and hostname
+	information, returning it as a <tt>malloc()</tt>'d string.</dd>
+</dl>
+
+<p>And functions related to guest nicknames:</p>
+
+<dl>
+<dt><tt>char *<b>make_guest_nick</b>()</tt></dt>
+    <dd>Creates a new guest nickname.  The returned nickname is stored in
+	a static buffer.</dd>
+<dt><tt>int <b>is_guest_nick</b>(const char *<i>nick</i>)</tt></dt>
+    <dd>Returns whether the given nickname is a guest nickname.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-3">2-6-3. Channels</h4>
+
+<p>Channels are managed by the <tt>channels.c</tt> and <tt>channels.h</tt>
+files, which, like servers and clients, store records for each channel in a
+hash table.  Channel records contain:</p>
+
+<ul>
+<li class="spaced">The channel's name.</li>
+
+<li class="spaced">Channel registration data (see
+<a href="7.html#s4-1-1">section 7-4-1-1</a>).</li>
+
+<li class="spaced">The channel's creation timestamp.</li>
+
+<li class="spaced">The channel's topic, along with the nickname of the
+client which set the topic and the time the topic was set.</li>
+
+<li class="spaced">Mode information for the channel, including a bitmask of
+binary modes and fields for non-binary modes and ban/exception/invite lists.
+Not all fields are used by all protocols; also, the meaning of the bits in
+the <tt>modes</tt> field changes with the protocol (see
+<a href="#s6-4">section 2-6-4</a> below).</li>
+
+<li class="spaced">A list of clients on the channel, with channel user
+modes (such as <tt>+o</tt> and <tt>+v</tt>) and local flags for each
+client.</li>
+
+<li class="spaced">Fields used to check for "bouncy modes" (see below).</li>
+</ul>
+
+<p>As discussed in <a href="#s6-2">section 2-6-2</a>, the channel messages
+<tt>JOIN</tt>, <tt>PART</tt>, and <tt>KICK</tt> are processed by the client
+management subsystem; the handlers for those messages call
+<tt>chan_adduser()</tt> and <tt>chan_deluser()</tt> for the channel side of
+the processing.  The only messages processed entirely by <tt>channels.c</tt>
+are the pure channel messages <tt>MODE</tt> (for a channel target) and
+<tt>TOPIC</tt>.</p>
+
+<p>One problem that can occur with channels is that, possibly due to a
+misconfiguration, the remote server (or another server on the network) does
+not allow Services to change the channel's modes; this can result in an
+infinite loop of channel mode changes taking place.  For example, ChanServ
+might request that the mode <tt>+s</tt> be set on a channel, but when
+Services sends that mode change out, the remote server immediately counters
+it with a <tt>-s</tt>.  ChanServ, believing that its <tt>+s</tt> actually
+took effect before the <tt>-s</tt> was sent, sends out a new <tt>+s</tt>,
+and the cycle continues. This can result in flooding of the link between
+Services and its remote server and make the channel unusable due to the
+neverending mode changes.</p>
+
+<p>To avoid this problem, the <tt>MODE</tt> message handler watches for
+identical mode changes from any server, and counts the number of changes
+that occur per second.  ChanServ uses this in its mode-setting routine
+(<tt>check_modes()</tt>, described in <a href="7.html#s4-1-3">section
+7-4-1-3</a>) to decide whether to attempt to change modes on the channel.
+<i>Implementation note: While the count of mode changes per second and the
+"bouncy modes" flag is kept on a per-channel basis, the mode string itself
+is stored in a single static variable, so bouncy modes may not be detected
+if they occur on multiple channels at the same time.</i></p>
+
+<p>The <tt>MODE</tt> message handler also keeps track of multiple channel
+user mode changes for the same client within the same <tt>MODE</tt>
+message, and aggregates them so that the "<tt>channel umode change</tt>"
+callback is only called once per client per message.</p>
+
+<p>Aside from message processing, <tt>channels.c</tt> also provides the
+function <tt>chan_has_ban()</tt>, which returns whether a given ban mask
+(case-insensitive) exists on a particular channel.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-4">2-6-4. Client and channel modes</h4>
+
+<p>Services keeps track of binary modes for clients and channels using flag
+bitmasks rather than strings, for efficiency.  In order to convert between
+the mode characters used by the IRC protocol and these flag values, the
+<tt>modes.c</tt> source file (along with its companion header,
+<tt>modes.h</tt>) provides several utility routines for handling client and
+channel modes:</p>
+
+<dl>
+<dt><tt>void <b>mode_setup</b>()</tt></dt>
+    <dd>Initializes internal tables (see below).</dd>
+<dt><tt>int32 <b>mode_char_to_flag</b>(char <i>c</i>, int <i>which</i>)</tt></dt>
+    <dd>Converts a mode character to the corresponding flag value.</dd>
+<dt><tt>char <b>mode_flag_to_char</b>(int32 <i>f</i>, int <i>which</i>)</tt></dt>
+    <dd>Converts a single mode flag to the corresponding character.</dd>
+<dt><tt>int32 <b>mode_string_to_flags</b>(const char *<i>s</i>, int <i>which</i>)</tt></dt>
+    <dd>Converts a string of mode characters to a set of flags.</dd>
+<dt><tt>char *<b>mode_flags_to_string</b>(int32 <i>flags</i>, int <i>which</i>)</tt></dt>
+    <dd>Converts a set of mode flags to a string of mode characters (the
+	returned string is stored in a static buffer).</dd>
+<dt><tt>int <b>mode_char_to_params</b>(char <i>c</i>, int <i>which</i>)</tt></dt>
+    <dd>Returns the number of parameters used when setting or unsetting a
+	mode, as <tt>plus_params<<8 | minus_params</tt> (see the
+	<tt>ModeData</tt> structure description below).</dd>
+<dt><tt>int32 <b>cumode_prefix_to_flag</b>(char <i>c</i>)</tt></dt>
+    <dd>Converts a nickname prefix character to the corresponding channel
+	user mode flag.</dd>
+</dl>
+
+<p>The <tt><i>which</i></tt> parameter passed to most of these functions
+indicates what type of mode is being used: <tt>MODE_USER</tt> for client
+modes (such as <tt>+o</tt> for IRC operator status), <tt>MODE_CHANNEL</tt>
+for channel modes (such as <tt>+s</tt> for secret channels), and
+<tt>MODE_CHANUSER</tt> for "channel user modes"&mdash;channel modes that
+are applied to clients on the channel rather than the channel itself, such
+as <tt>+o</tt> for channel operator privileges.  (Channel modes and channel
+user modes share the same set of mode characters in the IRC protocol, but
+Services treats them separately, hence there is a separate mode selection
+constant for them.)</p>
+
+<p>In the case of channel modes, not every mode is a simple binary on/off
+flag; for example, <tt>+l</tt> (limit) takes an integer parameter that
+specifies the client limit on the channel, and <tt>+b</tt> can be specified
+multiple times.  These are handled by additional fields in the channel
+record for each of these "special" modes.  When there is a distinction
+between "set" and "unset" for the mode (such as <tt>+l</tt>/<tt>-l</tt>),
+it is also given a flag value, but modes such as <tt>+b</tt> that can be
+set multiple times are not given a flag at all.</p>
+
+<p>While these functions are able to handle the standard IRC mode
+characters (client modes <tt>oiw</tt>, channel modes <tt>biklmnpst</tt>,
+and channel user modes <tt>ov</tt>) by default, many IRC protocols
+introduce additional modes specific to that protocol.  In order to support
+these modes as well, <tt>modes.c</tt> exports three arrays into which mode
+information can be written: <tt>usermodes[]</tt>, <tt>chanmodes[]</tt>,
+and <tt>chanusermodes[]</tt>, for user (client), channel, and channel user
+modes, respectively.  These are each arrays of 256 elements, where each
+element of the array contains information about the character with the
+value of the corresponding array index (for example, the element with index
+65 has information about the mode character "<tt>A</tt>").  The type of
+each element is a <tt>ModeData</tt> structure, containing:</p>
+
+<dl>
+<dt><tt>int32 <b>flag</b></tt></dt>
+    <dd>The flag value assigned to the mode (must be unique among all modes
+	of the same type).  Can be 0x80000000 (<tt>MODE_INVALID</tt>) if no
+	flag is to be used for the mode, as is generally the case for modes
+	like the channel mode <tt>+b</tt> which can be set multiple times.</dd>
+<dt><tt>uint8 <b>plus_params</b></tt></dt>
+    <dd>The number of parameters used when adding the mode.</dd>
+<dt><tt>uint8 <b>minus_params</b></tt></dt>
+    <dd>The number of parameters used when removing the mode.</dd>
+<dt><tt>char <b>prefix</b></tt></dt>
+    <dd>For channel user modes, the nickname prefix character for the mode
+	(such as "<tt>@</tt>" for "<tt>+o</tt>").</dd>
+<dt><tt>uint32 <b>info</b></tt></dt>
+    <dd>Zero or more informational flags about the mode:
+	<ul>
+	<li><b><tt>MI_MULTIPLE</tt>:</b> The mode can be set multiple times
+		(like <tt>+b</tt> on channels).</li>
+	<li><b><tt>MI_REGISTERED</tt>:</b> The mode should be set on
+		clients with registered nicknames, or on registered
+		channels.</li>
+	<li><b><tt>MI_OPERS_ONLY</tt>:</b> The mode causes a channel to be
+		limited to operators only.</li>
+	<li><b><tt>MI_REGNICKS_ONLY</tt>:</b> The mode causes a channel to
+		be limited to clients with registered nicknames only.</li>
+	</ul></dd>
+</dl>
+
+<p>The upper eight bits of the <tt>info</tt> field are reserved for local
+use by modules, which can take advantage of this to decouple behavioral
+logic from actual mode characters.  See the description of the Unreal
+protocol module in <a href="5.html#s6-14">section 5-6-14</a> for an example
+of using such local information flags.</p>
+
+<p>Whenever any changes are made to the mode arrays, the
+<tt>mode_setup()</tt> routine must be called to update the internal lookup
+tables used by the conversion functions.  (<tt>mode_setup()</tt> must also
+be called once before using any of the functions, even when the arrays are
+not modified; but since <tt>init()</tt> takes care of this call, it is not
+a concern in practice.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-5">2-6-5. High-level actions</h4>
+
+<p>The <tt>actions.c</tt> source file provides several routines which
+implement common operations on clients and channels.  While the core code
+does not make use of these routines, they are provided to simplify
+pseudoclient code and reduce redundancy.  The routines are:</p>
+
+<dl>
+<dt><tt>int <b>bad_password</b>(const char *<i>service</i>, User *<i>u</i>,
+	const char *<i>what</i>)</tt></dt>
+    <dd>Logs a bad password attempt for a client.  The client is sent a
+	"password incorrect" message, and the bad password count is
+	incremented, first being cleared if at least the interval specified
+	by <tt>BadPassTimeout</tt> has passed.  If the bad password count
+	reaches the limit specified by <tt>BadPassLimit</tt>, the client
+	will be killed (disconnected from the network), and a warning will
+	be sent when the count reaches one less than the limit.  Returns
+	1 if the client was warned, 2 if killed, 0 otherwise.</dd>
+
+<dt><tt>void <b>clear_channel</b>(Channel *<i>chan</i>, int <i>what</i>,
+	 const void *<i>param</i>)</tt></dt>
+    <dd>Clears modes and/or clients from a channel, depending on the
+	<tt><i>what</i></tt> and <tt><i>param</i></tt> parameters.
+	<tt><i>what</i></tt> can be any of the following flags:
+	<ul>
+	<li><b><tt>CLEAR_MODES</tt></b>: Remove all regular channel modes,
+		like <tt>+s</tt> and <tt>+l</tt>.  <tt><i>param</i></tt> is
+		ignored.</li>
+	<li><b><tt>CLEAR_BANS</tt></b>: Remove all channel bans.  If
+		<tt><i>param</i></tt> is not <tt>NULL</tt>, it is treated
+		as a <tt>User&nbsp;*</tt>, and only bans matching that
+		client are cleared.</li>
+	<li><b><tt>CLEAR_EXCEPTS</tt></b>: Remove all channel ban
+		exceptions.  <tt><i>param</i></tt> is treated as for
+		<tt>CLEAR_BANS</tt>.</li>
+	<li><b><tt>CLEAR_UMODES</tt></b>: Remove channel user modes.
+		<tt><i>param</i></tt> is cast to <tt>uint32</tt> and
+		treated as the set of mode flags to clear.</li>
+	<li><b><tt>CLEAR_USERS</tt></b>: Kick all clients from the channel.
+		<tt><i>param</i></tt> is treated as a <tt>char&nbsp;*</tt>
+		containing the reason to use in the kick message, and must
+		not be <tt>NULL</tt>.</li>
+	</ul>
+	More than one of these flags can be combined, but for obvious
+	reasons, this only works when the same <tt><i>param</i></tt> value
+	can be used for all flags; <tt>CLEAR_UMODES</tt> cannot be used
+	with <tt>CLEAR_BANS</tt> or <tt>CLEAR_EXCEPTS</tt>, for example.
+	There is also a callback provided by this function, named
+	"<tt>clear&nbsp;channel</tt>", which takes precedence over the
+	standard processing (<tt>CLEAR_EXCEPTS</tt> in particular must be
+	implemented via callback since it is not an RFC-standard feature).</dd>
+
+<dt><tt>const char *<b>set_clear_channel_sender</b>(const char *<i>newsender</i>)</tt></dt>
+    <dd>Sets the name (typically a pseudoclient nickname) used as the
+	sender in messages generated by <tt>clear_channel()</tt>, and
+	returns the old sender name.  If <tt><i>newsender</i></tt> is
+	<tt>NULL</tt>, the server name is used as the sender, which is the
+	default behavior.  <tt><i>newsender</i></tt> can also be specified
+	as <tt>PTR_INVALID</tt> to retrieve the current sender name without
+	changing it.</dd>
+
+<dt><tt>void <b>kill_user</b>(const char *<i>source</i>,
+	const char *<i>user</i>, const char *<i>reason</i>)</tt></dt>
+    <dd>Kills the specified client from the IRC network.
+	<tt><i>source</i></tt> is used as the message sender, and
+	<tt><i>reason</i></tt> is the reason string for the <tt>KILL</tt>
+	message.</dd>
+
+<dt><tt>void <b>set_topic</b>(const char *<i>source</i>, Channel *<i>c</i>,
+	const char *<i>topic</i>, const char *<i>setter</i>, time_t <i>t</i>)</tt></dt>
+    <dd>Sets the topic on the specified channel.  This function calls a
+	callback ("<tt>set&nbsp;topic</tt>") to perform its work, since
+	different protocols have different methods for setting channel
+	topics; in particular, some protocols ignore channel topic changes
+	depending on the timestamp used in the <tt>TOPIC</tt> message.</dd>
+
+<dt><tt>void <b>set_cmode</b>(const char *<i>sender</i>, Channel *<i>channel</i>, ...)</tt></dt>
+    <dd>Sets modes on a channel, including channel user modes.  This
+	function accumulates multiple mode changes for the same channel in
+	a buffer, only sending out a <tt>MODE</tt> message when instructed
+	to or when necessary (when the number of parameters to the message
+	exceeds the maximum of 6, or when the number of channels with
+	cached mode changes exceeds the limit set by
+	<tt>MERGE_CHANMODES_MAX</tt> in <tt>defs.h</tt>).  The routine also
+	tries to be "smart" about multiple changes for the same mode, and
+	if it sees a mode change that renders a previous change meaningless,
+	it will remove that previous change without ever sending it to the
+	network.  There are two ways to call the function:
+	<ul>
+	<li><b><tt>set_cmode(<i>sender</i>, <i>channel</i>, <i>modes</i>,
+		<i>param0</i>, <i>param1</i>, ...)</tt>:</b> Ordinary
+		operation, with a non-<tt>NULL</tt> value for
+		<tt><i>sender</i></tt>.  <tt><i>modes</i></tt> is passed
+		as an ordinary mode change string, such as
+		"<tt>+nst-il+k</tt>", and any parameters for the modes are
+		passed in the order the mode characters appear in
+		<tt><i>modes</i></tt>, as for an IRC <tt>MODE</tt> message.
+		Note that all parameters, including numeric parameters,
+		must be passed as strings.</li>
+	<li><b><tt>set_cmode(NULL, <i>channel</i>)</tt>:</b> Flush out
+		accumulated mode changes for the given channel.  If
+		<tt><i>channel</i></tt> is also <tt>NULL</tt>, accumulated
+		mode changes for all channels are flushed out.</li>
+	</ul>
+
+	<p>Internally, <tt>set_cmode()</tt> uses a <tt>modedata</tt>
+	structure to keep track of each set of mode changes for a channel.
+	Simple binary modes are stored as sets of flags to add and remove
+	(<tt>binmodes_on</tt> and <tt>binmodes_off</tt>), while modes that
+	take parameters are accumulated in two arrays: <tt>opmodes[]</tt>,
+	containing each mode character prefixed by a <tt>+</tt> or
+	<tt>-</tt>, and <tt>params[]</tt>, containing the parameters for
+	each mode (space-separated if the mode takes two or more
+	parameters).  For mode-with-parameters number <tt><i>n</i></tt>,
+	<tt>opmodes[2*<i>n</i>]</tt> is either "<tt>+</tt>" or
+	"<tt>-</tt>", <tt>opmodes[2*<i>n</i>+1]</tt> is the mode character
+	itself, and <tt>params[<i>n</i>]</tt> is the string holding the
+	mode's parameters.</p>
+
+	<p><tt>set_cmode()</tt> processes each mode character in turn,
+	watching for "<tt>+</tt>" or "<tt>-</tt>" to indicate whether the
+	modes are being added or removed.  Binary modes are simply added
+	to the appropriate <tt>binmodes</tt> field; modes with parameters
+	are appended to the <tt>opmodes[]</tt> and <tt>params[]</tt>
+	arrays, with a flush being performed if the number of mode
+	parameters exceeds the RFC-defined limit of 6 or the total length
+	of the parameters exceeds a maximum derived as the RFC line length
+	limit of 510 characters less the maximum length of the other parts
+	of the <tt>MODE</tt> message.</p>
+
+	<p>If the <tt>MergeChannelModes</tt> option is set,
+	<tt>set_cmode</tt> will also set a timeout for flushing the modes
+	out to the network (see <a href="#s7">section 2-7</a> for details
+	on timeouts).</p>
+
+	<p>When modes need to be flushed out, whether due to a full
+	message, a timeout, or a manual flush with
+	<tt><i>sender</i>==NULL</tt>, the <tt>flush_cmode()</tt> routine is
+	called.  This routine collects all accumulated modes into a string:
+	binary modes are written first (with mode removals before mode
+	additions, since at least some IRC server software ignores a
+	<tt>+s</tt> when sent after a <tt>-p</tt>), followed by modes with
+	parameters in the order they were accumulated.  The generated
+	<tt>MODE</tt> message is then sent out to the network, and the
+	<tt>modedata</tt> structure is cleared so that it can be reused.</p></dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s7">2-7. Timed events</h3>
+
+<p>While most events in Services happen synchronously, such as in response
+to a message from the IRC network, it is sometimes necessary to schedule
+actions to occur at a later time.  This is accomplished through the use of
+timed events, called <i>timeouts</i>.  Timeouts are implemented by the
+source files <tt>timeout.c</tt> and <tt>timeout.h</tt>.</p>
+
+<p>To create a new timeout, call <tt>add_timeout()</tt> or
+<tt>add_timeout_ms()</tt>, both of which function identically except that
+the former uses units of seconds while the latter uses milliseconds (in
+fact, <tt>add_timeout()</tt> is implemented in terms of
+<tt>add_timeout_ms()</tt>).  These functions take a pointer to the routine
+to be called when the timeout expires, and a <tt><i>repeat</i></tt> flag
+which, if nonzero, causes the timeout to restart at the given delay value
+when it expires (normally, the timeout is removed after it expires and the
+timeout routine is called).  The functions return a pointer to a
+<tt>Timeout</tt> structure, which is also passed to the timeout routine
+when it is called.  If the caller needs to pass extra data to the timeout
+routine, the <tt>data</tt> field can be set to an arbitrary value; this
+must be done before the routine that added the timeout returns (more
+precisely, before the next time <tt>check_timeouts()</tt> is
+called) in order to avoid a race condition.  <i>Implementation note: The
+maximum delay on a timeout is 2^31-1 milliseconds, or about 25 days.  This
+is due to the 32-bit width of the <tt>time_msec()</tt> return value; any
+time 2^31 milliseconds or more in the future will be treated as in the past
+due to signed difference comparison.</i></p>
+
+<p>Since Services is a single-threaded program, timeouts have to be checked
+for manually at periodic intervals.  This is done by calling the
+<tt>check_timeouts()</tt> function; the main loop of Services calls this
+at intervals specified by the <tt>TimeoutCheck</tt> configuration
+directive.  (As a consequence, timeouts will only have a resolution equal
+to <tt>TimeoutCheck</tt>&mdash;if <tt>TimeoutCheck</tt> is specified as 3
+seconds, for example, a timeout specified for 1 millisecond can still take
+up to 3 seconds to be executed.)  Upon being called,
+<tt>check_timeouts()</tt> iterates through the linked list of timeouts,
+checking for any that have expired.  For such timeouts, the timeout's
+expiration routine is called, passing a pointer to the <tt>Timeout</tt>
+structure as a parameter, then the timeout is either restarted (if it is
+specified as a repeating timeout) or deleted.</p>
+
+<p>The timeout routines guarantee that a new timeout added from a timeout
+routine will not be checked during that run of <tt>check_timeouts()</tt>.
+Internally, this is ensured by always adding new timeouts at the head of
+the timeout list.</p>
+
+<p>If a timeout needs to be deleted before it expires, the
+<tt>del_timeout()</tt> function can be used.  This function can also be
+used to delete a repeating timeout from the timeout's own expiration
+routine (or even a non-repeating timeout, though since the timeout would
+be deleted anyway it would serve no purpose).  To avoid dangling
+pointers, <tt>del_timeout()</tt> does not actually delete any timeouts
+during a <tt>check_timeouts()</tt> run; instead, it clears the timeout's
+internal <tt>timeout</tt> field (which holds the time in milliseconds when
+the timeout is set to expire) to zero, causing <tt>check_timeouts()</tt> to
+delete the timeout when it is reached during list iteration.</p>
+
+<p>There is also a function <tt>send_timeout_list()</tt>, intended for
+debugging (and only available if <tt>DEBUG_COMMANDS</tt> is defined), which
+sends the current timeout list to the given client as <tt>NOTICE</tt>
+messages.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s8">2-8. Multilingual support</h3>
+
+<p>In order to provide a more natural interface for users who speak
+different languages, Services includes the ability to send messages in any
+of several languages.  This functionality is implemented in the
+<tt>language.c</tt> and <tt>language.h</tt> source files, and the actual
+text used for each language is stored in the <tt>lang</tt> subdirectory.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s8-1">2-8-1. Overview</h4>
+
+<p>The multilingual support system in Services uses tables of strings to
+accomplish "translation" of messages.  These tables are indexed by named
+constants, listed in the automatically-generated <tt>langstrs.h</tt> header
+file (see <a href="10.html#s3-3">section 10-3-3</a> for details on how this
+file is generated); a routine that wants to take advantage of multilingual
+support can then use the appropriate message index to obtain a translated
+message.</p>
+
+<p>There is no on-the-fly translation, of course; all messages used with
+multilingual support must be prepared ahead of time.  These messages are
+stored in data files in the <tt>lang</tt> subdirectory, which are
+precompiled for efficiency and loaded into Services at runtime.  It is also
+possible to add new strings to the string tables, or modify the precompiled
+strings, on the fly; however, all such strings must likewise be prepared
+ahead of time (or otherwise generated by the code calling the multilingual
+routines).</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s8-2">2-8-2. Using multilingual strings</h4>
+
+<p>Before being used, the multilingual support subsystem must first be
+initialized by calling <tt>lang_init()</tt>.  This routine sets up the
+internal string tables, then loads each language's precompiled data file
+from the <tt>languages</tt> subdirectory of the data directory; the
+filenames are hardcoded in the <tt>filenames[]</tt> array.  The
+<tt>lang_cleanup()</tt> function takes care of freeing these resources.</p>
+
+<p>The precompiled data files consist of a string count, a table of offsets
+to the strings, and the strings themselves separated by null bytes.  For
+the sake of efficiency, the entire string data is loaded into a single
+block of memory, a pointer to which is stored at index 0 of each language's
+string table; pointers to individual strings are then calculated from the
+string offset table in the file, and the pointer to the text for string
+index <i>n</i> is stored at array index <i>n</i>+1.  <i>Implementation
+note: This is admittedly a rather confusing approach, and probably came
+about from reluctance to introduce yet another file-scope array.</i></p>
+
+<p>Once the language data has been loaded, several functions are available
+to make use of multilingual strings.  The simplest of these is
+<tt>getstring()</tt> and its companion <tt>getstring_lang()</tt>, which
+simply return the text associated with the selected string index.  The
+<tt>getstring()</tt> routine uses a nickname group record,
+<tt>NickGroupInfo&nbsp;*</tt>, to select the language, while
+<tt>getstring_lang()</tt> uses the language index directly.  (Language
+index values can be obtained with the <tt>lookup_language()</tt> function,
+using the name of a language&mdash;the same as the precompiled data file
+name; see also <a href="#s8-4">section 2-8-4</a>&mdash;to retrieve the
+index, or the <tt>LANG_*</tt> constants in <tt>language.h</tt> can be used
+directly.)</p>
+
+<p><i>Implementation note: With the exception of <tt>getstring_lang()</tt>,
+all of the string retrieval functions use nickname group records rather
+than language index values to select the language.  This stems from the
+fact that users' language preferences are recorded as part of the nickname
+group record for the user's registered nickname, but is arguably poor
+design, with core code relying on the internal data structure of a
+module.</i></p>
+
+<p>For obvious reasons, the strings returned by <tt>getstring()</tt> are
+generally used in messages sent to users.  For this reason, the routines
+<tt>notice_lang()</tt> and <tt>notice_help()</tt> are provided by the
+<tt>send.c</tt> source file to simplify the operation of retrieving a
+string in the user's selected language and sending it as a <tt>NOTICE</tt>.
+The routines can handle newlines in the strings as well, breaking the
+strings up into separate <tt>NOTICE</tt> messages at the newlines.  The
+difference between the functions is that <tt>notice_help()</tt> replaces
+the "<tt>%S</tt>" token in the string (a capital <tt>S</tt>, not a
+lowercase <tt>s</tt>) by the nickname used to send the messages; this makes
+it easy to refer to a pseudoclient's own nickname in help messages.</p>
+
+<p>Both <tt>notice_lang()</tt> and <tt>notice_help()</tt> treat the
+strings returned by <tt>getstring()</tt> as <tt>printf()</tt>-style format
+strings, and accept variadic argument lists in the same style as the basic
+<tt>notice()</tt> function.  This does, however, present a problem for
+multilingual support: different languages have different word orders, while
+the order of format parameters cannot be changed around to match the
+language.  Translators must therefore be careful to maintain the same token
+order when translating strings, though this may result in slightly
+unnatural text.</p>
+
+<p>One other shortcut function for sending messages to users is the
+<tt>syntax_error()</tt> function.  This function takes a command name
+and a string index containing a syntax message, and sends a two-line
+<tt>NOTICE</tt> of the form:</p>
+
+<div class="code">-Service- Syntax: <b>COMMAND <span style="text-decoration: underline">parameter-1</span> <span style="text-decoration: underline">parameter-2</span>...</b>
+-Service- Type <b>/msg Service HELP COMMAND</b> for more information.</div>
+
+<p>The first line uses the <tt>SYNTAX_ERROR</tt> string, inserting the
+syntax string passed to the routine, and the second uses <tt>MORE_HELP</tt>,
+inserting the pseudoclient nickname and command name.</p>
+
+<p>In addition, there are three functions which operate on time values.
+<tt>strftime_lang()</tt> is a multilingual version of the standard
+<tt>strftime()</tt> function, generating a string describing a specific
+date and time using the language specified by the nickname group record
+passed in; the format string, of course, is specified by a string index
+rather than a literal string pointer.  The <tt>%a</tt>, <tt>%A</tt>,
+<tt>%b</tt>, and <tt>%B</tt> tokens are treated specially: rather than
+passing them directly to <tt>strftime()</tt> (which would always return
+the same weekday and month names), they are translated by
+<tt>strftime_lang()</tt>, using the <tt>STRFTIME_DAYS_SHORT</tt>,
+<tt>STRFTIME_DAYS_LONG</tt>, <tt>STRFTIME_MONTHS_SHORT</tt>, and
+<tt>STRFTIME_MONTHS_LONG</tt> strings, respectively.  Each of these
+strings is assumed to be a newline-separated list of weekday or month
+names, and the appropriate name is selected based on the time passed to the
+function.</p>
+
+<p><tt>maketime()</tt> takes a time interval (the parameter type is
+<tt>time_t</tt>, but it is simply a count of seconds, not a timestamp) and
+and generates a "human-readable" string describing that time interval: for
+example, a value of 3716 seconds might be described simply as "1 hour", or
+as "1 hour, 2 minutes" (using the relevant language strings, as listed
+below).  By default, <tt>maketime()</tt> does not display seconds, so an
+interval of less than 60 seconds will be rounded up to "1 minute"; this
+behavior can be changed by specifying the <tt>MT_SECONDS</tt> flag when
+calling the function.  Also, <tt>maketime()</tt> normally only describes
+the interval using the largest relevant unit (days, hours, minutes, or
+seconds), but a second unit can be added, as in the "1 hour, 2 minutes"
+example above, by specifying the <tt>MT_DUALUNIT</tt> flag.  The following
+strings are used by this function&mdash;note in particular the inclusion
+of spaces before the unit names, since some languages do not use them:</p>
+<ul>
+<li><b><tt>STR_SECOND</tt>:</b> "<tt> second</tt>" (for exactly 1 second)</li>
+<li><b><tt>STR_SECONDS</tt>:</b> "<tt> seconds</tt>" (for other numbers of seconds)</li>
+<li><b><tt>STR_MINUTE</tt>:</b> "<tt> minute</tt>" (for exactly 1 minute)</li>
+<li><b><tt>STR_MINUTES</tt>:</b> "<tt> minutes</tt>" (for other numbers of minutes)</li>
+<li><b><tt>STR_HOUR</tt>:</b> "<tt> hour</tt>" (for exactly 1 hour)</li>
+<li><b><tt>STR_HOURS</tt>:</b> "<tt> hours</tt>" (for other numbers of hours)</li>
+<li><b><tt>STR_DAY</tt>:</b> "<tt> day</tt>" (for exactly 1 day)</li>
+<li><b><tt>STR_DAYS</tt>:</b> "<tt> days</tt>" (for other numbers of days)</li>
+<li><b><tt>STR_TIMESEP</tt>:</b> the separator between units, such as "<tt>, </tt>" (comma and space)</li>
+</ul>
+
+<p><tt>maketime()</tt> returns its result in a static buffer, so the string
+should be copied elsewhere if it will be needed at a later time, or if two
+or more consecutive calls are made.</p>
+
+<p>The last function, <tt>expires_in_lang()</tt>, takes an expiration
+timestamp and returns a string describing how long it will be before that
+expiration time arrives.  Generally, this is just the result of
+<tt>maketime()</tt> called with <tt>MT_DUALUNIT</tt> on the difference
+between the current time and the given expiration time, but if the
+timestamp is zero (meaning no expiration), then the <tt>EXPIRES_NONE</tt>
+string ("never expires") is returned instead.  If the given time has
+already passed, it is treated as an interval of 1 second, unless expiration
+has been disabled via the <tt>-noexpire</tt> command-line option, in which
+case the <tt>EXPIRES_NOW</tt> string ("expired") is returned.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s8-3">2-8-3. Modifying the string table at runtime</h4>
+
+<p>There are three ways to modify the string table while Services is
+running: string mapping, explicit string setting, and external language
+files.</p>
+
+<p>The simplest way to change multilingual strings is through string
+mapping, which causes requests for one string index to return a different
+string.  The advantage of string mapping is that a single operation changes
+the contents of the string for all languages; however, mapping only works
+with strings which are already present in the string tables.</p>
+
+<p>String mapping is performed with the <tt>mapstring()</tt> routine.
+After calling this routine with the string index to modify
+(<tt><i>old</i></tt>) and the new string to return for that index
+(<tt><i>new</i></tt>), all requests to <tt>getstring()</tt> or other
+text retrieval functions for <tt><i>old</i></tt> will instead return the
+text of <tt><i>new</i></tt> in the same language.  <tt>mapstring()</tt>
+returns the previous mapping of <tt><i>old</i></tt> (which will be equal
+to <tt><i>old</i></tt> if no previous mapping had been performed), which
+can be used to cancel the mapping:</p>
+
+<div class="code">static int old_STRING1 = -1;
+int my_init() {
+    // ...
+    old_STRING1 = mapstring(STRING1, STRING2);
+    return 1;
+}
+void my_cleanup() {
+    if (old_STRING1 &gt;= 0) {
+        mapstring(STRING1, old_STRING1);
+        old_STRING1 = -1;
+    }
+    // ...
+}</div>
+
+<p>Mapping is used most often to change the text of pseudoclient replies or
+help messages based on configuration settings or protocol features, by
+writing two or more versions of the message ahead of time and mapping the
+appropriate one to the base string as necessary; this allows a single
+string index to be used without having to check the relevant options or
+protocol features every time.</p>
+
+<p><i>Implementation note: Unexpected results can occur if unmaps are not
+performed in the proper order.  A solution might be to have
+<tt>mapstring()</tt> keep track of all maps internally and return a
+"mapping ID" to the caller; calling a new function <tt>unmapstring()</tt>
+with the mapping ID would then remove that particular mapping from the
+mapping stack.</i></p>
+
+<p>When more versatility with the replacement strings is needed, and
+particularly when a module wants to add new strings to the string tables,
+the <tt>setstring()</tt> and <tt>addstring()</tt> routines can be used.
+<tt>setstring()</tt> allows the contents of a string in a specific language
+to be set to any arbitrary text, while <tt>addstring()</tt> creates a new,
+initially empty, string in the string table, returning the new string's
+index (which can then be used with <tt>setstring()</tt> and the other
+multilingual support functions, just as with the built-in strings).</p>
+
+<p>However, a problem crops up when using <tt>addstring()</tt> to add new
+strings: the string's index is not constant.  It is, of course, possible to
+export a variable containing the index to any source file that needs it,
+but a cleaner approach is to call the <tt>lookup_string()</tt> function
+with the same name given to the <tt>addstring()</tt> function, which
+returns the index corresponding to the given string name.
+<tt>lookup_string()</tt> also works with built-in strings, using the
+constant name as the string (so, for example, the result of
+<tt>lookup_string("SYNTAX_ERROR")</tt> would be the value of the constant
+<tt>SYNTAX_ERROR</tt>).</p>
+
+<p>When a module adds many new strings to the string table, it can be
+inconvenient to call <tt>addstring()</tt> and <tt>setstring()</tt> for
+every string.  To avoid this hassle, the <tt>load_ext_lang()</tt> function
+is provided to load "external language files", text files containing
+language string data.  The format of these files is essentially the same as
+the base language source flies (see <a href="#s8-4">section 2-8-4</a>
+below), with the exception that the language name is also included on the
+line containing the string name, separated from the string name by
+whitespace.  This function is called to load external language files
+specified with the <tt>LoadLanguageText</tt> configuration directive.</p>
+
+<p>There is also a <tt>reset_ext_lang()</tt> routine, which clears out all
+changes made with <tt>setstring()</tt> and <tt>load_ext_lang()</tt>;
+strings added to the string table with <tt>addstring()</tt> are left in,
+with their contents cleared to empty strings.  However, outside of the
+<tt>lang_init()</tt> and <tt>lang_cleanup()</tt> functions, this is only
+called by the reconfiguration code in <tt>init.c</tt>, and should not be
+called by modules.</p>
+
+<p><i>Implementation note: It probably shouldn't be called during
+reconfiguration, either, since it blows away anything modules may have
+changed in their initialization routines.  As a consequence, third-party
+modules should not use <tt>setstring()</tt> or <tt>load_ext_lang()</tt> at
+all, and should instead rely on the <tt>LoadLanguageText</tt> directive to
+load text for any strings that they add.</i></p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s8-4">2-8-4. The language file compiler</h4>
+
+<p>The text files which define the base language strings are stored in the
+<tt>lang</tt> subdirectory of the top source code directory, one for each
+language: <tt>en_us.l</tt>, <tt>de.l</tt>, and so on.  The format of these
+files is fairly simple, consisting of a series of string names followed by
+their contents (blank lines, and lines beginning with the "<tt>#</tt>"
+character, are ignored).  For each string, the string name is placed alone
+on a line, followed by one or more lines of message text; each line of
+message text must begin with the tab character (ASCII code 9)&mdash;spaces
+are not permitted.  If two or more lines are given, they are joined by
+linefeed (ASCII code 10, standard Unix newline) characters.</p>
+
+<p>Rather than manually parsing these files each time Services is loaded,
+however, they are precompiled into binary data files by the
+<tt>langcomp</tt> program, compiled from <tt>langcomp.c</tt> in the
+<tt>lang</tt> subdirectory.  This program reads in a language source file
+specified as a command-line argument, and (if no errors are encountered)
+writes out the precompiled binary data for that file to the same filename
+with the extension stripped; for example, <tt>langcomp&nbsp;en_us.l</tt>
+creates the file <tt>en_us</tt>, and so forth.</p>
+
+<p>In order to ensure that the strings are written in the correct order
+regardless of the order in which they appear in the source file,
+<tt>langcomp</tt> relies on a file named <tt>index</tt>, which contains a
+list of all string names in the order they should be stored.  (As described
+in <a href="10.html#s3-3">section 10-3-3</a>, this file is generated
+automatically from <tt>en_us.l</tt>, which is treated as the canonical
+language file.)  If <tt>langcomp</tt> encounters a string name which is not
+listed in this file, it reports an error and does not generate an output
+file.  It is also possible to get warnings on strings listed in
+<tt>index</tt> but missing from the language file, by passing the
+<tt>-w</tt> option to <tt>langcomp</tt>.  <i>Implementation note: One
+problem that has occurred frequently is forgetting to insert a tab at the
+beginning of a blank line intended to be part of a message.  It might be a
+good idea to have <tt>langcomp -w</tt> warn about such cases as well.</i></p>
+
+<p>To make certain that the core source code and modules also use the same
+string order and index values, the <tt>index</tt> file is also used to
+generate a header file, <tt>langstrs.h</tt>, which is included by
+<tt>language.h</tt>.  This file contains <tt>#define</tt> directives to
+define the string index constants; if the preprocessor macro
+<tt>LANGSTR_ARRAY</tt> is defined when the file is included, then it also
+defines an array containing the string names as C strings
+(<tt>language.c</tt> uses this to implement the <tt>lookup_string()</tt>
+function).</p>
+
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s9">2-9. Module interfaces</h3>
+
+<p>While many modules in Services perform their own independent functions,
+there are some sets of modules which implement the same functionality in
+alternative ways.  Protocol methods are the most obvious example of this,
+and the core code provides an interface to these modules, as described in
+section <a href="#s5-1">2-5-1</a>.  This section covers the core interfaces
+to two more such sets of modules: encryption modules and database modules.
+Unlike protocol modules, encryption and databases are not used by the core
+code, but interfaces are supplied to simplify the design of modules which
+do make use of them.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s9-1">2-9-1. Encryption</h4>
+
+<p>Encryption modules are used by the Services pseudoclients to encrypt
+passwords, reducing the danger of passwords leaking as a result of improper
+access to the databases.  While the encryption modules themselves can
+encrypt any arbitrary data, the core interface explicitly uses the context
+of passwords.  The interface is implemented by <tt>encrypt.c</tt> and
+<tt>encrypt.h</tt>.</p>
+
+<p>At the center of the interface is the <tt>Password</tt> structure,
+defined in <tt>encrypt.h</tt>.  This structure contains a buffer for the
+encrypted password itself, along with a string pointer identifying the
+cipher used to encrypt the password; this allows passwords using different
+ciphers to be mixed in the same set of data and still be decrypted/checked,
+assuming a module implementing the cipher is available.  The cipher may be
+<tt>NULL</tt>, indicating that the password is not encrypted.</p>
+
+<p><tt>Password</tt> structures can be allocated either dynamically or
+statically.  Dynamic <tt>Password</tt> structures can be obtained with the
+<tt>new_password()</tt> function and freed with the <tt>free_password()</tt>
+function; static variables can be initialized with <tt>init_password()</tt>
+and cleared with <tt>clear_password()</tt>.  <tt>clear_password()</tt> can
+also be used at any time to clear the contents of a <tt>Password</tt>
+structure when they are no longer needed.</p>
+
+<p>Encryption of plaintext password strings into <tt>Password</tt>
+structures is done with the <tt>encrypt_password</tt> function.  This
+function uses the cipher named by the <tt>EncryptionType</tt> configuration
+directive to encrypt the password, returning an error if no module has
+registered that cipher (see below).  The inverse function,
+<tt>decrypt_password()</tt>, is also available, but should only be used
+when there is a need to view the plaintext password itself (for example,
+the NickServ and ChanServ <tt>GETPASS</tt> commands use this function).
+Checking whether a user-entered password is correct can be accomplished
+through the <tt>check_password()</tt> function without decrypting the
+encrypted password.</p>
+
+<p>To set the contents of a <tt>Password</tt> structure to particular
+values, such as when reading them from an external source, call
+<tt>set_password()</tt>.  (Make sure to zero out the original data
+afterwards if it will no longer be used, so a copy of the password data
+does not remain in memory.)  When writing or storing the contents of a
+<tt>Password</tt> structure elsewhere, the structure members may be
+accessed directly; however, make certain you treat the <tt>password[]</tt>
+field as a binary buffer, not a string (<i>e.g.,</i> use <tt>memcpy()</tt>
+rather than <tt>strcpy()</tt> to copy it), and remember to check whether
+the <tt>cipher</tt> field is <tt>NULL</tt> before accessing it.  The
+<tt>copy_password()</tt> function is also available for copying data from
+one <tt>Password</tt> structure to another.</p>
+
+<p>When a module implementing an encryption cipher is loaded, it should
+call <tt>register_cipher()</tt> with a pointer to a <tt>CipherInfo</tt>
+structure that gives the cipher's name (a string identifying the cipher
+for use in passwords' cipher fields and the <tt>EncryptionType</tt>
+directive) and the functions which implement encryption, decryption,
+and password checking.  The module must also be certain to call
+<tt>unregister_cipher()</tt> with the same <tt>CipherInfo</tt> structure
+before being unloaded, or the encryption interface may attempt to call
+routines which are no longer present in memory.</p>
+
+<p><i>Implementation note: It might be cleverer and more foolproof to
+define a particular identifier to be used/exported for the CipherInfo
+structure, then add a load-module hook and automatically register the
+cipher if the identifier is found, unregistering it when the module is
+unloaded.</i></p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s9-2">2-9-2. Database storage</h4>
+
+<p>The files <tt>databases.c</tt> and <tt>databases.h</tt> define a common
+interface for storing persistent data.  Modules that want to use this
+interface do so by defining data tables describing the data to be stored
+and how to access it; see <a href="6.html#s2">section 6-2</a> for details.</p>
+
+<p>The database interface itself is quite simple.  A module wishing to
+have a data table stored in persistent storage calls the
+<tt>register_dbtable()</tt> function (and must, of course, call
+<tt>unregister_dbtable()</tt> for the same table before being unloaded).
+Registering a table will cause the table's contents to be automatically
+loaded from persistent storage (if no database module is available, the
+table load will occur when a database module is registered).  This is all
+that the calling module needs to do; the database subsystem will take care
+of the rest.  It is, however, important to note that unregistering a
+database table will <i>not</i> cause it to be written out; if a write
+before close is desired, it must be done manually as described below.</p>
+
+<p>Actual writing of the registered database tables to persistent storage
+is accomplished by calling the <tt>save_all_dbtables()</tt> function.  The
+main loop of Services calls this function periodically, as dictated by the
+<tt>UpdateTimeout</tt> configuration setting; it is also called directly by
+the OperServ <tt>UPDATE</tt> command.</p>
+
+<p>Database modules register themselves with the core database interface
+by calling <tt>register_dbmodule()</tt>, providing a <tt>DBModule</tt>
+structure giving the various routines that implement the database
+opreations.  Unlike encryption modules, only one database module can be
+active at a time; if a second database module tries to register itself,
+<tt>register_dbmodule()</tt> will return failure.  As usual, the companion
+function <tt>unregister_dbmodule()</tt> must be called upon module
+unload.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s10">2-10. Module command list maintenance</h3>
+
+<p>There is one other facility provided by the core code for the use of
+modules: a command lookup system, implemented by <tt>commands.c</tt> and
+<tt>commands.h</tt>, which pseudoclients can use to execute user commands.</p>
+
+<p>Each command to be handled by this facility must have a <tt>Command</tt>
+record defined for it.  This is a structure that contains the command name
+(command names are treated case-insensitively); a function pointer for the
+routine to call to run the command, which is passed the <tt>User</tt>
+structure for the user giving the command; an optional function pointer to
+a function which returns a boolean value indicating whether the user is
+allowed to execute the command, such as <tt>is_oper()</tt>; help message
+numbers and parameters; and a <tt>next</tt> field, used to link multiple
+records for the same command name together (this will be set when the
+command is registered, and need not be set by the caller).</p>
+
+<p>To allow multiple modules to utilize this facility without their command
+lists interfering, a <i>command list ID</i> is passed to each function to
+identify which set of commands to look at.  The type of this ID is
+<tt>Module&nbsp;*</tt> (the type of a module handle, as described in
+<a href="4.html">section 4</a>), and typically each module will pass in its
+own module handle, or possibly the handle of its "parent" module, for
+example in the case of the NickServ submodules like <tt>nickserv/access</tt>
+which add to the main NickServ command set.</p>
+
+<p>In order to use these functions, the command list must first be
+initialized; this is done by calling <tt>new_commandlist()</tt> with the
+desired command list ID.  The ID must be unique, and the function will fail
+if another command list with the same ID already exists.  Once the command
+list has been successfully created, commands can be registered with the
+<tt>register_commands()</tt> function.  This function takes an array of
+commands to register, terminated by an entry with the <tt>name</tt> field
+set to <tt>NULL</tt>.</p>
+
+<p>If a module needs to remove commands, such as when cleaning up, it can
+use the <tt>unregister_commands()</tt> function; the same array pointer as
+was passed to <tt>register_commands()</tt> must be used here as well (it is
+not possible to unregister only part of a command array).  Likewise, the
+entire command list can be deleted with <tt>del_commandlist()</tt>; before
+the command list can be deleted, however, all commands must have been
+removed from it, or the function will fail.</p>
+
+<p>There are three functions that make use of these command lists.  The
+simplest is <tt>lookup_cmd()</tt>, which simply looks up a command by name
+and returns a pointer to the <tt>Command</tt> structure, or <tt>NULL</tt>
+if the command is not found.  This can be used, for example, if a command
+record needs to be modified at runtime (many of the built-in pseudoclients
+use this to change help messages depending on the runtime and IRC network
+environment).  If there are multiple commands with the same name registered
+in the same command list, this function will return a pointer to the one
+most recently registered; the <tt>next</tt> field can be used to examine
+other records for the same command name.</p>
+
+<p>A more useful function is <tt>run_cmd()</tt>; this looks up the given
+command name in the same manner as <tt>lookup_cmd()</tt>, then calls the
+command's processing routine with the calling user's <tt>User</tt> record
+passed as a parameter.  However, if the command has a privilege-checking
+routine (<tt>has_priv</tt>) defined, <tt>run_cmd()</tt> first calls that
+routine, and if it returns false (zero), a "permission denied" error is
+sent to the user and the command is not executed.  If the given command
+name is not found, a <tt>NOTICE</tt> to that effect is sent to the user
+instead.  <i>Implementation note: The reason additional parameters to the
+processing routine are not supported is because all current command
+routines extract their parameters using <tt>strtok(NULL,...)</tt>.  This
+is clearly poor design, and could be improved by, for example, making
+<tt>run_cmd()</tt> into a variadic function and passing the
+<tt>va_list</tt> to the command routine, or even just by adding a
+<tt>void&nbsp;*</tt> parameter to <tt>run_cmd()</tt> and the command
+routine prototype.</i></p>
+
+<p>The last command-related function is <tt>help_cmd()</tt>.  It takes the
+same parameters as <tt>run_cmd()</tt>, but rather than executing the
+command's processing routine, it uses the help message fields of the
+command record to send a help message to the user (again, informing the
+user if the command name is not found in the command list).  Three help
+messages can be specified for each command: <tt>helpmsg_all</tt>, which is
+displayed to all users; <tt>helpmsg_reg</tt>, which is displayed after
+<tt>helpmsg_all</tt> to users who are not IRC operators; and
+<tt>helpmsg_oper</tt>, which is displayed after <tt>helpmsg_all</tt> to IRC
+operators.  These fields are all message index numbers for use with the
+multilingual routines, not literal strings.  If any field is -1, the
+corresponding help message is not displayed, so (for example) a command
+that does not have any special help for IRC operators can use -1 in both
+the <tt>helpmsg_reg</tt> and <tt>helpmsg_oper</tt> fields.</p>
+
+<p>It is also possible to specify format parameters for the help messages,
+as long as they are strings; the four string values <tt>help_param1</tt>
+through <tt>help_param4</tt> will be passed to <tt>notice_help()</tt> to
+fill in "<tt>%s</tt>" tokens in the help message.  If more complex
+processing or other parameter types are required, <tt>help_cmd()</tt>
+cannot be used; the module will have to send the proper help text out
+itself.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="1.html">Previous section: About this manual</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="3.html">Next section: Communication (socket) handling</a></p>
+
+</body>
+</html>

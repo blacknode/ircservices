@@ -1,0 +1,1168 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 9. The database conversion tool</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">9. The database conversion tool</h2>
+
+<p class="section-toc">
+     9-1. <a href="#s1">Purpose and usage</a>
+<br/>9-2. <a href="#s2">Structure</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-2-1. <a href="#s2-1">The main program</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-2-2. <a href="#s2-2">Format handlers</a>
+<br/>9-2. <a href="#s2">Supported database formats</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-3-1. <a href="#s3-1"><tt>convert-cygnus.c</tt> (Cygnus)</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-3-2. <a href="#s3-2"><tt>convert-epona.c</tt> (Epona, Anope)</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-3-3. <a href="#s3-3"><tt>convert-hybserv.c</tt> (HybServ)</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-3-4. <a href="#s3-4"><tt>convert-magick.c</tt> (Magick, Wrecked)</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-3-5. <a href="#s3-5"><tt>convert-ptlink.c</tt> (PTlink)</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-3-6. <a href="#s3-6"><tt>convert-sirv.c</tt> (Sirv, Auspice, Bolivia)</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-3-7. <a href="#s3-7"><tt>convert-trircd.c</tt> (trircd)</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;9-3-8. <a href="#s3-8"><tt>convert-ver8.c</tt> (Daylight, IRCS)</a>
+</p>
+
+<p class="backlink"><a href="8.html">Previous section: Other modules</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="10.html">Next section: Compilation</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">9-1. Purpose and usage</h3>
+
+<p>The database conversion tool <tt>convert-db</tt> is designed to allow
+users of other Services-like programs to migrate data stored with the other
+program into Services.  This program serves as an adjunct to the main
+<tt>ircservices</tt> executable, reading in database files produced by
+foreign programs and writing out an XML file that can then be imported into
+Services with the <tt>misc/xml-import</tt> module (see
+<a href="8.html#s4-2">section 8-4-2</a>).</p>
+
+<p>More information (from a user's point of view) can be found in
+<a href="../5.html#3">section 5-3 of the user's manual</a>.</p>
+
+<p>As a historical note, this tool was introduced in version 4.1 of
+Services as <tt>import-db</tt>, and overwrote the existing Services
+databases with the imported data.  This behavior was changed for version
+5.0, both to dissociate the tool from the particular database format used
+by Services (which was still limited to the old binary format at the time,
+though implementation of a new format was planned) and to allow merging of
+data rather than simple overwriting.  The tool's name was also changed to
+<tt>convert-db</tt> at this time to reflect the fact that it no longer
+performed the actual importing.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">9-2. Structure</h3>
+
+<p>The <tt>convert-db</tt> tool can be divided into two main parts: the
+<i>main program</i>, which calls out to individual formats' probe and load
+routines, sanity-checks the loaded data, and writes out the XML data; and
+the <i>format handlers</i>, which process data produced by particular
+programs.</p>
+
+<p>All source code for <tt>convert-db</tt>, with the exception of code
+borrowed from the main program, is located in the <tt>tools</tt>
+directory.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-1">9-2-1. The main program</h4>
+
+<p>The overall database conversion processing is performed in the
+<tt>convert-db.c</tt> source file.  The <tt>main()</tt> routine performs
+the following functions:</p>
+
+<ul>
+
+<li class="spaced">Initializes variables and processes command-line
+parameters.</li>
+
+<li class="spaced">Checks that the database file directory given on the
+command line is accessible, and expands the pathname to an absolute path if
+the specified path is relative.</li>
+
+<li class="spaced">If no database type was given on the command line, calls
+each format handler's <tt>check()</tt> function, which determines whether
+the files contained in the specified directory are of that particular
+format.  The first format found is used (if no format is found, the program
+aborts).</li>
+
+<li class="spaced">Calls the selected format's <tt>load()</tt> function to
+load the databases.</li>
+
+<li class="spaced">Performs sanity checks on the loaded data (via the
+<tt>sanity_checks()</tt> function), to ensure that erroneous data is not
+output.</li>
+
+<li class="spaced">Calls <tt>xml_export()</tt> (from the
+<tt>misc/xml-export</tt> module, linked into the final program) to write
+the XML data to standard output.</li>
+
+</ul>
+
+<p><tt>convert-db.c</tt> also links in <tt>compat.c</tt> and <tt>misc.c</tt>
+from the core code, making all of their functions available to format
+handlers, and implements several other utility functions, including simple
+versions of some core functions:</p>
+
+<ul>
+<li class="spaced"><tt>smalloc()</tt>, <tt>scalloc()</tt>,
+	<tt>srealloc()</tt>, and <tt>sstrdup()</tt> from
+	<tt>memory.c</tt>;</li>
+<li class="spaced"><tt>init_password()</tt> and <tt>clear_password()</tt>
+	from <tt>encrypt.c</tt>;</li>
+<li class="spaced"><tt>makenick()</tt> from NickServ and <tt>makechan()</tt>
+	from ChanServ to initialize and add nicknames and channels to the
+	database;</li>
+<li class="spaced"><tt>open_db_ver()</tt> to open an old-Services-style
+	database file and check its version number;</li>
+<li class="spaced"><tt>get_nickgroupinfo_by_nick()</tt> to retrieve a
+	<tt>NickGroupInfo</tt> structure directly from a nickname;</li>
+<li class="spaced"><tt>set_os_priv()</tt> to set the <tt>os_priv</tt>
+	nickname group field for a nickname without having to first
+	retrieve the <tt>NickGroupInfo</tt>; and</li>
+<li class="spaced"><tt>convert_acclev()</tt>, to convert pre-Services 5.0
+	channel access levels to levels used by the current version.</li>
+</ul>
+
+<p>The nickname, channel, and other databases themselves are implemented as
+simple linked lists, since efficiency is not seen to be a significant
+concern for <tt>convert-db</tt>.  Also, since the program exits immediately
+after writing out the converted data, no special effort is made to keep
+track of or free allocated memory; it is assumed that the operating system
+or library cleanup code will take care of freeing resources.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-2">9-2-2. Format handlers</h4>
+
+<p>Format handlers perform the bulk of the conversion work.  Each format is
+defined by a <tt>DBTypeInfo</tt> structure containing an identifying string
+for the format (used to match against the <tt>+<i>program-name</i></tt>
+command-line option), a <tt>check()</tt> routine which determines whether
+a given directory contains databases in the format, and a <tt>load()</tt>
+routine which loads databases from a given directory.  The list of
+available formats is hard-coded as a list of external structure variable
+names in <tt>convert-db.h</tt>, which is used in <tt>convert-db.c</tt> to
+initialize an array of formats.  The structures and routine implementations
+themselves are stored in separate source files (see <a href="#s3">section
+9-3</a> below).</p>
+
+<p>The <tt>check()</tt> routine takes a single parameters, <tt>const char
+*<i>dir</i></tt>, the path to the directory to be checked.  The routine
+should check to see if a database in a recognized format is contained in
+that directory; if so, the routine should return a string describing the
+database format (usually the name, and version if known, of the program
+that created it), which will then be displayed to the user.  If no
+recognized database is found, the routine should return <tt>NULL</tt>.</p>
+
+<p style="margin-bottom: 0">The <tt>load()</tt> routine takes four
+parameters:</p>
+
+<ul style="margin-top: 0">
+  <li><tt>const char *<i>dir</i></tt>: The directory to load data from.</li>
+  <li><tt>int <i>verbose</i></tt>: Whether the <tt>-v</tt> (verbose) flag
+      was passed to <tt>convert-db</tt>.</li>
+  <li><tt>int <i>ac</i>, char **<i>av</i></tt>: Any unrecognized
+      command-line options.  <tt>ac</tt> is the number of options, and
+      <tt>av[]</tt> is an array of pointers to the option strings, with
+      <tt>av[0]</tt> pointing to the program name as for
+      <tt>main()</tt>.</li>
+</ul>
+
+<p>The command-line option array is passed in addition to the source
+directory and verbosity flag to allow individual database loaders to
+implement their own options.  For example, the Cygnus database takes
+advantage of this to add options for timezone handling.</p>
+
+<p>The <tt>load()</tt> routine is assumed to succeed; if an error occurs
+that prevents the data from being loaded properly, the routine should
+simply call <tt>exit(1)</tt> to abort the program.</p>
+
+<p>Additionally, the file read/write utilities from
+<tt>modules/database/fileutil.c</tt> (see <a href="6.html#s5-1">section
+6-5-1</a>) are linked into <tt>convert-db</tt> and can be used by the
+<tt>check()</tt> and <tt>load()</tt> routines.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">9-3. Supported database formats</h3>
+
+<p><tt>convert-db</tt> supports loading data from a total of 13 different
+programs.  The data loading code is in the various <tt>convert-*.c</tt>
+files, one file for each distinct format (several programs use similar
+database formats and therefore share code).  Each of these files is
+discussed below.</p>
+
+<p>In general, each format's <tt>load()</tt> routine is implemented as a
+function which calls subfunctions for each file to be loaded.  Since most
+of the programs are based on old versions of Services, the contents of the
+files correspond fairly well with Services itself.</p>
+
+<p>Where binary database files include fixed-length buffers, the lengths of
+those buffers are assumed to be the same as those in the distributed source
+code, with no changes to any configuration settings.  For example, most
+IRC service programs default to a nickname buffer size of 32 bytes, and
+<tt>convert-db</tt> assumes that that value has not been changed by the
+user.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-1">9-3-1. <tt>convert-cygnus.c</tt> (Cygnus)</h4>
+
+<p>Cygnus is an IRC service program based on an old version of Services;
+development seems to have stopped as of the writing of this manual.  Unlike
+the other programs supported by <tt>convert-db</tt>, Cygnus stores its
+databases in plain text files, with each line containing a two-character
+field identifier and one or more values, all separated by spaces.  As such,
+the data processing is somewhat more complex than for other databse
+formats, particularly for numeric values, which must be checked for
+syntactic validity as well as range.  The following utility routines and
+macros are used by the various loading functions:</p>
+
+<ul>
+
+<li class="spaced"><b><tt>cyg_strtok_remaining()</tt></b> returns the
+remainder of the string currently being processed by <tt>strtok()</tt> with
+any leading whitespace removed, like <tt>strtok_remaining()</tt> from
+<tt>misc.c</tt> in the core code; in addition, any trailing newline (CR or
+LF) is removed.</li>
+
+<li class="spaced"><b><tt>CVT_TIME(<i>var</i>, <i>str</i>, <i>errfmt</i>,
+...)</tt></b> attempts to convert the string in <tt><i>str</i></tt> to a
+<tt>time_t</tt> value.  If the conversion succeeds, the value is stored in
+<tt><i>var</i></tt>, which must be an lvalue; if it fails (because the
+string does not represent a valid integer&mdash;range checks are not
+performed), <tt><i>var</i></tt> is set to the current time, and the error
+message in <tt><i>errfmt</i></tt>, along with any additional parameters,
+are printed to standard error.</li>
+
+<li class="spaced"><b><tt>CVT_TIME_0(<i>var</i>, <i>str</i>, <i>errfmt</i>,
+...)</tt></b> does the same thing as <tt>CVT_TIME()</tt>, but defaults to
+zero rather than the current time when the string is invalid.</li>
+
+</ul>
+
+<p>Cygnus also supports storing time zone information with each nickname,
+like NickServ <tt>SET TIMEZONE</tt> in Services; however, rather than
+storing the actual time offset, Cygnus stores an index into a table whose
+contents are controlled by a configuration file.  The default list of
+time zone offsets is included in the <tt>default_timezones[]</tt> array,
+but since users may have modified the time zone configuration, the
+command-line option <tt>-tzfile=<i>filename</i></tt> is checked for by the
+<tt>load()</tt> function, allowing the user to specify their configuration
+file, which is then loaded and used in place of the default list;
+<tt>-no-timezones</tt> (which causes all time zone data to be discarded) is
+also supported as a fallback in case time zone importing results in
+incorrect data.</p>
+
+<p>Cygnus does not have a "default" value, like <tt>MEMOMAX_DEFAULT</tt> in
+Services, for the memo limit field, but instead stores the actual value of
+the default limit at the time the nickname is registered.  As a result,
+these values will remain constant in Services even if the
+<tt>MSMaxMemos</tt> configuration setting is changed.  To work around this,
+the <tt>-reset-memo-limits</tt> command-line option is checked for, and if
+present, all memo limits are reset to <tt>MEMOMAX_DEFAULT</tt>.</p>
+
+<p>The data files are as follows:</p>
+
+<ul>
+
+<li class="spaced"><b><tt>nickserv.db</tt>:</b> Nickname database.  The
+file contains three file-level fields:
+<dl>
+	<dt class="cygnus">NV <i>version</i></dt>
+	<dd>File version.  This field is always the first line in the file.
+	The version number is 3 in Cygnus 0.2.0.</dd>
+	<dt class="cygnus">SS <i>stamp</i></dt>
+	<dd>Previous servicestamp value.  Cygnus stores this value in the
+	database, allowing it to ensure (assuming the database is not
+	modified) that servicestamp values are not reused even if the
+	program is restarted.  Services does not save this value, so it is
+	ignored.</dd>
+	<dt class="cygnus">DE <i>nick-count</i> <i>link-count</i> <i>memo-count</i></dt>
+	<dd>"Database end".  Included as the last line in the file, and
+	contains counts of nicknames, links, and memos stored in the
+	database.  These can be used to double-check that all data was
+	loaded correctly.</dd>
+</dl>
+
+<p>All other fields are subfields of a nickname record (a nickname group
+record, in Services terminology):</p>
+
+<dl>
+	<dt class="cygnus">NI <i>nickname</i> <i>password</i>
+		<i>time-registered</i> <i>last-seen</i> <i>last-timestamp</i>
+		<i>last-servicestamp</i> <i>flags</i> <i>memo-limit</i>
+		<i>timezone-index</i> <i>key</i> <i>last-usermask</i>
+		<i>last-realname</i></dt>
+	<dd>Begins a nickname record; all subsequent fields until the next
+	<tt>NI</tt> or the end of the file correspond to this nickname.
+	Most of the fields are self-explanatory, with times recorded as
+	integers using ordinary Unix <tt>time()</tt> values.  If the
+	<tt><i>nickname</i></tt> too long to fit in a
+	<tt>NICKMAX</tt>-character buffer, it is truncated with a warning.
+	The <tt><i>last-timestamp</i></tt> field is not saved by Services,
+	and is thus ignored; the <tt><i>last-servicestamp</i></tt> field
+	will not have any relevance to servicestamps assigned by Services,
+	and is likewise discarded.  <tt><i>timezone-index</i></tt> is an
+	index into a table of time zone offset values (see the discussion
+	of time zones above).  The <tt><i>key</i></tt> is the equivalent of
+	the authentication code used by the <tt>nickserv/mail-auth</tt>
+	module, and is used to set the nickgroup's <tt>authcode</tt> field,
+	so that authentication codes stored with nicknames will continue to
+	be valid; the code is assumed to be for a new registration, unless
+	we find out otherwise later on.  If the <tt>NI</tt> line does not
+	match the above format or the nickname already exists, the entire
+	nickname record is discarded.</dd>
+
+	<dt class="cygnus">AC <i>mask</i></dt>
+	<dd>An access mask for the current nickname.</dd>
+
+	<dt class="cygnus">LN <i>nickname-1</i> <i>nickname-2</i>...</dt>
+	<dd>The list of subnicks (linked nicks) for the current nickname.
+	These are added to the current nickname group's nick list, with a
+	new <tt>NickInfo</tt> structure created for each subnick.  As width
+	<tt>NI</tt> processing, nicknames that do not fit in a
+	<tt>NICKMAX</tt>-character buffer are truncated with a warning, and
+	nicknames that collide with already-existing nicks are discarded.
+	In theory, any number of nicknames can be included in a single
+	<tt>LN</tt> line, but Cygnus (version 0.2.0, at least) uses a
+	2048-byte line buffer when writing the databases; this routine uses
+	a 4096-byte buffer, so there should be no truncation problems.</dd>
+
+	<dt class="cygnus">MO <i>num</i> <i>flags</i> <i>time</i>
+		<i>sender</i> <i>text</i></dt>
+	<dd>A memo for the current nickname.  The <tt><i>text</i></tt>
+	parameter may include spaces.</dd>
+
+	<dt class="cygnus">FW <i>nickname</i></dt>
+	<dd>The nickname to which memos to this nick should be forwarded.
+	Services does not support forwarding memos to another nickname, so
+	this field is ignored.</dd>
+
+	<dt class="cygnus">FR <i>reason</i></dt>
+	<dd>Freeze (suspension) reason for the nickname.</dd>
+
+	<dt class="cygnus">EM <i>address</i></dt>
+	<dd>E-mail address for the nickname.</dd>
+
+	<dt class="cygnus">TE <i>address</i></dt>
+	<dd>An E-mail address which has been set with <tt>SET EMAIL</tt>
+	but not yet authenticated.  If this field is found, then the
+	nickname's authentication reason is set to
+	<tt>NICKAUTH_SET_EMAIL</tt>, and a new authentication code is
+	generated if one does not already exist (perhaps because of a
+	corrupt database file).  The E-mail address given in the
+	<tt>EM</tt> field is moved to <tt>NickGroupInfo.last_email</tt>
+	as well.</dd>
+
+	<dt class="cygnus">UR <i>address</i></dt>
+	<dd>URL for the nickname.</dd>
+
+	<dt class="cygnus">UN <i>address</i></dt>
+	<dd>User information field for the nickname (instant messenger
+	UIN); ignored.</dd>
+
+	<dt class="cygnus">NA <i>address</i></dt>
+	<dd>User information field for the nickname (real name);
+	ignored.</dd>
+
+	<dt class="cygnus">AG <i>address</i></dt>
+	<dd>User information field for the nickname (age); ignored.</dd>
+
+	<dt class="cygnus">SX <i>address</i></dt>
+	<dd>User information field for the nickname (sex); ignored.</dd>
+
+	<dt class="cygnus">LO <i>address</i></dt>
+	<dd>User information field for the nickname (location);
+	ignored.</dd>
+</dl>
+</li>
+
+<li class="spaced"><b><tt>chanserv.db</tt>:</b> Channel database.  As with
+<tt>nickserv.db</tt>, the file begins with a version field (<tt>CV</tt> in
+this case; the supported version is 3) and ends with a <tt>DE</tt> field
+containing a channel count.  There is also a <tt>VF</tt> field (taking two
+parameters, a channel name and time value) listing channels which have been
+registered but not verified, but since Services does not implement such a
+verification system, these records are ignored.  Channel records are stored
+on multiple lines:
+
+<dl>
+	<dt class="cygnus">CI <i>channel</i> <i>founder</i> <i>password</i>
+		<i>time-registered</i> <i>last-used</i> <i>flags</i>
+		<i>mlock-on</i> <i>mlock-off</i> <i>topic-lock</i>
+		<i>memo-level</i> <i>key</i></dt>
+	<dd>Begins a channel record.  The channel name is truncated to fit
+	in a <tt>CHANMAX</tt>-character buffer, if necessary.  The channel
+	is discarded if the <tt>CI</tt> line is invalid, if another channel
+	with the same name already exists, or if the founder is not a
+	registered nickname.  The mode lock parameters
+	<tt><i>mlock-on</i></tt> and <tt><i>mlock-off</i></tt> are mode
+	bitmasks, which are converted to mode strings based on the Cygnus
+	mode flag constants.  The <tt><i>topiclock</i></tt> and
+	<tt><i>memolevel</i></tt> parameters are access levels required
+	for setting the topic and receiving channel memos, respectively,
+	using the same system as channel access entries (see below), with
+	zero indicating that the feature is disabled.  In Services,
+	topic-lock is an on/off setting, so the <tt>TOPICLOCK</tt> channel
+	flag is set if <tt><i>topiclock</i></tt> is nonzero; the
+	<tt><i>memolevel</i></tt> value is translated directly to the
+	<tt>CA_MEMO</tt> privilege level.  Services does not require
+	authentication for channels, so the <tt><i>key</i></tt> parameter
+	is ignored.</dd>
+
+	<dt class="cygnus">CA <i>nick-or-mask</i> <i>level</i></dt>
+	<dd>Channel access entry.  Cygnus, like versions of Services before
+	3.0.0, allows both nicknames and usermasks on channel access lists;
+	any access entry that does not correspond to a registered nickname
+	is therefore discarded.  Cygnus uses a simple XOP-based access
+	system, with five levels:
+	<ul>
+		<li>1: VOP</li>
+		<li>2: HOP</li>
+		<li>3: AOP</li>
+		<li>4: SOP</li>
+		<li>5: Founder</li>
+	</ul>
+	These values are translated to the corresponding <tt>ACCLEV_*</tt>
+	constants.</dd>
+
+	<dt class="cygnus">AK <i>mask</i> <i>setter</i> <i>time</i>
+		<i>reason</i></dt>
+	<dd>Channel autokick entry.  The setter nickname is truncated
+	(silently) if necessary.</dd>
+
+	<dt class="cygnus">SU <i>nickname</i></dt>
+	<dd>Channel successor.  Ignored if the nickname is not registered
+	or is in the same nickname group as the founder.</dd>
+
+	<dt class="cygnus">GR <i>text</i></dt>
+	<dd>Channel greeting (entry message).  <tt><i>text</i></tt> may
+	contain spaced.</dd>
+
+	<dt class="cygnus">UR <i>url</i></dt>
+	<dd>Channel URL.</dd>
+
+	<dt class="cygnus">CT <i>setter</i> <i>time</i> <i>topic</i></dt>
+	<dd>Channel topic, along with the nickname of the topic setter and
+	the time the topic was set.</dd>
+
+	<dt class="cygnus">KY <i>key</i></dt>
+	<dd>Channel key locked with <tt>MLOCK</tt>.  Ignored if mode
+	<tt>+k</tt> is not locked on.</dd>
+
+	<dt class="cygnus">LM <i>limit</i></dt>
+	<dd>Channel limit locked with <tt>MLOCK</tt>.  Ignored if not a
+	valid limit value, or if mode <tt>+l</tt> is not locked on.</dd>
+
+	<dt class="cygnus">FL <i>value</i></dt>
+	<dd>Channel flood setting locked with <tt>MLOCK</tt>.  Ignored if
+	mode <tt>+f</tt> is not locked on.</dd>
+
+	<dt class="cygnus">LK <i>link</i></dt>
+	<dd>Channel link locked with <tt>MLOCK</tt>.  Ignored if mode
+	<tt>+L</tt> is not locked on.</dd>
+</dl>
+</li>
+
+<li><b><tt>rootserv.db</tt>:</b> Contains global data, analogous to the
+OperServ and related databases in Services.  Data is stored with one full
+record per line, as follows:
+
+<dl>
+	<dt class="cygnus">AK <i>mask</i> <i>setter</i> <i>is-realname</i>
+		<i>set-at</i> <i>expires</i> <i>reason</i></dt>
+	<dd>An autokill or SGline record; the numeric field
+	<tt><i>is-realname</i></tt> determines the record type (nonzero for
+	an SGline, zero for an autokill).  <tt><i>reason</i></tt> may
+	contain spaces.</dd>
+
+	<dt class="cygnus">TR <i>mask</i> <i>limit</i></dt>
+	<dd>A session exception with a defined user limit (a "trigger" in
+	Cygnus terminology).</dd>
+
+	<dt class="cygnus">EX <i>mask</i></dt>
+	<dd>A session exception with no user limit.</dd>
+
+	<dt class="cygnus">NW <i>time</i></dt>
+	<dd>The last time the <tt>RESETNEWS</tt> command was called.
+	Cygnus implements news as a simple text file, shown to users only
+	if the user's last read-news time is earlier than this timestamp.
+	Ignored.</dd>
+
+	<dt class="cygnus">RS <i>max-uptime</i></dt>
+	<dd>The longest amount of time Cygnus has remained running, in
+	seconds.  Services does not store this information, so this field
+	is ignored.</dd>
+</dl>
+</li>
+
+<li class="spaced"><b><tt>web.db</tt>:</b> Contains a summary of all data,
+intended for use by external programs.  Apparently serves a purpose similar
+to the XML export functionality in Services.  This file is ignored.</li>
+
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-2">9-3-2. <tt>convert-epona.c</tt> (Epona, Anope)</h4>
+
+<p>Epona IRC Services is an IRC service program based on Services 4.3.3;
+development has been intermittent since the release of Epona 1.4 in 2001.
+Anope Services was forked from Epona 1.4.14, and has been developed more
+actively.  Both use a database format similar to the Services 4.3 format;
+however, rather than a single format version number for all files,
+individual version numbers are used for each file.  (As noted in the user
+manual, versions of Anope since 1.7.11 also support storing databases in a
+MySQL database; access to such databases is not supported by the
+<tt>convert-db</tt> tool.)</p>
+
+<p>Epona and Anope use a "nick core plus nick aliases" concept for
+registered nicknames, in which most nickname data is stored with a single
+"core" nick and other nicknames can "aliased" to the same settings (the
+redesigned nickname linking system in Services 5.0 was based on this
+concept).  Other data is structured similarly to Services, and conversion
+is fairly straightforward.</p>
+
+<p>Anope supports a number of IRC servers; unfortunately, the flag values
+used in the channel mode lock fields stored in the database vary between
+IRC servers (though given the vast range of channel modes present in
+various servers, this is probably unavoidable).  In order to interpret the
+mode flags correctly, the converter allows a "<tt>-ircd=</tt>" option to
+be passed on the command line.  The parameter to this option selects the
+IRC server type to be used for interpreting channel modes.  If no
+<tt>-ircd</tt> option is given, the converter only converts the eight basic
+channel modes (<tt>i</tt>, <tt>k</tt>, <tt>l</tt>, <tt>m</tt>, <tt>n</tt>,
+<tt>p</tt>, <tt>s</tt>, <tt>t</tt>), which share the same flag values
+across all IRC server types.</p>
+
+<p>Since Anope 1.7.18, administrators can select one of several encryption
+modules, similar to how encryption was handled in Services 5.0.  This
+method shares the same shortcoming present in Services 5.0, however, which
+is that a particular password's encryption status cannot be determined from
+the data itself.  To work around this problem, the converter accepts a
+command-line option "<tt>-encryption=</tt>" to select the type of
+encryption used for passwords in the databases.  If this option is given,
+the "encrypted" flag on nickname cores and channels is ignored, and all
+passwords are assumed to use the given encryption type; otherwise, the
+"encrypted" flag selects between MD5 encryption and no encryption.  (For
+forward compatilibity, <tt>sha1</tt> is accepted to indicate SHA-1
+encryption, but Services will not be able to check such passwords without a
+third-party module implementing the SHA-1 hash.)</p>
+
+<p>The Epona/Anope database files are:</p>
+
+<ul>
+
+<li class="spaced"><b><tt>nick.db</tt>:</b> Contains nickname data.
+Nickname cores are stored in a format similar to that in Services 4.x,
+followed by nickname aliases in a condensed format.  Unlike Services, Epona
+and Anope store nicknames and passwords as strings rather than buffers
+(with the exception of the memo sender field, which is stored as a buffer
+of default size 32 bytes); there seems to have been a bug in some versions
+of Epona that could result in a <tt>NULL</tt> string being saved in the
+password field, and this is checked for by the load routine.  Additional
+fields stored with nickname cores include:
+	<ul>
+	<li><tt>greet</tt>: A greeting message sent from NickServ to the
+	user upon logon.  Ignored.</li>
+	<li><tt>icq</tt>: The user's ICQ number.  Ignored.</li>
+	</ul>
+Nickname aliases include the same fields as are stored in the
+<tt>NickInfo</tt> structure.  Since nickname cores are stored using the
+"display name" (main nickname) rather than a separate ID value,
+<tt>convert-db</tt> first looks up the nickname read from the database,
+and only creates a new <tt>NickInfo</tt> if the nickname does not already
+exist.
+</li>
+
+<li class="spaced"><b><tt>chan.db</tt>:</b> Contains channel data.
+Additional fields stored with channels include:
+	<ul>
+	<li><tt>forbidby</tt>: The nickname of the user who forbade the
+	channel.  Ignored.</li>
+	<li><tt>forbidreason</tt>: The reason given for the channel
+	forbid.  Ignored.</li>
+	<li><tt>bantype</tt>: Selects among different method of creating a
+	ban mask when banning a user from a channel.  Ignored.</li>
+	<li>Several BotServ-related fields, all ignored.</li>
+	</ul>
+The major difficulty in importing Epona/Anope channel data is that the
+meaning of the bitmask values used in the channel mode lock varies
+depending on the particular IRC server being used.  Since this information
+is not stored in the databases, <tt>convert-db</tt> defaults to only
+importing the eight basic channel modes, which have consistent flag values
+across all IRC server types: <tt>+i</tt>, <tt>+k</tt>, <tt>+l</tt>,
+<tt>+m</tt>, <tt>+n</tt>, <tt>+p</tt>, <tt>+s</tt>, and <tt>+t</tt>.  To
+import other modes, the user must specify the appropriate
+<tt>-ircd=<i>type</i></tt> option on the <tt>convert-db</tt> command line;
+the argument to this option is used to look up an IRC server type (the
+<tt>IRCD_*</tt> enum defined at the top of the file), which is then used as
+an index into the <tt>epona_cmode_index[]</tt> array of arrays to process
+nonstandard mode flag values.  Note that there is not a one-to-one
+correspondence between IRC server type names (taken from the Anope 1.7
+protocol module names) and <tt>IRCD_*</tt> constants; protocols using the
+same mode flag values are combined into a single flag list.  (In hindsight,
+this is probably an unnecessary optimization.)
+</li>
+
+<li class="spaced"><b><tt>oper.db</tt>:</b> Contains OperServ-related data,
+both basic data such as maximum user count and lists of autokills and
+S-lines.  Some versions of Epona and Anope also store information about
+detected proxy hosts, but this data was removed during the development of
+Anope 1.7 without changing the file version number.</li>
+
+<li class="spaced"><b><tt>exception.db</tt>:</b> Contains session exception
+data.</li>
+
+<li class="spaced"><b><tt>news.db</tt>:</b> Contains news item data.</li>
+
+<li class="spaced"><b><tt>autoop.db</tt>:</b> Contains nickname auto-op
+settings.  Ignored.</li>
+
+<li class="spaced"><b><tt>bot.db</tt>:</b> Contains data for the
+Epona/Anope BotServ pseudoclient.  Ignored.</li>
+
+<li class="spaced"><b><tt>hosts.db</tt>:</b> Contains data for the
+Anope 1.5+ HostServ pseudoclient.  Ignored.</li>
+
+<li class="spaced"><b><tt>hs_request.db</tt>:</b> Contains data for the
+Anope 1.5+ HostServ pseudoclient.  Ignored.</li>
+
+<li class="spaced"><b><tt>os_info.db</tt>:</b> Contains IRC operator
+information strings for nicknames and channels (Anope 1.7.9+ only).
+Ignored.</li>
+
+<li class="spaced"><b><tt>prenick.db</tt>:</b> Contains data on requested
+but not yet confirmed nicknames in Anope's two-step registration process
+(Anope 1.5+ only).  Since Anope uses an alphanumeric code that cannot be
+stored in the <tt>NickGroupInfo.authcode</tt> numeric field, this data is
+currently ignored.</li>
+
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-3">9-3-3. <tt>convert-hybserv.c</tt> (HybServ)</h4>
+
+<p>HybServ is an IRC service program designed from scratch for networks
+using the IRCD-Hybrid IRC server.  After version 1.6, development changed
+hands and the program was renamed HybServ2, but as they share a common
+codebase, "HybServ" is used to refer to both in this documentation.
+Several modified versions of HybServ have also been seen.</p>
+
+<p>Like Cygnus, HybServ writes its databases to text files.  The format is
+similar to IRC commands, with a record or field identifier followed by an
+arbitrary number of space-separated parameters, and with a leading colon
+indicating a parameter that continues to the end of the line (including
+spaces).  The first line of each file begins with "<tt>; Hybserv</tt>",
+which is used by the <tt>check()</tt> routine to check for the existence of
+HybServ databases.</p>
+
+<p>HybServ allows passwords to be encrypted, using the Unix
+<tt>crypt()</tt> function; however, encryption status is not stored in the
+databases themselves, so the command-line option <tt>-crypt</tt> must be
+given to <tt>convert-db</tt> to make it treat passwords as encrypted.</p>
+
+<ul>
+
+<li class="spaced"><b><tt>nick.db</tt>:</b> Contains nickname data.
+Each nickname record begins with a line that has the nickname itself as the
+first token on the line; subsequent fields for that record begin with the
+two characters "<tt>-&gt;</tt>" followed by a field name.  The fields are:
+	<dl>
+	<dt><tt><i>nickname</i> <i>flags</i> <i>time-registered</i>
+		<i>last-seen</i></tt></dt>
+	<dd>Begins a new nickname record.</dd>
+	<dt><tt>-&gt;PASS <i>password</i></tt></dt>
+	<dd>The nickname's password.</dd>
+	<dt><tt>-&gt;PERMPASS <i>password</i></tt></dt>
+	<dd>A "permanent password" for the nickname (only present in some
+	modified versions of HybServ); ignored.</dd>
+	<dt><tt>-&gt;FORBIDBY <i>nickname</i></tt></dt>
+	<dd>The nickname of the user who forbade this nick; ignored.</dd>
+	<dt><tt>-&gt;FORBIDREASON <i>reason</i></tt></dt>
+	<dd>The reason for the nickname forbid; ignored.  (This field is
+	called <tt>FREASON</tt> in some modified versions of HybServ.)</dd>
+	<dt><tt>-&gt;FTIME <i>time</i></tt></dt>
+	<dd>The time at which the nickname was forbidden (only present in
+	some modified versions of HybServ); ignored.</dd>
+	<dt><tt>-&gt;EMAIL <i>address</i></tt></dt>
+	<dd>E-mail address for the nickname.</dd>
+	<dt><tt>-&gt;URL <i>url</i></tt></dt>
+	<dd>URL for the nickname.</dd>
+	<dt><tt>-&gt;GSM <i>string</i></tt>
+	<br/><tt>-&gt;PHONE <i>string</i></tt>
+	<br/><tt>-&gt;UIN <i>string</i></tt>
+	<br/><tt>-&gt;ICQ <i>string</i></tt></dt>
+	<dd>Various user information fields for the nickname; ignored.
+	(<tt>ICQ</tt> is only present in some modified versions of
+	HybServ.)</dd>
+	<dt><tt>-&gt;LANG <i>language</i></tt></dt>
+	<dd>Believed to identify the language selected by the user (only
+	present in some modified versions of HybServ); ignored due to a
+	lack of data to correlate values with languages.</dd>
+	<dt><tt>-&gt;LASTUH <i>user</i> <i>host</i></tt></dt>
+	<dd>The last-seen usermask for the nickname, with user and hostname
+	as separate tokens.</dd>
+	<dt><tt>-&gt;LASTQMSG <i>message</i></tt></dt>
+	<dd>The last quit message used by the nickname.</dd>
+	<dt><tt>-&gt;HOST <i>usermask</i></tt></dt>
+	<dd>A hostmask (access) entry for the nickname.</dd>
+	<dt><tt>-&gt;LINK <i>master-nick</i></tt></dt>
+	<dd>Indicates that this nickname is linked to another, and gives
+	the parent (master) nickname.  Master nicknames are always written
+	before the nicknames that link to them.</dd>
+	</dl>
+</li>
+
+<li class="spaced"><b><tt>chan.db</tt>:</b> Contains channel data.
+	<dl>
+	<dt><tt><i>channel</i> <i>flags</i> <i>time-registered</i>
+		<i>last-used</i></tt></dt>
+	<dd>Begins a new channel record.</dd>
+	<dt><tt>-&gt;FNDR <i>nickname</i></tt></dt>
+	<dd>The channel founder's nickname.</dd>
+	<dt><tt>-&gt;SUCCESSOR <i>nickname</i></tt></dt>
+	<dd>The channel successor's nickname.</dd>
+	<dt><tt>-&gt;PASS <i>password</i></tt></dt>
+	<dd>The channel's founder password.</dd>
+	<dt><tt>-&gt;PERMPASS <i>password</i></tt></dt>
+	<dd>A "permanent password" for the channel (only present in some
+	modified versions of HybServ); ignored.</dd>
+	<dt><tt>-&gt;ACCESS <i>nickname</i> <i>level</i></tt></dt>
+	<dd>An access entry for the channel.  Levels are adjusted so that
+	users have close to the same privileges as they did in HybServ
+	(assuming default HybServ privilege settings), but as there is not
+	a one-to-one match between levels and privileges, some users will
+	end up with more or less privileges than they had previously (see
+	under HybServ in <a href="../5.html#3">section 5-3</a> of the
+	user's manual).</dd>
+	<dt><tt>-&gt;AKICK <i>mask</i> <i>reason</i></tt></dt>
+	<dd>An autokick entry for the channel.</dd>
+	<dt><tt>-&gt;ALVL <i>level...</i></tt></dt>
+	<dd>Privilege access levels for the channel (all on one line);
+	ignored.</dd>
+	<dt><tt>-&gt;TOPIC <i>topic</i></tt></dt>
+	<dd>Saved topic for the channel.  Since the topic setter and time
+	are not saved, they are set to "<tt>&lt;unknown&gt;</tt>" and the
+	current time, respectively, in the XML output.</dd>
+	<dt><tt>-&gt;MON <i>mode-mask</i></tt></dt>
+	<dd>Modes locked on for the channel, as a combination of numeric
+	flags.</dd>
+	<dt><tt>-&gt;MOFF <i>mode-mask</i></tt></dt>
+	<dd>Modes locked off for the channel, as a combination of numeric
+	flags.</dd>
+	<dt><tt>-&gt;KEY <i>key</i></tt></dt>
+	<dd>Locked key for the channel.</dd>
+	<dt><tt>-&gt;LIMIT <i>limit</i></tt></dt>
+	<dd>Locked limit for the channel.</dd>
+	<dt><tt>-&gt;FORWARD <i>string</i></tt></dt>
+	<dd>Presumed to be a forwarding channel for when the channel
+	reaches its user limit (<tt>+l</tt>), and stored as the channel
+	link parameter accordingly, but as the IRC server with which this
+	is used (Dancer IRCd) appears to be defunct, I am not certain of
+	this interpretation.</dd>
+	<dt><tt>-&gt;ENTRYMSG <i>message</i></tt></dt>
+	<dd>Entry message for the channel.</dd>
+	<dt><tt>-&gt;EMAIL <i>address</i></tt></dt>
+	<dd>E-mail address for the channel.</dd>
+	<dt><tt>-&gt;URL <i>url</i></tt></dt>
+	<dd>URL for the channel.</dd>
+	</dl>
+</li>
+
+<li class="spaced"><b><tt>memo.db</tt>:</b> Contains memo data.  The data
+is organized by nickname, with each memo on a single line:
+	<dl>
+	<dt><tt><i>nickname</i></tt></dt>
+	<dd>Begins a group of memos, and identifies the nickname to which
+	the memos belong.</dd>
+	<dt><tt>-&gt;TEXT <i>sender</i> <i>time</i> <i>flags</i>
+		<i>text</i></tt></dt>
+	<dd>Data for a single memo.</dd>
+	</dl>
+</li>
+
+<li class="spaced"><b><tt>stat.db</tt>:</b> Contains the following
+network-wide statistics:
+	<dl>
+	<dt><tt>-&gt;USERS <i>maxusers</i> <i>maxusers-time</i></tt></dt>
+	<dd>The maximum number of users seen on the network, and the time
+	at which the maximum was reached.  Used to set the corresponding
+	OperServ data.</dd>
+	<dt><tt>-&gt;OPERS <i>maxopers</i> <i>maxopers-time</i></tt></dt>
+	<dd>The maximum number of IRC oprators seen on the network, and the
+	time at which the maximum was reached.  Ignored.</dd>
+	<dt><tt>-&gt;OPERS <i>maxopers</i> <i>maxopers-time</i></tt></dt>
+	<dd>The maximum number of IRC oprators seen on the network, and the
+	time at which the maximum was reached.  Ignored.</dd>
+	<dt><tt>-&gt;OPERS <i>maxopers</i> <i>maxopers-time</i></tt></dt>
+	<dd>The maximum number of IRC oprators seen on the network, and the
+	time at which the maximum was reached.  Ignored.</dd>
+	</dl>
+</li>
+
+<li class="spaced"><b><tt>oper.db</tt>:</b> Seems to contain a list of
+current user modes set on online users.  Ignored.</li>
+
+<li class="spaced"><b><tt>ignore.db</tt>:</b> Contains OperServ ignore
+data.  Services does not store this data to disk, so this file is ignored.</li>
+
+<li class="spaced"><b><tt>seen.db</tt>:</b> Data for SeenServ; ignored.</li>
+
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-4">9-3-4. <tt>convert-magick.c</tt> (Magick, Wrecked)</h4>
+
+<p>Magick IRC Services is an IRC service program based on a very old
+version of Services, and WreckedNet IRC Services is a modified version of
+Magick; both seem to be defunct as of the writing of this manual.</p>
+
+<p>The databases used by these programs are similar to the format used by
+Services before machine-independence was introduced in version 4.0: rather
+than writing each variable in a consistent way, they simply dump the
+structures to disk as is.  As such, <tt>convert-db</tt> assumes that the
+databases are being loaded on the same machine that produced them;
+attempting to read the databases on a different architecture (and in some
+cases, on the same architecture using a different compiler) will likely
+fail.</p>
+
+<p>Magick and Wrecked support nickname and channel suspensions via flags,
+but do not record any other suspension information, so default values are
+filled in.  These programs also support a hierarchical system of nickname
+links, and these are resolved into nickname groups after all nicknames are
+read in.</p>
+
+<p>The data files used by Magick and Wrecked are as follows:</p>
+
+<ul>
+<li class="spaced"><b><tt>nick.db</tt></b>: Contains nickname data.</li>
+<li class="spaced"><b><tt>chan.db</tt></b>: Contains channel data.</li>
+<li class="spaced"><b><tt>memo.db</tt></b>: Contains memo data.</li>
+<li class="spaced"><b><tt>news.db</tt></b>: Contains channel news data;
+	ignored.</li>
+<li class="spaced"><b><tt>sop.db</tt></b>: Contains the Services
+	operator list (Services operators in Magick and Wrecked are
+	equivalent to Services administrators in Services, and are imported
+	as such).</li>
+<li class="spaced"><b><tt>akill.db</tt></b>: Contains autokill data.</li>
+<li class="spaced"><b><tt>clone.db</tt></b>: Contains session exception
+	data.</li>
+<li class="spaced"><b><tt>message.db</tt></b>: Contains network message
+	data (imported as news items).</li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-5">9-3-5. <tt>convert-ptlink.c</tt> (PTlink)</h4>
+
+<p>PTlink Services is an IRC service program designed specifically for the
+PTlink IRC server.  It appears to be based on a fairly old version of
+Services, and uses a similar data file format.  (Another, apparently
+separately developed, program called PTlink IRC Services has recently
+appeared; it uses MySQL for database storage, and is not supported by
+<tt>convert-db</tt>.)</p>
+
+<p>PTlink stores the encryption method used for passwords with the
+corresponding nickname or channel, a significant improvement over Services'
+method (at the time) of using a single method for the entire database.
+<tt>convert-db</tt> reads the encryption method and includes it in the XML
+output; however, the "JP2" method used in PTlink is not available in
+Services, and any passwords encrypted with this method, or with an unknown
+method, are reset to the corresponding nick or channel name with no
+encryption (a warning is printed in this case).</p>
+
+<p>PTlink also stores record counts in the nickname and channel databases,
+similar to Cygnus, for the purpose of ensuring that the data is loaded
+correctly; however, there have apparently been bugs in some versions of
+PTlink that caused valid databases to have a mismatch between this value
+and the number of records actually recorded.  <tt>convert-db</tt> still
+checks the value, but the warning message on mismatch includes a note about
+this issue.</p>
+
+<p>The following data files are used by PTlink (some only by more recent
+versions):</p>
+
+<ul>
+
+<li class="spaced"><b><tt>nick.db</tt></b>: Contains nickname and memo
+data.  Suspension status is stored as a flag, without setter, time, or
+expiration.  PTlink stores the following additional data, currently
+ignored:
+	<ul>
+	<li><tt>icq_number</tt>: ICQ user number, as a string.</li>
+	<li><tt>location</tt>: User's location. </li>
+	<li><tt>last_identify</tt>: Last time the nickname was identified
+	for.  PTlink updates the "last seen" time regardless of
+	authentication status, and uses this field instead to record use
+	by an authenticated user.  To maintain user-interface
+	compatibility, we keep the old last-seen time, even though we treat
+	it differently, rather than use this time.</li>
+	<li><tt>last_email_request</tt>: Last time the <tt>SET EMAIL</tt>
+	command was used.  Services only records this in memory, not on
+	disk.</li>
+	<li><tt>birth_date</tt>: Presumably intended to allow the user to
+	record their birth date (stored as a numeric time value), but this
+	field appears to be unused in recent versions of PTlink.</li>
+	<li><tt>news_mask</tt>: NewsServ-related options.</li>
+	<li><tt>news_status</tt>: Presumably NewsServ-related, but appears
+	to be unused in recent versions of PTlink.</li>
+	<li><tt>notes</tt>: These seem to be a sort of memo-to-self
+	feature; they could potentially be imported as memos.</li>
+	</ul>
+As of data file version 10, PTlink did away with the legacy zero byte
+used to terminate a record chain for a single hash table entry, simply
+storing a sequence of records.
+</li>
+
+<li class="spaced"><b><tt>chan.db</tt></b>: Contains channel data.  This
+file does not have a version 10, and the hash chain terminator bytes are
+always present; the hash table size was increased from 256 to 65536 in
+data file version 9.  PTlink stores the following additional data,
+currently ignored:
+	<ul>
+	<li><tt>maxusers</tt>: Maximum number of users seen on the
+	channel.</li>
+	<li><tt>maxtime</tt>: Time when the maximum number of users on the
+	channel was reached.</li>
+	<li><tt>drop_time</tt>: Time when the channel was dropped with a
+	DROP command.  Only present if the 0x1000 (<tt>CI_DROPPED</tt>)
+	flag is set.  Used by the PTlink "delayed drop" system.</li>
+	<li><tt>memos</tt>: PTlink supports channel memos (like old
+	versions of Services), which are discarded.</li>
+	</ul>
+</li>
+
+<li class="spaced"><b><tt>oper.db</tt></b>: Contains the list of Services
+administrators and operators, and the network-wide maximum user count and
+time of maximum.</li>
+
+<li class="spaced"><b><tt>akill.db</tt></b>: Contains autokill data.</li>
+
+<li class="spaced"><b><tt>sqline.db</tt></b>: Contains SQline data.</li>
+
+<li class="spaced"><b><tt>sxline.db</tt></b>: Contains SXline data (what
+Services calls SGlines).</li>
+
+<li class="spaced"><b><tt>news.db</tt></b>: Contains news data.</li>
+
+<li class="spaced"><b><tt>newsserv.db</tt></b>: Contains NewsServ data;
+ignored.</li>
+
+<li class="spaced"><b><tt>bots.db</tt></b>: Contains bot data; ignored.</li>
+
+<li class="spaced"><b><tt>vline.db</tt></b>: Contains SVline data (S-lines
+for blocking certain DCC filenames); ignored.</li>
+
+<li class="spaced"><b><tt>vlink.db</tt></b>: Contains VLINK data (a feature
+in recent versions of the PTlink IRC server); ignored.</li>
+
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-6">9-3-6. <tt>convert-sirv.c</tt> (Sirv, Auspice, Bolivia)</h4>
+
+<p>SirvNET Services is an IRC service program designed for use on SirvNET.
+Earlier versions were based on an old version of Services; version 3.0.0
+was a complete rewrite, and development is actively continuing.  Since
+version 3.0.0, Sirv requires a MySQL database to operate, and apparently
+has no way to export its data to ordinary files; thus, Sirv databases are
+only supported through version 2.9.0.</p>
+
+<p>Auspice is an IRC service program that appears to have been based on an
+old version of Sirv, and was designed for UnrealIRCd networks.  Development
+status is unclear.</p>
+
+<p>Bolivia IRC Services is an IRC service program that also appears to have
+been based on Sirv, and developed for a particular network.  The program
+appears to be defunct as of the writing of this manual.</p>
+
+<p>All three of these programs share the same overall file format, so they
+have been grouped in the same file despite fairly significant differences
+in the details to avoid code repetition.  The base format seems to be that
+from Services 3.x, before machine-independence was introduced.</p>
+
+<p>The database files are as follows:</p>
+
+<ul>
+
+<li class="spaced"><b><tt>nick.db</tt>:</b> Nickname data.  All three
+programs share a common base nickname data structure (the <tt>oldni</tt>
+variable), and each has its own additions to the structure.  (As a side
+note, Bolivia's extra data structure, consisting entirely of padding, is
+not written to disk due to a missing comment terminator in the structure
+definition.)  The common load routine then loads string data for the
+appropriate database type and initializes NickInfo and NickGroupInfo
+structures for the loaded data. Bolivia has a flag for nickname
+suspensions, and if it is set, dummy suspension data is created for the
+nickname group.  Auspice has a nick linking system, similar to the
+hierarchical system introduced in Services 4.0, indicated by a nickname
+flag; if the flag is set, the <tt>last_usermask</tt> field contains the
+parent nickname.  These links are resolved into nickname groups after all
+nicknames have been loaded.</li>
+
+<li class="spaced"><b><tt>chan.db</tt>:</b> Channel data.  As with the
+nickname database, all three programs share a common base structure&mdash;with
+the exception of mode lock data, which is stored as <tt>short</tt> numeric
+values in Sirv and Bolivia but 64-byte string buffers in Auspice.  The
+routine first reads the initial part of the common structure
+(<tt>oldci</tt>), then reads either two shorts or two 64-byte buffers for
+the mode lock data, then reads the latter part of the common structure
+(<tt>oldci2</tt>).  This can theoretically cause alignment problems due to
+the mode lock variables not being part of the structure, but no such
+problems have yet been reported.  The Sirv and Bolivia formats are similar,
+but Auspice also includes:
+	<ul>
+	<li>Channel successors.</li>
+	<li>A record of who added a channel access entry (also present in
+	recent versions of Sirv).</li>
+	<li><tt>TIMEOP</tt> entries on the access list: users who only get
+	channel operator privileges at certain times.  These are
+	discarded.</li>
+	<li>Channel news data.</li>
+	<li>Channel "bad word" data.</li>
+	</ul>
+</li>
+
+<li class="spaced"><b><tt>memo.db</tt>:</b> Memo data.  All three programs
+use the same format here, with the exception that Auspice has a flag for
+marking memos to be saved; this flag is used (inverted) to set the "may
+expire" flag in imported memos.</li>
+
+<li class="spaced"><b><tt>os_sop.db</tt> (Sirv only):</b> Services operator
+list.  Consists of a count followed by a list of strings.</li>
+
+<li class="spaced"><b><tt>os_sa.db</tt> (Sirv only):</b> Services
+administrator list.  Consists of a count followed by a list of strings.</li>
+
+<li class="spaced"><b><tt>admin.db</tt> (Auspice only):</b> Services
+administrator/operator list.  Stored like the nickname and channel
+databases, with a series of entries each preceded by a nonzero byte,
+followed by a zero byte, for each hash table entry.  Auspice keeps a fair
+amount of information for each record in this table, but since Services
+does not record such information, only the status flag is used to set the
+nickname's OperServ privilege level (<tt>ngi->os_priv</tt>).</li>
+
+<li class="spaced"><b><tt>akill.db</tt>:</b> Autokill list.  All three
+programs share the same straightforward format.</li>
+
+<li class="spaced"><b><tt>trigger.db</tt>:</b> Trigger (session exception)
+list.  All three programs share the same straightforward format.</li>
+
+<li class="spaced"><b><tt>gline.db</tt>, <tt>qline.db</tt>,
+<tt>zline.db</tt> (Bolivia only):</b> S-line data.  These files use simple
+arrays of strings preceded by a count.</li>
+
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-7">9-3-7. <tt>convert-trircd.c</tt> (trircd)</h4>
+
+<p>trircd IRC Services is a fork of Services 4.5.36 developed for the
+tr-ircd IRC server, and has been discontinued since support for tr-ircd was
+added to Services.  The data files are essentially the same as those in
+Services 4.5.36, with the addition of the following data files:</p>
+
+<ul>
+
+<li class="spaced"><b><tt>ajoin.db</tt>:</b> Nickname-related extension
+data for each registered nickname, including:
+	<ul>
+	<li>Autojoin list.</li>
+	<li>Forbidder nickname and reason for forbidden nicknames.</li>
+	<li>E-mail address authentication status.</li>
+	<li>Memo ignore list.</li>
+	<li>Nickname information string.</li>
+	<li>Memo expiration data (ignored).</li>
+	</ul>
+</li>
+
+<li class="spaced"><b><tt>cforbid.db</tt>:</b> Channel-related extension
+data for each registered channel, including:
+	<ul>
+	<li>Forbidder nickname and reason for forbidden channels.</li>
+	<li>Time added, last used time, and expiration time for autokick
+	entries (expiration times are not supported for autokicks and are
+	ignored).</li>
+	<li>Last used time for access entries (ignored).</li>
+	</ul>
+</li>
+
+<li class="spaced"><b><tt>exclude.db</tt>:</b> Autokill exclusion data,
+stored in the same format as autokill data.</li>
+
+<li class="spaced"><b><tt>sgline.db</tt>, <tt>sqline.db</tt>,
+<tt>szline.db</tt>:</b> S-line data, stored in the same format as autokill
+data.</li>
+
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-8">9-3-8. <tt>convert-ver8.c</tt> (Daylight, IRCS)</h4>
+
+<p>Daylight is a fork of Services 4.3.3 developed for the UnrealIRCd IRC
+server, and has been discontinued since support for Unreal was added to
+Services.  IRCS is a fork of Services 4.0.5 developed for Undernet (ircu)
+IRC servers, and appears to be defunct as of the writing of this manual.
+Both use a data format essentially unchanged from that in the original
+Services versions; the data file format at that time was version 8, hence
+the source file name "<tt>convert-ver8.c</tt>".</p>
+
+<p>The Daylight database format is almost completely unchanged from the
+original version 8, with the exception of an extra channel flag
+<tt>CI_XMANAGEMENT</tt> which is ignored.</p>
+
+<p>The IRCS database format uses a channel name buffer size of 204 bytes
+and a password size of 16 bytes.  Services defaults to a maximum channel
+name buffer size of 64 bytes, and will truncate (with a warning) any
+channel name that is too long to fit in the buffer.  IRCS also uses five
+OperServ privilege levels instead of two, and users on the extra lists
+("senior", "junior", and "helper") are moved onto either the admin or the
+oper list depending on appropriate privileges.</p>
+
+<p>IRCS adds one data file to the base Services set: <tt>gline.db</tt>,
+containing "G-line" (autokill) data.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="8.html">Previous section: Other modules</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="10.html">Next section: Compilation</a></p>
+
+</body>
+</html>

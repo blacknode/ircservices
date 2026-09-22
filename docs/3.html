@@ -1,0 +1,2531 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services Manual - 3. Overview of Services features</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>3. Overview of Services features</h2>
+
+<p>3-1. <a href="#1">Nickname management (NickServ)</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-1-1. <a href="#1-1">Core NickServ features</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-1-2. <a href="#1-2">Netsplit recovery</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-1-3. <a href="#1-3">Nickname linking</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-1-4. <a href="#1-4">E-mail authentication</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-1-5. <a href="#1-5">Access lists</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-1-6. <a href="#1-6">Miscellaneous functions</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-1-7. <a href="#1-7">Command aliases</a>
+<br>3-2. <a href="#2">Channel management (ChanServ)</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-2-1. <a href="#2-1">Core ChanServ features</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-2-2. <a href="#2-2">Channel access lists</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-2-3. <a href="#2-3">Channel expiration</a>
+<br>3-3. <a href="#3">Memo sending (MemoServ)</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-3-1. <a href="#3-1">Core MemoServ features</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-3-2. <a href="#3-2">Memos and channels</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-3-3. <a href="#3-3">Memo ignore lists</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-3-4. <a href="#3-4">Memo forwarding</a>
+<br>3-4. <a href="#4">Network/Services control and maintenance (OperServ)</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-4-1. <a href="#4-1">Services privilege levels</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-4-2. <a href="#4-2">Core OperServ features</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-4-3. <a href="#4-3">Autokills and S-lines</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-4-4. <a href="#4-4">Session limiting</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-4-5. <a href="#4-5">News</a>
+<br>3-5. <a href="#5">Network statistics collection (StatServ)</a>
+<br>3-6. <a href="#6">Built-in HTTP server</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-6-1. <a href="#6-1">Core HTTP server module</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-6-2. <a href="#6-2">Authorization modules</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;3-6-3. <a href="#6-3">Content modules</a>
+<br>3-7. <a href="#7">Password encryption</a>
+<br>3-8. <a href="#8">E-mail sending</a>
+<br>3-9. <a href="#9">Multilingual support</a>
+<br>3-10. <a href="#10">Third-party extensions</a>
+
+<p align=right><font size=-1><a href=2.html>Previous section: Installing and using Services</a> |
+<a href=index.html>Table of Contents</a> |
+<a href=4.html>Next section: Services command reference</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=1></a>
+<h3>3-1. Nickname management (NickServ)</h3>
+
+<a name=1-1></a>
+<h4>3-1-1. Core NickServ features</h4>
+
+<p>IRC Services' features are based around the concept of "registering" a
+nickname as one's own.  Once you have registered a nickname, Services will
+recognize you as the "owner" of that nick, and will warn anyone else who
+tries to use the nick that it is owned by someone else; Services can even
+prevent other people from using a registered nick by removing ("killing")
+them from the network or forcibly changing their nickname to something
+else.
+
+<p>The "<b>NickServ</b>" pseudoclient provides the interface to functions
+related to nickname registration and maintenance.  (The nickname "NickServ"
+can be changed via the
+<a href="a.html#nickserv/main.NickServName"><tt>NickServName</tt></a>
+setting in the <tt>modules.conf</tt> configuration file.)  NickServ
+receives commands via <tt>/msg</tt>; for example, typing
+<blockquote>
+<tt>/msg NickServ REGISTER password</tt>
+</blockquote>
+would send NickServ the "<tt>REGISTER</tt>" command, used to register a
+nickname, with "<tt>password</tt>" as its parameter.  Command names are
+case-insensitive, so "<tt>register</tt>" or "<tt>ReGiStEr</tt>" could be
+used instead of "<tt>REGISTER</tt>", for example.
+
+<p>Typically, when first connecting to a network using Services, a user
+will use the <a href="4.html#nick.register"><tt>REGISTER</tt></a> command
+(as in the example above) to register their nickname with Services,
+assuming it is not already used.  Once the nickname is registered, the user
+would then use the <a href="4.html#nick.identify"><tt>IDENTIFY</tt></a>
+command with the password given in the <tt>REGISTER</tt> command every time
+they connected to the network, informing Services that they are the owner
+of the nick and should be permitted to use it; this can be thought of as
+similar to logging into an Internet service provider account.  Finally, if
+the user decides to stop using their nickname, whether because of changing
+to another nickname or switching IRC networks entirely, they can use the
+<a href="4.html#nick.drop"><tt>DROP</tt></a> command to cancel the
+nickname's registration.  (Even if the nickname is not explicitly dropped,
+it will expire if not used for 30 days, or whatever value is given for the
+<a href="a.html#nickserv/main.NSExpire"><tt>NSExpire</tt></a> setting in
+<tt>modules.conf</tt>.)
+
+<a name=1-1.NSRequireEmail></a>
+<p>Users can also include an E-mail address when they register a nickname.
+This will be stored with the nick and can be used to allow other users or
+IRC operators to contact the user outside of IRC.  By setting the
+<a href="a.html#nickserv/main.NSRequireEmail"><tt>NSRequireEmail</tt></a>
+option in <tt>modules.conf</tt>, the E-mail address can be made mandatory
+at registration time.  In addition, the
+<a href="a.html#nickserv/main.NSRegEmailMax"><tt>NSRegEmailMax</tt></a>
+option can be used to set the maximum number of nicknames that can be
+registered to a single E-mail address, and the
+<a href="a.html#RejectEmail"><tt>RejectEmail</tt></a> directive (in
+<tt>ircservices.conf</tt>) can be used to specify addresses that cannot be
+used for registration.
+
+<p>The <a href="4.html#nick.list"><tt>LIST</tt></a> and
+<a href="4.html#nick.info"><tt>INFO</tt></a> commands are available to
+display, respectively, a list of registered nicknames matching a particular
+pattern or detailed information on a single nickname.  The <tt>LIST</tt>
+command simply displays a list of nicknames with the last seen
+<tt><i>user</i>@<i>host</i></tt> address for each nick; the <tt>INFO</tt>
+command displays the nick owner's last seen address and "real name", the
+time of registration and of last use, and last quit message, as well as any
+URL, E-mail, or information line that have been set for the nickname (see
+below).  Of this information, the nick owner can choose to hide the last
+seen address, last quit message, and E-mail address from ordinary users by
+using the <a href="4.html#nick.set_hide"><tt>SET HIDE</tt></a> command.
+Note that usage of the <tt>LIST</tt> command can be limited to IRC
+operators by setting the
+<a href="a.html#nickserv/main.NSListOpersOnly"><tt>NSListOpersOnly</tt></a>
+option in <tt>modules.conf</tt>.
+
+<a name="1-1.set-kill"></a>
+<p>Normally, when a user tries to use a registered nickname, Services will
+only send a warning that the nickname is registered, and not take any
+further action (aside from denying privileges on registered channels, as
+described in <a href="#2">section 3-2</a> on channel management).  By using
+the <a href="4.html#nick.set_kill"><tt>SET KILL</tt></a> command, however,
+users can instruct Services to forcibly prevent other users from using
+their nicknames.  If a user does not identify for a nickname with the
+<tt>KILL</tt> option set within a certain period of time, NickServ will
+either use a <tt>/kill</tt> to disconnect the user from the network or (if
+the IRC server supports it and the
+<a href="a.html#nickserv/main.NSForceNickChange"><tt>NSForceNickChange</tt></a>
+option is set in <tt>modules.conf</tt>) forcibly change the user's nickname
+to a "guest" nick, like Guest12345 (the "Guest" prefix can be changed
+using the <a href="a.html#GuestNickPrefix"><tt>GuestNickPrefix</tt></a>
+directive in <tt>ircservices.conf</tt>).  Services will also introduce an
+"enforcer" pseudoclient with the nickname in question, to prevent the user
+from immediately reconnecting or changing their nick back; the enforcer
+will be removed after one minute.  The <tt>KILL</tt> option defaults to
+off, but can be set to on (60 second time limit), quick (20 second time
+limit), or immediate&mdash;an option which comes into play with
+<i><a href="#1-5">access lists</a>,</i> discussed below.  (Note that the
+"immediate" setting is not available unless the
+<a href="a.html#nickserv/main.NSAllowKillImmed"><tt>NSAllowKillImmed</tt></a>
+option has been set in <tt>modules.conf</tt>.)
+
+<p>The <tt>SET HIDE</tt> and <tt>SET KILL</tt> commands mentioned above are
+just two of the options available for the
+<a href="4.html#nick.set"><tt>SET</tt></a> command, which allows users to
+adjust various features of their nicknames.  Users can change their
+nickname password (<a href="4.html#nick.set_password"><tt>SET PASSWORD</tt></a>)
+or set a URL (home page address), E-mail address, or "information line" for
+their nickname (<tt>SET <a href="4.html#nick.set_url">URL</a></tt>,
+<a href="4.html#nick.set_email"><tt>EMAIL</tt></a>, and
+<a href="4.html#nick.set_info"><tt>INFO</tt></a> respectively), which will
+be displayed when other users request information on the nick with the
+<tt>INFO</tt> command; a number of options for the nickname can be set as
+well, such as the aforementioned <tt>KILL</tt> and <tt>HIDE</tt> options,
+or whether the nickname should appear in output from a <tt>LIST</tt>
+command (<a href="4.html#nick.set_private"><tt>SET PRIVATE</tt></a>).
+Default options for newly registered nicknames can be set using the
+<a href="a.html#nickserv/main.NSDef..."><tt>NSDef...</tt></a> configuration
+options in <tt>modules.conf</tt>.  Users can also set their local time zone
+(<tt>TIMEZONE</tt>), so that Services sends timestamps in the user's local
+time, or change the language in which Services sends notices and replies
+(<tt>LANGUAGE</tt>; see also <a href="#9">section 3-9</a>).
+
+<p>For the URL, E-mail address, and information line, the
+<a href="4.html#nick.unset"><tt>UNSET</tt></a> is available to clear any
+previously set value.  (If the <tt>NSRequireEmail</tt> configuration
+option is set, the E-mail address may not be cleared.)
+
+<p>If the owner of a nickname discovers that another user is using their
+nick, then they can use the <a href="4.html#nick.recover"><tt>RECOVER</tt></a>
+command to have Services disconnect (or change the nick of) the user
+immediately; the <a href="4.html#nick.release"><tt>RELEASE</tt></a> command
+is also available to remove the nickname enforcer before its one-minute
+timeout.  A related command, <a href="4.html#nick.ghost"><tt>GHOST</tt></a>,
+simply disconnects the user of the nickname immediately without using an
+enforcer, and is intended for cases where the nick's owner gets
+disconnected from and reconnects to the IRC server, and the disconnected
+("ghost") session has not disappeared from IRC yet.
+
+<p>One other command, <a href="4.html#nick.status"><tt>STATUS</tt></a>,
+allows users (and bots or other automated clients) to check whether a
+particular user is recognized as the owner of the nickname they are using;
+the reply will contain a number indicating whether the nickname is
+registered and whether the user has identified for that nickname.
+
+<a name="1-1.servadmin"></a>
+<p>Services administrators (see <a href="#4-1">section 3-4-1</a>) have
+access to the following additional commands:</p>
+
+<p><ul>
+<li>the <a href="4.html#nick.dropnick"><tt>DROPNICK</tt></a> command,
+	which allows any nickname to be dropped;
+
+<p><li>the <a href="4.html#nick.set_noexpire"><tt>SET NOEXPIRE</tt></a>
+	command, which allows a nickname to be marked so that it never
+	expires;
+
+<p><li>the <a href="4.html#nick.getpass"><tt>GETPASS</tt></a> command,
+	which allows the password for a nickname to be retrieved (this may
+	not be possible when encryption is in use&mdash;see
+	<a href="#7">section 3-7</a>&mdash;and can be disabled anyway by
+	unsetting the
+	<a href="a.html#EnableGetpass"><tt>EnableGetpass</tt></a>
+	configuration option in <tt>ircservices.conf</tt>);
+
+<p><li>the <a href="4.html#nick.suspend"><tt>SUSPEND</tt></a> command,
+	which can be used to prevent a nickname's owner from using that
+	nick for a certain period of time while retaining the nickname's
+	settings;
+
+<p><li>and the <a href="4.html#nick.forbid"><tt>FORBID</tt></a> command,
+	which completely prevents any use of a nickname and erases any
+	previous settings.
+</ul>
+
+<p>Additionally, Services administrators may use the <tt>SET</tt> and
+<tt>UNSET</tt> commands for any nickname (see the
+<a href="4.html#nick.set"><tt>SET</tt></a> and
+<a href="4.html#nick.unset"><tt>UNSET</tt></a> documentation).  Note,
+however, that if the
+<a href="a.html#WallAdminPrivs"><tt>WallAdminPrivs</tt></a> configuration
+option is set in <tt>ircservices.conf</tt>, then a message will be
+broadcast to all IRC operators whenever any of these commands or command
+formats are used.
+
+<p>Without any safeguards on these commands, a rogue administrator could
+abuse their privileges to lock other administrators out.  If the
+<a href="a.html#nickserv/main.NSSecureAdmins"><tt>NSSecureAdmins</tt></a>
+configuration option is set in <tt>modules.conf</tt> (as it is in the
+example configuration file), NickServ will reject any attempt to use the
+<tt>DROPNICK</tt>, <tt>GETPASS</tt>, <tt>SUSPEND</tt>, <tt>FORBID</tt>, or
+<tt>SET PASSWORD</tt> command on a Services administrator (or the Services
+super-user; see <a href="#4-1">section 3-4-1</a>).  These restrictions are
+not applied to the Services super-user.
+
+<p>Note that it is possible to prevent users from registering nicknames.
+The <a href="a.html#nickserv/main.NSEnableRegister"><tt>NSEnableRegister</tt></a>
+configuration option (in <tt>modules.conf</tt>) controls whether the
+<tt>REGISTER</tt> command is available; if you remove this directive, then
+NickServ will not allow nicknames to be registered.  (However, nicknames
+which have already been registered can be used with Services as usual.)
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=1-2></a>
+<h4>3-1-2. Netsplit recovery</h4>
+
+<p>One additional feature of NickServ is "netsplit recovery".  Normally, if
+a netsplit (<i>i.e.,</i> the breaking of a server-server link) occurs, or
+if Services itself is terminated or otherwise disconnected from the
+network, all users on and behind the disconnected server will appear to
+Services to have left IRC.  When the server (or Services) is reconnected,
+those users will appear as new users, and normally Services would then
+require each user to re-identify for their nickname; users who are away
+from their computers could even be disconnected from the network, depending
+on the nickname's settings.
+
+<p>In order to avoid this hassle, Services remembers information about the
+last user who identified for each nickname.  When a new user connects to
+the network, Services compares the information for the new user to that for
+the last user who identified for the nickname, and if they match, Services
+allows the user to continue using the nickname as if they had identified
+again.
+
+<p>Obviously, this can lead to security problems depending on the
+information used to make this check.  Unfortunately, the standard IRC
+protocol definition (as defined in RFC 1459<sup><a href="#1-2.rfc">1</a></sup>)
+only includes the username and hostname in the information sent to other
+servers about each user; since users can usually set their own username,
+and since there are ways, albeit difficult ones, to fool an IRC server into
+seeing an arbitrary hostname, checking this information alone is not very
+secure.  Fortunately, various IRC server implementors have developed their
+own methods of including such information, and Services can take advantage
+of these as well.  In decreasing order of security, these are:
+
+<p><dl>
+<dt><b>Services stamp</b> (available in the <tt>bahamut</tt>,
+	<tt>dreamforge</tt>, <tt>monkey</tt>, <tt>solidircd</tt>,
+	<tt>trircd</tt>, and <tt>unreal</tt> modules)
+<dd>The most secure way to check whether a user is new or not.  These
+	servers allow Services to set a "Services stamp", a unique number,
+	for each user; the server remembers the number until the user
+	leaves IRC, so even if the server splits from the network, Services
+	will be able to tell that it's the same user when the server
+	reconnects.  The number has a range from 1 to over 2,000,000,000,
+	making it practically impossible for a malicious user to obtain the
+	same Services stamp as a user already on the network, at least
+	given current technology.  (As an example, on a network of 30
+	servers, an attack introducing 50 new clients every second on every
+	server&mdash;requiring at least 10-15 megabits/second of
+	bandwidth&mdash;would need to be sustained for over 16 days to
+	cause the stamp to roll over.)  Unless you have concerns about the
+	security of your servers themselves, this method can be considered
+	100% safe for all intents and purposes.
+<dt><b>User timestamp</b> (available in the <tt>dalnet</tt>, <tt>hybrid</tt>,
+	<tt>inspircd</tt>, <tt>ptlink</tt>, <tt>ratbox</tt>, <tt>ts8</tt>, and
+	<tt>undernet-p9</tt> modules)
+<dd>A number recorded by each server for each user, representing the time
+	at which the user connected to the server.  Since this value
+	increases every second, it is difficult to obtain the same
+	timestamp as a user connected to the network, but it may still be
+	possible if your servers' clocks are not all synchronized.  For
+	small- to medium-size networks, this method is reasonably secure.
+<dt><b>Username and hostname only</b> (the <tt>rfc1459</tt> module)
+<dd>As described above, checking only the username and hostname is not very
+	secure, and you may want to disable netsplit recovery, as described
+	below.
+</dl>
+
+<p>If you are concerned about the security of the check, you can disable
+netsplit recovery by using the
+<a href="a.html#NoSplitRecovery"><tt>NoSplitRecovery</tt></a> option in
+<tt>ircservices.conf</tt>.
+
+<a name=1-2.rfc></a>
+<p><sup>1</sup><font size="-1">"RFC" is short for "Request For Comments",
+the name given to documents describing Internet protocols and other
+Internet-related information.  See
+<a href="http://www.rfc-editor.org/"><tt>http://www.rfc-editor.org/</tt></a>
+for more information.</font>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=1-3></a>
+<h4>3-1-3. Nickname linking</h4>
+
+<p>Several additional functions are available through add-on modules.
+Chief among these is "nickname linking", available with the
+<tt>nickserv/link</tt> module.
+
+<p>Many users like to use variations on their main nickname; for example, a
+user with the nickname "Alice" might use "AliceAway" while away from her
+terminal, or "AliceZZZ" if she left her IRC client connected all night.
+While it is of course possible to register each of these nicknames
+separately, the owner would then have to identify for each nickname
+separately as well; nickname settings, such as setting an E-mail address or
+URL, would also have to be done individually for each nick.  More
+importantly, channel access lists (see <a href="#2-2">section 3-2-2</a>)
+would require one entry for each nickname, causing the size of the access
+list to double, triple, or worse.
+
+<p>In order to avoid this problem, Services provides a way to link multiple
+nicknames together so that they are, for all practical purposes, treated as
+the same nick.  Aside from information truly specific to each
+nickname&mdash;last seen time, address, name, and quit message&mdash;all
+information is shared among all of the linked nicknames, and they can be
+used interchangeably with no extra effort on the part of the nickname owner
+or other users.  (A set of nicknames linked in this way is also called a
+"nickname group".)
+
+<p>Nickname owners can link other nicknames to their own with the
+<a href="4.html#nick.link"><tt>LINK</tt></a> command; this command takes an
+unregistered nickname and links it to the user's current nickname.  The
+<a href="4.html#nick.unlink"><tt>UNLINK</tt></a> command does the reverse,
+cancelling a link from a nickname and releasing that nick for others to use.
+Additionally, the <a href="4.html#nick.listlinks"><tt>LISTLINKS</tt></a>
+command is available to give a list of all nicknames linked to the user's
+current nickname; one of these will be marked with an asterisk
+("<tt>*</tt>"), which indicates the "main nickname" for the group of
+nicknames.  The main nickname defaults to the first nickname registered in
+the group, and can be changed using the
+<a href="4.html#nick.set_mainnick"><tt>SET MAINNICK</tt></a> command.
+(Main nicknames are discussed in more detail in the section on channel
+access lists.)
+
+<p><tt>LISTLINKS</tt> can also be used by Services operators to view the
+list of links for an arbitrary nickname, by giving that nickname after the
+<tt>LISTLINKS</tt> command.  While normal users are not allowed to use
+<tt>LISTLINKS</tt> in this fashion, the same effect can be accomplished
+for users whose E-mail address is not hidden by combining <tt>INFO</tt>
+(to (to get the user's E-mail address) and <tt>LISTEMAIL</tt> (to list all
+nicknames, including links, registered by that E-mail address). If this is
+a concern, enable the <tt>NSListOpersOnly</tt> option in
+<tt>modules.conf</tt> to prevent use of the <tt>LISTEMAIL</tt> command.
+
+<p>The <tt>INFO</tt> command changes its behavior slightly for linked
+nicknames:  When a user has two or more linked nicknames and is using one
+of them, an <tt>INFO</tt> on one of the nicknames that is not in use will
+indicate which nickname is currently in use (for example,
+"<tt>/msg NickServ INFO SomeNick</tt>" might respond with "<tt>Is using
+nickname: SomeNick[away]</tt>").  This can be prevented by setting the
+<tt>PRIVATE</tt> option for the nickname group (however, Services
+administrators can always see this information).
+
+<p>Note that the <tt>DROP</tt> command will drop <i>all</i> nicks linked to
+the current nick (as well as the current nick itself); to cancel a single
+linked nick while leaving the others intact, use the <tt>UNLINK</tt>
+command instead.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=1-4></a>
+<h4>3-1-4. E-mail authentication</h4>
+
+<p>In order to help enforce accountability for registered nicknames, Services
+can require users to "authenticate" their nickname registration using a
+numeric code sent via E-mail to the address provided when the nickname is
+registered.  In order to have Services recognize the nickname as a valid,
+registered nickname, the owner must send the code back to Services first,
+thus verifying that the E-mail address the owner provided is in fact valid.
+This functionality is provided by the <tt>nickserv/mail-auth</tt> module.
+Note that this module requires a mail module (<a href="#8">section 3-8</a>)
+to be loaded in order to function.
+
+<p>When this module is in use, registration of a nickname proceeds as
+follows:</p>
+
+<ol>
+<li>The user sends a <tt>REGISTER</tt> command to NickServ, just as with
+	a normal registration; however, an E-mail address is mandatory with
+	the command.  (The <tt>nickserv/mail-auth</tt> module will refuse
+	to load if the <tt>NSRequireEmail</tt> configuration option,
+	mentioned <a href="#1-1.NSRequireEmail">above</a>, is not set.)
+<p><li>The normal registration checks are made: if the nickname is
+	forbidden, the E-mail address is invalid, or some other problem
+	occurs, Services reports an error and discards the
+	<tt>REGISTER</tt> command.
+<p><li>A random 9-digit authentication code is generated, stored with the
+	nickname in Services' databases, and sent via E-mail to the user.
+	The E-mail looks like this, if the default language is set to
+	English:
+	<blockquote><tt>
+	    The authentication code for your nickname (NickName) is: 123456789
+	<br>Please submit this code to NickServ with the command:
+	<br>/msg NickServ AUTH 123456789
+	<br>
+	<br>This message was sent by NickServ in response to registration by
+	<br>username@hostname.example.com.
+	</tt></blockquote>
+<p><li>Services informs the user that their nickname has been registered,
+	and that they will need to authenticate it with the code sent to
+	their E-mail address before they can use it.
+<p><li>The user sends an <tt><a href="4.html#nick.auth">AUTH</a></tt>
+	command to NickServ with the code given in the E-mail.
+<p><li>Services checks that the code given matches the one sent, and if so,
+	marks the nickname as authenticated and allows it to be used
+	normally (the user will get privileges in channels if on the
+	channel's access list, etc.).
+</ol>
+
+<p>A procedure similar to the above is followed when a nickname owner
+changes the E-mail address associated with the nickname using the <tt>SET
+EMAIL</tt> command.
+
+<p>If a user accidentally gives the wrong E-mail address to a <tt>SET
+EMAIL</tt> command, they can restore the previous (authenticated) address
+via the <a href="4.html#nick.restoremail"><tt>RESTOREMAIL</tt></a> command,
+without having to interact with a Services administrator.  This command is
+not available once the new address has been authenticated.
+
+<a name=1-3.sendauth></a>
+<p>If for some reason, such as a mail server problem, the user does not
+receive the E-mail message containing the authentication code, they can
+request that an extra copy of the message be sent by using the
+<a href="4.html#nick.sendauth"><tt>SENDAUTH</tt></a> command.  By default,
+Services will only allow this command to be used once a day per nickname
+(nickname group when links are in use) in order to minimize potential abuse
+of this command, <i>e.g.,</i> to send "mail-bombs" to other users.  If
+necessary, this interval can be changed using the
+<a href="a.html#nickserv/mail-auth.NSSendauthDelay"><tt>NSSendauthDelay</tt></a>
+option in <tt>modules.conf</tt>; however, if it is set too low or disabled,
+malicious users will be able to abuse Services to send large amounts of
+mail to arbitrary users.
+
+<p>Services can be set to automatically drop unauthenticated nicknames after
+a shorter period than the usual expiration time.  The configuration option
+<a href="a.html#nickserv/mail-auth.NSNoAuthExpire"><tt>NSNoAuthExpire</tt></a>
+in <tt>modules.conf</tt> is used to set this time; by default it is not set,
+meaning that unauthenticated nicknames will be retained until the usual
+expiration time (defined by <tt>NSExpire</tt>).  Note that
+<tt>NSNoAuthExpire</tt> is not applied to nicknames pending authentication
+for an E-mail address change.
+
+<p>Additionally, the commands
+<a href="4.html#nick.setauth"><tt>SETAUTH</tt></a>,
+<a href="4.html#nick.getauth"><tt>GETAUTH</tt></a>, and
+<a href="4.html#nick.clearauth"><tt>CLEARAUTH</tt></a> are available to
+Services administrators.  The <tt>SETAUTH</tt> command generates a new
+authentication code for the given nickname, requiring its owner to
+authenticate the nick before continuing to use it; the <tt>GETAUTH</tt>
+command retrieves the authentication code stored for the given nickname,
+if any; and the <tt>CLEARAUTH</tt> command clears any stored authentication
+code and allows the nickname's owner to use the nick normally, as if they
+had authenticated it with the <tt>AUTH</tt> command.
+
+<p>Finally, NickServ recognizes the command-line option
+"<tt>-clear-nick-email</tt>"; when this option is given, all nicknames'
+E-mail addresses will be cleared on startup, which can be useful when
+first activating the E-mail authentication module.  See
+<a href="upgrade.html#4.5-5">the upgrade notes</a> for details.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=1-5></a>
+<h4>3-1-5. Access lists</h4>
+
+<p>Normally, when a user connects to the IRC network, the user must
+identify to NickServ with their password before Services will recognize
+them as the owner of their nickname.  Access lists, provided by the
+<tt>nickserv/access</tt> module, provide a way for users to be
+recognized as nickname owners based on the user's
+<tt><i>user</i>@<i>host</i></tt> address (the address shown in a
+<tt>/whois</tt> reply among other places) and given limited privileges
+without having to identify by password.
+
+<p>A nickname's access list consists of one or more "masks"; these are
+strings containing wildcards, similar to channel ban masks except that the
+mask includes a username and hostname only, no nickname.  When a nickname
+is first registered, an access mask is added which matches the user's
+current username and hostname.  If the
+<a href="a.html#nickserv/access.NSFirstAccessWild"><tt>NSFirstAccessWild</tt></a>
+configuration option is set, then the the leftmost part of the hostname (if
+a domain name; the rightmost part of an IP address) is replaced with a "*"
+to match any address in that network, in case the user's IP address changes
+(for example, due to disconnecting from and reconnecting to the user's
+service provider).  After registering a nickname, users can use the
+<a href="4.html#nick.access"><tt>ACCESS</tt></a> command to view or modify
+the nickname's access list.
+
+<p>By default, even if a user matches an address on their nickname's access
+list, they are not granted any special permissions in channels.  This can
+be changed with the <a href="4.html#nick.set_secure"><tt>SET SECURE</tt></a>
+command; disabling the <tt>SECURE</tt> option allows the user to obtain
+channel privileges without entering a password.  (Note that there is also a
+<tt>SET SECURE</tt> command for ChanServ, which, if set on a channel,
+causes all nicknames to be treated as if the <tt>SECURE</tt> option was set
+with respect to that channel, regardless of whether the particular nickname
+actually has that option set.)
+
+<p>Nickname access lists have one other effect, which is to prevent users
+matching an access list entry from being disconnected or having their
+nickname changed regardless of the nickname's <tt>KILL</tt> setting.  This
+allows a user to use the "quick" or even "immediate" setting to prevent
+other users from using the nickname, while still having time to identify to
+NickServ themselves.  (When the "immediate" setting for the <tt>KILL</tt>
+option is used, any user who does not match an entry on the access list
+will immediately be disconnected or have their nickname changed; this has
+the effect that if the access list for such a nickname ever becomes empty,
+no one will be able to use it, and a Services administrator will need to
+either drop the nickname or change its settings before it can be used
+again.)
+
+<p><b>Warning:</b> Access lists can lead to improper access to a nickname
+if the nickname's owner does not have a fixed IP address.  For example, a
+user whose hostname may be any of <tt>ppp01.city.example.com</tt> through
+<tt>ppp16.city.example.com</tt> would need to use an access mask of at least
+<tt>ppp*.city.example.com</tt>, which would allow another user of the same
+provider to impersonate the nickname owner by setting the username sent by
+the impersonator's IRC client and/or RFC 1413 ident server.  Such users
+should always set the <tt>SECURE</tt> option on their nicknames to avoid
+having an impersonator improperly obtain channel or other privileges.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=1-6></a>
+<h4>3-1-6. Miscellaneous functions</h4>
+
+<p>One other additional function is available via a separate NickServ
+module:
+
+<p><ul>
+<li><b>Autojoin lists</b> (module <tt>nickserv/autojoin</tt>), which
+	cause Services to automatically make a user join certain channels
+	when they identify for their nickname; this can be useful for users
+	who connect from shared computers or public terminals, for example,
+	and cannot customize the IRC client to automatically join channels
+	upon connecting.  The list of channels to automatically join can be
+	viewed and updated with the
+	<a href="4.html#nick.ajoin"><tt>AJOIN</tt></a> command.
+     <p>This functionality requires the use of an IRC server which allows
+	users to be forcibly joined to certain channels (often known as
+	<tt>SVSJOIN</tt>).
+</ul>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=1-7></a>
+<h4>3-1-7. Command aliases</h4>
+
+<p>NickServ includes a simple "command alias" feature, which can be used
+(for example) to create abbreviations for commands, such as "<tt>ID</tt>"
+instead of "<tt>IDENTIFY</tt>", or to ease transition from another
+Services-like program.  Aliases are created via the
+<a href="a.html#nickserv/main.NSAlias"><tt>NSAlias</tt></a> configuration
+directive in <tt>modules.conf</tt>; the parameter format is
+"<tt><i>alias</i>=<i>command</i></tt>", where <tt><i>alias</i></tt> is the
+new name (alias) to create, and <tt><i>command</i></tt> is the
+already-existing command to be executed when a user uses the alias.  Only
+one alias can be given in a single <tt>NSAlias</tt> directive, but multiple
+directives can be given to create more aliases.
+
+<p>Note that recursive aliases are <i>not</i> permitted.  In other words,
+if you have an alias "<tt>ID</tt>" for the <tt>IDENTIFY</tt> command, you
+cannot then create another alias <tt>I=ID</tt>; attempting to use this
+alias will give the error "<tt>Unknown command ID</tt>".
+
+<p>Aliases are available for ChanServ and MemoServ as well, via the
+<a href="a.html#chanserv/main.CSAlias"><tt>CSAlias</tt></a> and
+<a href="a.html#memoserv/main.MSAlias"><tt>MSAlias</tt></a> directives in
+<tt>modules.conf</tt>.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=2></a>
+<h3>3-2. Channel management (ChanServ)</h3>
+
+<a name=2-1></a>
+<h4>3-2-1. Core ChanServ features</h4>
+
+<p>Just as with nicknames, channels can also be registered with Services.
+Once you register a channel, Services will automatically give you channel
+operator privileges ("ops") when you enter the channel, even if you are not
+the first user in the channel, and conversely it will not allow other users
+to gain ops simply by being the first user in the channel; you can also
+designate other users to be automatically granted ops or voice privileges
+(mode <tt>+v</tt>).  In addition, Services will save the topic on the
+channel even when it is not in use, and can enforce various modes on the
+channel, such as <tt>+m</tt> (moderated) or <tt>+s</tt> (secret).
+
+<p>The "<b>ChanServ</b>" pseudoclient allows access to the various channel
+management functions, much like NickServ does for nicknames, and as with
+NickServ, ChanServ receives commands via <tt>/msg</tt>.  (Also as with
+NickServ, ChanServ's nickname can be changed via a configuration setting:
+<a href="a.html#chanserv/main.ChanServName"><tt>ChanServName</tt></a> in
+<tt>modules.conf</tt>.)
+
+<p>ChanServ uses the same basic commands as NickServ for managing channels:
+<a href="4.html#chan.register"><tt>REGISTER</tt></a> to register a channel
+as one's own, <a href="4.html#chan.identify"><tt>IDENTIFY</tt></a> to
+obtain privileges on a channel via password,
+<a href="4.html#chan.set"><tt>SET</tt></a> and
+<a href="4.html#chan.unset"><tt>UNSET</tt></a> to set various channel
+options, <a href="4.html#chan.drop"><tt>DROP</tt></a> to cancel a channel's
+registration, and <a href="4.html#chan.list"><tt>LIST</tt></a> and
+<a href="4.html#chan.info"><tt>INFO</tt></a> to display information about
+registered channels.  Note that when a channel is registered, a
+"description" parameter is required in addition to a password; this
+description is displayed in the output from the <tt>LIST</tt> and
+<tt>INFO</tt> commands.
+
+<p>By default, a single user (<i>i.e.,</i> nickname group) is not permitted
+to register more than 20 channels; any attempt to register channels above
+this limit will result in an error.  This limit can be changed via the
+<a href="a.html#chanserv/main.CSMaxReg"><tt>CSMaxReg</tt></a> option in
+<tt>modules.conf</tt>.  Also by default, channels will expire in 14 days
+(changeable via the <a href="a.html#chanserv/main.CSExpire"><tt>CSExpire</tt></a>
+option in <tt>modules.conf</tt>) if they are not "used" for that period of
+time; see <a href="#2-3">section 3-2-3</a> for detailed information on how
+channel expiration is performed.
+
+<p>When a user registers a channel, that user is recorded in Services'
+databases as the channel's <i>founder</i>.  The founder of a channel will
+automatically receive ops in that channel when they enter, and is the only
+one permitted to use certain ChanServ commands, in particular <tt>SET</tt>
+and <tt>DROP</tt>.  Channel founder privileges may be obtained either by
+identifying for the nickname used to register a channel (or any nickname
+linked to it) as described in <a href="#1-1">section 3-1-1</a>, or by using
+the ChanServ <tt>IDENTIFY</tt> command with the password given at
+registration to identify as the channel founder.  The founder of a channel
+can be changed without dropping and re-registering the channel by using the
+<a href="4.html#chan.set_founder"><tt>SET FOUNDER</tt></a> command.
+
+<p>If the founder's nickname is dropped, or if it expires and no other
+unexpired nicknames are linked to it, then the channel will be
+automatically dropped.  However, if a <i>successor</i> is set with the
+<a href="4.html#chan.set_successor"><tt>SET SUCCESSOR</tt></a> command,
+then the nickname designated as the successor will become the new founder
+of the channel, and the channel will not be dropped (unless the successor
+nickname has already registered channels up to the registration limit, in
+which case the channel will be dropped as usual).  A channel's successor
+can be cleared with the <tt>UNSET SUCCESSOR</tt> command.
+
+<p>As with NickServ, the channel's password can be changed after
+registration with the <a href="4.html#chan.set_password"><tt>SET
+PASSWORD</tt></a> command.  When used with ChanServ, however, this command
+has an additional function: it clears founder privileges from any other
+user which had previously obtained such privileges with the
+<tt>IDENTIFY</tt> command, and each such user must re-identify with the
+new password in order to regain founder privileges.
+
+<p>The <a href="4.html#chan.set_mlock"><tt>SET MLOCK</tt></a> command
+allows a channel's founder to have Services always set or clear certain
+modes on the channel.  This command is used similarly to the IRC
+<tt>/mode</tt> command, with a list of mode characters interspersed with
+<tt>+</tt> and <tt>-</tt>, possibly followed by mode parameters (such as a
+channel key or user limit for the <tt>+k</tt> or <tt>+l</tt> modes).  The
+important difference is that modes specified here are always forced by
+Services to be as specified; for example, if a mode lock of <tt>+s</tt> is
+set on a channel, Services will always set <tt>+s</tt> on that channel when
+it is first joined by a user, and will not allow anyone to set <tt>-s</tt>
+on the channel (conversely, a mode lock of <tt>-s</tt> would prevent users
+from setting <tt>+s</tt> on the channel).  Any modes not specified in the
+mode lock are not forced either on or off, so in the previous example of a
+mode lock of <tt>+s</tt>, the <tt>+i</tt> mode could be set or unset freely
+by channel operators.  The default mode lock for a new channel is
+<tt>+nt</tt>; this can be changed with the
+<a href="a.html#chanserv/main.CSDefModeLock"><tt>CSDefModeLock</tt></a>
+configuration directive in <tt>modules.conf</tt>.
+
+<p>Note that setting certain modes in a channel's mode lock will cause
+Services to automatically kickban users joining a channel if the locked
+modes would not ordinarily permit that user to join the channel.  This is
+to compensate for the fact that the IRC server does not know about the mode
+lock, so it cannot reject the inappropriate <tt>JOIN</tt> command from the
+user.  While none of the standard IRC channel modes fall into this
+category, modes such as "IRC operators only" (<tt>+O</tt> in many
+protocols) and "registered nicknames only" (<tt>+R</tt> in many protocols)
+will trigger this behavior.  Of these, the latter (<tt>+R</tt>) deserves
+special mention: due to the way IRC works, netsplits and subsequent
+netjoins can result in some users getting kicked from <tt>+R</tt> channels
+they would normally be allowed into.  If this causes problems, the check
+can be disabled with the
+<a href="a.html#chanserv/main.CSSkipModeRCheck"><tt>CSSkipModeRCheck</tt></a>
+option in <tt>modules.conf</tt> (with the result that malicious users may
+be able to take advantage of netsplits to enter <tt>+R</tt> channels with
+unregistered nicknames).
+
+<p>Other options available for the <tt>SET</tt> command include
+<a href="4.html#chan.set_desc"><tt>DESC</tt></a>, to change the channel's
+description; <a href="4.html#chan.set_url"><tt>URL</tt></a> and
+<a href="4.html#chan.set_email"><tt>EMAIL</tt></a>, to set a URL or E-mail
+address for the channel (both of which can be cleared with <tt>UNSET</tt>);
+<a href="4.html#chan.set_entrymsg"><tt>ENTRYMSG</tt></a>, to set a message
+to be sent from ChanServ to each user that enters the channel (this can
+also be cleared with <tt>UNSET</tt>);
+<a href="4.html#chan.set_keeptopic"><tt>KEEPTOPIC</tt></a>, to set whether
+the channel's topic is saved when no one is in the channel;
+<a href="4.html#chan.set_private"><tt>PRIVATE</tt></a>, to set whether the
+channel should be shown in the results for a <tt>LIST</tt> command; and
+<a href="4.html#chan.set_secure"><tt>SECURE</tt></a>, to enforce nickname
+password security for the channel even for nicknames that don't have the
+<tt>SECURE</tt> option set (as described in <a href="#1-5">section
+3-1-5</a>).
+
+<p>To assist a channel founder in recovering control from a malicious user
+or out-of-control script, the <a href="4.html#chan.clear"><tt>CLEAR</tt></a>
+command may be used to remove certain modes from the channel, or even to
+remove all users from the channel at once (a "mass-kick").
+
+<p>Additionally, a channel founder may define an <i>autokick list</i>,
+also known as an "AKICK list" after the command used to maintain the list,
+<a href="4.html#chan.akick"><tt>AKICK</tt></a>.  This is a list of users
+who should not be allowed to join the channel, and is similar to an
+ordinary channel ban list (set with <tt>/mode <i>channel</i> +b ...</tt>),
+except that Services will remember the list even when the channel is not
+in use, and automatically kick and set a ban on the user as necessary.
+Aside from the usual <tt>ADD</tt>, <tt>DEL</tt>, and <tt>LIST</tt>
+subcommands, the following subcommands are also available:</p>
+<ul>
+<li><b><tt>VIEW</tt>:</b> Displays the autokick list, much as the
+	<tt>LIST</tt> subcommand does but with more details (including the
+	last time a user matching the entry tried to join the channel,
+	which can be helpful in finding out-of-date entries).
+<p><li><b><tt>COUNT</tt>:</b> Returns the number of entries on the autokick
+	list.
+<p><li><b><tt>ENFORCE</tt>:</b> Causes Services to check all users in the
+	channel against the autokick list and kick and ban any users which
+	match any entries in the autokick list.  This can be used after
+	adding a new entry in place of kicking the user manually.
+</ul>
+
+<p>As with NickServ, several commands are reserved for Services
+administrators.  These commands are:
+<ul>
+<li><a href="4.html#chan.set_noexpire"><tt>SET NOEXPIRE</tt></a>
+<li><a href="4.html#chan.getpass"><tt>GETPASS</tt></a>
+<li><a href="4.html#chan.forbid"><tt>FORBID</tt></a>
+<li><a href="4.html#chan.suspend"><tt>SUSPEND</tt></a>
+<li><a href="4.html#chan.unsuspend"><tt>UNSUSPEND</tt></a>
+</ul>
+and operate on channels the same way as do their NickServ equivalents on
+nicknames; see the <a href="#1-1.servadmin">relevant part of section
+3-1-1</a>.  The notes in that section on the <tt>SET</tt> command apply
+as well, in the sense that Services administrators need not identify for
+a channel in order to change its settings.  Additionally, Services
+administrators are allowed to enter forbidden and suspended channels.
+
+<p>It is also possible to prevent ordinary users from registering channels.
+The <a href="a.html#chanserv/main.CSEnableRegister"><tt>CSEnableRegister</tt></a>
+configuration option (in <tt>modules.conf</tt>) controls whether the
+<tt>REGISTER</tt> command is available; if you remove this directive, then
+ChanServ will not allow new channels to be registered, except by Services
+administrators (see <a href="#4-1">section 3-4-1</a>).  Channels which have
+already been registered can be used with Services as usual.
+
+<a name="2-1.channel-ts"></a>
+<p>Most modern IRC servers keep track of the time a channel was created,
+and use that time to keep track of which channel is the "original" channel
+during netsplits.  For example, if server A splits from the network and
+no users on server A are in channel <tt>#B</tt>, then channel <tt>#B</tt>
+will disappear from server A; if a user on server A then enters channel
+<tt>#B</tt> while the server is still split, he will gain channel operator
+privileges, which he would (in the absence of these timestamps) keep even
+after the server rejoined the network.  Services can take advantage of this
+feature to set the timestamp of registered channels to the time of channel
+registration, ensuring that the channel's proper modes will always be
+retained through netsplits.  This functionality is enabled with the
+<a href="a.html#protocol/(insert_protocol_name_here).CSSetChannelTime"><tt>CSSetChannelTime</tt></a>
+configuration option in <tt>modules.conf</tt> (note that the option is
+located in the protocol module section, rather than the ChanServ module
+section).  However, the use of this option has the unfortunate side effect
+of generating spurious mode changes and warning messages on many IRC
+servers; these can be safely ignored, but if they prove to be a bother, you
+may want to consider disabling the option.  (See <a href="faq.html#E11">FAQ
+E.11</a> for details.)
+
+<p>Finally, note that the channel "<tt>#</tt>" (a single "<tt>#</tt>"
+character with no name following) is treated specially by Services.  While
+this channel is legal according to the IRC protocol (RFC 1459) and
+supported by most, if not all, IRC servers, it requires special treatment
+for use with a number of Services functions, and in fact bugs in previous
+versions of Services as well as other Services-like programs have allowed
+users to crash these programs using the channel "<tt>#</tt>".  Thus, to
+avoid the potential for such problems, Services explicitly refuses to allow
+this channel to be registered (or forbidden), which in turn prevents any
+other Services functions from being used with it.
+
+<p>As a result of this (lack of) handling, users will be able to use the
+channel "<tt>#</tt>" freely.  If this bothers you, the
+<a href="a.html#chanserv/main.CSForbidShortChannel"><tt>CSForbidShortChannel</tt></a>
+option in <tt>modules.conf</tt> can be enabled, which causes Services to
+treat this channel as a forbidden channel and not allow any clients to use
+it.  (Unlike normal forbidden channels, even Services administrators will
+not be permitted to use the channel when this option is enabled.)
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=2-2></a>
+<h4>3-2-2. Channel access lists</h4>
+
+<p>The remainder of the ChanServ commands and options revolve around a
+concept known as the <i>channel access list</i>.  This is a list of
+nicknames and associated <i>access levels</i> which defines who should be
+allowed what privileges on a particular channel.  Depending on the access
+level assigned to a nickname, that nickname's user may be automatically
+granted ops on entering the channel, or may be allowed to use privileged
+commands such as <tt>AKICK</tt>.  Alternatively, a low access level may
+prevent a user from obtaining ops on the channel or even entering the
+channel at all.
+
+<p>Access levels are integral numbers between -999 and 999 inclusive, with
+higher values meaning greater privilege; a user whose nickname is not on
+the access list, or who has not identified for their nickname (except as
+described for nickname access lists in <a href="#1-5">section 3-1-5</a>),
+has an access level of 0 (zero).  A user with a given access level has all
+privileges listed in Table 3-1 with a lesser or equal minimum access level.
+(The "name" column in the table refers to privilege names for the
+<tt>LEVELS</tt> command, discussed <a href="#2-2.levels">later</a>.)
+
+<div align=center>
+<b>Table 3-1.</b>  Channel privileges and default minimum access levels<br><br>
+<table border=1>
+<tr><th>Name<th>Level<th>Privilege
+<tr><th colspan=3>Automatic-mode privileges
+<tr><td><tt>AUTOVOICE</tt>
+    <td>30
+    <td>Automatic mode <tt>+v</tt> (voice) on entering channel
+<tr><td><tt>AUTOHALFOP</tt>
+    <td>40
+    <td>Automatic mode <tt>+h</tt> (halfop) on entering channel (*)
+<tr><td><tt>AUTOOP</tt>
+    <td>50
+    <td>Automatic mode <tt>+o</tt> (channel operator) on entering channel
+<tr><td><tt>AUTOPROTECT</tt>
+    <td>100
+    <td>Automatic mode <tt>+a</tt> (protected) on entering channel (*)
+<tr><th colspan=3>Command privileges
+<tr><td><tt>ACC-LIST</tt>
+    <td>0
+    <td>Allowed to use the <tt>LIST</tt> subcommand for the <tt>ACCESS</tt>
+	command
+<tr><td><tt>VOICE</tt>
+    <td>30
+    <td>Allowed to use the <tt>VOICE</tt> and <tt>DEVOICE</tt> commands
+<tr><td><tt>HALFOP</tt>
+    <td>40
+    <td>Allowed to use the <tt>HALFOP</tt> and <tt>DEHALFOP</tt> commands
+<tr><td><tt>ACC-CHANGE</tt>
+    <td>40
+    <td>Allowed to use the <tt>ACCESS</tt> command
+<tr><td><tt>OPDEOP</tt>
+    <td>50
+    <td>Allowed to use the <tt>OP</tt> and <tt>DEOP</tt> commands
+<tr><td><tt>INVITE</tt>
+    <td>50
+    <td>Allowed to use the <tt>INVITE</tt> command
+<tr><td><tt>UNBAN</tt>
+    <td>50
+    <td>Allowed to use the <tt>UNBAN</tt> command
+<tr><td><tt>KICK</tt>
+    <td>50
+    <td>Allowed to use the <tt>KICK</tt> command
+<tr><td><tt>TOPIC</tt>
+    <td>50
+    <td>Allowed to use the <tt>TOPIC</tt> command
+<tr><td><tt>PROTECT</tt>
+    <td>100
+    <td>Allowed to use the <tt>PROTECT</tt> command
+<tr><td><tt>AKICK</tt>
+    <td>100
+    <td>Allowed to use the <tt>AKICK</tt> command
+<tr><td><tt>STATUS</tt>
+    <td>100
+    <td>Allowed to use the <tt>STATUS</tt> command
+<tr><td><tt>SET</tt>
+    <td>(**)
+    <td>Allowed to use the <tt>SET</tt> and <tt>UNSET</tt> commands
+<tr><td><tt>CLEAR</tt>
+    <td>(**)
+    <td>Allowed to use the <tt>CLEAR</tt> command
+<tr><th colspan=3>Other privileges
+<tr><td><tt>MEMO</tt>
+    <td>100
+    <td>Receives copies of channel memos (see <a href="#3-2">section 3-3-2</a>)
+</table>
+<br>(*) Only on supporting IRC servers
+<br>(**) Founder only
+</div>
+
+<p><b>Automatic modes</b>
+
+<p>The most common use of access lists is to make Services automatically
+give certain users channel operator or some other status when they enter
+the channel.  For example, by adding a user to the access list at level 50
+(or above), that user will always gain channel operator privileges when
+they enter the channel, even if they are not the first user in the channel.
+Adding a user at level 30 (auto-voice) could be useful on moderated (mode
+<tt>+m</tt>) channels to allow a user to speak freely on the channel
+without giving them ops.  Note that a user at level 50 or above does not
+get mode <tt>+v</tt>, because channel operator privilege implies voice
+privilege as well.
+
+<p>The remaining privileges, auto-halfop (level 40) and auto-protect (level
+100), apply only to IRC servers that have those modes (<tt>+h</tt> and
+<tt>+a</tt> respectively), and cause users at or above those levels to be
+given the respective modes automatically on joining.  As with <tt>+o</tt>
+and <tt>+v</tt>, a user at level 40 (<tt>+h</tt>) will not get <tt>+v</tt>,
+and a user at level 50 (<tt>+o</tt>) will not get <tt>+h</tt>.  Channel
+protection (<tt>+a</tt>), however, is a separate status, and is given in
+addition to <tt>+o</tt> rather than instead of it.
+
+<p>Conversely, a user with a negative access level (-1 or less) will not be
+allowed channel operator or halfop privileges; even if another channel
+operator sets mode <tt>+o</tt> on such a user, Services will immediately
+remove it.  Furthermore, users with level -100 or less will not be
+permitted to join the channel at all, and Services will kick and ban such
+users if they try to join.  Note that this behavior is handled separately
+from the above privileges, and cannot be modified except with the <tt>SET
+SECUREOPS</tt> and <tt>SET RESTRICTED</tt> commands, discussed below.
+
+<p><b>Privileged commands</b>
+
+<p>A number of ChanServ commands are available only to users with certain
+privileges; these are listed below.
+
+<p>The <a href="4.html#chan.voice"><tt>VOICE</tt></a>,
+<a href="4.html#chan.halfop"><tt>HALFOP</tt></a>,
+<a href="4.html#chan.op"><tt>OP</tt></a>, and
+<a href="4.html#chan.protect"><tt>PROTECT</tt></a> commands, as well as
+their negative counterparts
+<a href="4.html#chan.devoice"><tt>DEVOICE</tt></a>,
+<a href="4.html#chan.dehalfop"><tt>DEHALFOP</tt></a>,
+<a href="4.html#chan.deop"><tt>DEOP</tt></a>, and
+<a href="4.html#chan.deprotect"><tt>DEPROTECT</tt></a>, are the manual
+equivalents of the automatic-mode privilege levels, and each can be used
+only by users who would normally get the given automatic mode (or a better
+one).  For example, a user at level 50 (auto-op) can use the
+<tt>VOICE</tt>, <tt>HALFOP</tt>, and <tt>OP</tt> commands, but not the
+<tt>PROTECT</tt> command.  As with automatic modes,
+<tt>HALFOP</tt> / <tt>DEHALFOP</tt> and <tt>PROTECT</tt> /
+<tt>DEPROTECT</tt> are only available on IRC servers supporting those
+modes.  Also, a channel option is available
+(<a href="4.html#chan.set_opnotice"><tt>SET OPNOTICE</tt></a>) which causes
+Services to send a message to the channel every time one of these commands
+is used.
+
+<p>The <a href="4.html#chan.access"><tt>ACCESS</tt></a> command is used to
+modify or view the channel access list, and is discussed
+<a href="#2-2.add">below</a>.  Note that this command has two separate
+privileges associated with it: <tt>ACC-LIST</tt>, for displaying the access
+list (think of this as "read-only" privilege for the list), and
+<tt>ACC-CHANGE</tt>, for modifying it ("read-write").
+
+<p>The <a href="4.html#chan.invite"><tt>INVITE</tt></a> and
+<a href="4.html#chan.unban"><tt>UNBAN</tt></a> commands can be used by
+users with sufficient privilege to circumvent restrictions on entering a
+channel.  <tt>INVITE</tt> is used to cause Services to "invite" you to the
+channel, as if a channel operator had used the <tt>/invite</tt> IRC
+command, and is particularly useful when mode <tt>+i</tt> is locked on
+(with <tt>SET MLOCK</tt>).  <tt>UNBAN</tt> causes Services to remove any
+bans on the channel which prevent you from entering.
+
+<p>The <a href="4.html#chan.kick"><tt>KICK</tt></a> and
+<a href="4.html#chan.topic"><tt>TOPIC</tt></a> commands do the same thing
+as their IRC equivalents, <tt>/kick</tt> and <tt>/topic</tt>.  The latter
+command, <tt>TOPIC</tt>, is particularly useful in combination with the
+<tt>TOPICLOCK</tt> channel option (set with
+<a href="4.html#chan.set_topiclock"><tt>SET TOPICLOCK</tt></a>), which
+prevents users from changing the channel topic except via the
+<tt>TOPIC</tt> command.  Note, however, that the <tt>KICK</tt> command will
+not allow a user with Services operator or greater privileges (see
+<a href="#4-1">section 3-4-1</a>) to be kicked.
+
+<p>The <a href="4.html#chan.status"><tt>STATUS</tt></a> command allows
+a user to check the access level of another user on the channel.
+
+<p><b>Access-list-related channel options</b>
+
+<p>Aside from the <tt>OPNOTICE</tt> and <tt>TOPICLOCK</tt> options
+mentioned above, several other options relating to channel access lists are
+available.
+
+<p>Services does not normally take any particular action for automatic
+modes after a user has joined the channel; thus, for example, an auto-op
+user may be deopped by another channel operator (or they may deop
+themselves) and Services will do nothing.  By setting the "enforce" option
+with <a href="4.html#chan.set_enforce"><tt>SET ENFORCE</tt></a>, Services
+can be made to watch for such improper mode changes and reverse them if
+they occur.
+
+<p>At the other end of the spectrum, the leave-ops option
+(<a href="4.html#chan.set_leaveops"><tt>SET LEAVEOPS</tt></a>) tells
+Services to not deop the first user that joins a channel (such a user is
+automatically given ops by the IRC server).  This can be useful if a
+channel is registered simply to save the channel topic and modes or
+establish an autokick list, and control of channel operator and voice
+privileges is not needed&mdash;but see <a href="#2-3">section 3-2-3</a>
+regarding problems that this sort of usage can raise with respect to
+channel expiration.
+
+<p>As mentioned earlier, users not on the access list are assigned an
+access level of 0.  Ordinarily, this means only that the users do not
+have any special privileges and are essentially ignored by Services;
+however, two channel options allow this behavior to be changed.
+<a href="4.html#chan.set_secureops"><tt>SET SECUREOPS</tt></a> prevents
+users not on the access list from being opped by other users, as with
+users with negative access levels;
+<a href="4.html#chan.set_restricted"><tt>SET RESTRICTED</tt></a> prevents
+such users from joining the channel at all, and will kick and ban them if
+they try.
+
+<a name="2-2.add"></a>
+<p><b>Modifying the access list</b>
+
+<p>Services provides two methods for modifying a channel's access list:
+the <a href="4.html#chan.access"><tt>ACCESS</tt></a> command, provided by
+the <tt>chanserv/access-levels</tt> module, and the
+<a href="4.html#chan.sop"><tt>SOP</tt></a> /
+<a href="4.html#chan.aop"><tt>AOP</tt></a> /
+<a href="4.html#chan.hop"><tt>HOP</tt></a> /
+<a href="4.html#chan.vop"><tt>VOP</tt></a> /
+<a href="4.html#chan.nop"><tt>NOP</tt></a> command set (often referred to
+collectively as <tt>XOP</tt>), provided by the <tt>chanserv/access-xop</tt>
+module.  (Thus, at least one of these two modules must be loaded for access
+lists to be usable!)  The <tt>ACCESS</tt> command allows the access list to
+be viewed or modified using access level values directly, while the
+<tt>XOP</tt> commands provide a simpler interface with five levels of
+access.
+
+<p>Both the <tt>ACCESS</tt> command and the <tt>XOP</tt> command set share
+the same subcommands: <b><tt>ADD</tt></b> to add a user (nickname) to the
+access list, <b><tt>DEL</tt></b> to remove a user from the list,
+<b><tt>LIST</tt></b> to display all or part of the list, and
+<b><tt>COUNT</tt></b> to display the number of entries in the list.  When a
+nickname is added to the access list, all nicknames in the same group (see
+<a href="#1-3">section 3-1-3</a> on nickname linking) receive the same
+privileges; the nickname displayed when using the <tt>LIST</tt> command is
+the one marked as the "main nickname" for the group (set using the NickServ
+<tt>SET MAINNICK</tt> command).
+
+<p>Both of these methods operate internally on the same list of nicknames
+and access levels, and in fact both can be used simultaneously (with
+certain exceptions discussed at <a href="#2-2.levels-xop">the end of this
+section</a>).  The
+difference in the two methods is how access list entries are managed from
+the user's standpoint.
+
+<p>The <tt>ACCESS</tt> command provides direct access to the list of
+nicknames and access levels that comprise the channel access list.  For
+example, a command like "<tt>ACCESS #somechannel ADD SomeNick 50</tt>"
+could be used to add the nickname "SomeNick" to the access list of channel
+"#somechannel" at level 50 (auto-op).  The <tt>ADD</tt> subcommand can also
+be used to change the level of a user already on the list without having to
+remove them from the list first.  When adding a new user to the access list
+or changing the access level of a user already on the list, the level given
+to the <tt>ADD</tt> command must be strictly less than the access level of
+the user giving the command; when removing a user or changing a user's
+access level, the current access level of the user being removed or changed
+must also be less than that of the user giving the command.  The founder of
+a channel is treated as having an access level higher than any other user
+on that channel.
+
+<p>The <tt>ACCESS</tt> command also includes an additional subcommand,
+<b><tt>LISTLEVEL</tt></b>, which filters the access list by level rather
+than nickname.
+
+<p>The <tt>XOP</tt> command set, on the other hand, treats the access list
+as five (four, on IRC servers not supporting halfops) separate lists, each
+managed by its own command:
+<ul>
+<li><tt>SOP</tt> (level 100), for the "super-op" list (auto-op,
+	auto-protect on supporting servers, and access to the
+	<tt>AKICK</tt> command);
+<li><tt>AOP</tt> (level 50), for the auto-op list (auto-op and access to
+	most privileged channel commands);
+<li><tt>HOP</tt> (level 40), for the auto-halfop list (only available on
+	servers supporting halfops);
+<li><tt>VOP</tt> (level 30), for the auto-voice list; and
+<li><tt>NOP</tt> (level -1), for the never-op list.
+</ul>
+This system, which is roughly based on the system employed by
+<a href="http://www.dal.net/">DALnet</a>
+<font size=-1>[<tt>www.dal.net</tt>]</font> Services and other
+Services-like programs, hides the numeric access levels from the user,
+providing them instead with a small set of distinct levels for easy
+control.  Since the name of the command directly indicates the access
+level, there is no need for the user to explicitly give an access level
+with the <tt>ADD</tt> subcommand.  As with the <tt>ACCESS</tt> command,
+users can only add users to or remove users from lists at a lower access
+level than their own; for example, a user on the <tt>AOP</tt> list can only
+modify the <tt>HOP</tt>, <tt>VOP</tt>, and <tt>NOP</tt> lists.
+
+<p>Note that since the <tt>XOP</tt> command set operates internally on a
+single access list, attempting to add a user to one <tt>XOP</tt> list when
+that user is already on another such list is treated as a change of access
+level, as with the <tt>ACCESS ADD</tt> command; the command will fail if
+the user being added is already on the same or a higher list than the user
+giving the command, and if the command succeeds, the target user will be
+removed from the list they were previously on.  Also, users added to the
+access list with the <tt>ACCESS ADD</tt> command at a level other than the
+five access levels given above (100, 50, 40, 30, or -1) will be invisible
+to the <tt>XOP</tt> commands.
+
+<a name="2-2.levels"></a>
+<p><b>Changing the minimum access levels for privileges</b>
+
+<p>Experienced users may want to change the minimum access levels required
+for certain privileges; for example, one could set the <tt>AUTOVOICE</tt>
+privilege to have a minimum level of zero, meaning that users not on the
+access list will automatically get mode <tt>+v</tt> upon entering the
+channel.  This can be accomplished through the
+<a href="4.html#chan.levels"><tt>LEVELS</tt></a> command, provided by the
+<tt>chanserv/access-levels</tt> module (which also provides the
+<tt>ACCESS</tt> command).
+
+<p>The <tt>LEVELS</tt> command has four primary subcommands.  <tt>SET</tt>
+takes a privilege name (from the "name" column in Table 3-2) and access
+level, and sets the minimum access level for that privilege to the given
+level.  <tt>DISABLE</tt> (which may be abbreviated to <tt>DIS</tt>)
+disables a privilege; for automatic mode privileges, this means that no
+users get the mode regardless of their access level, and for command
+privileges, it means that only the founder is permitted to use the command
+in question.  <tt>RESET</tt> resets all privileges to their default levels,
+and <tt>LIST</tt> displays the minimum access level for each privilege on
+the channel.
+
+<a name="2-2.levels-xop"></a>
+<p>There is one important thing to remember when using the <tt>LEVELS</tt>
+command in combination with the <tt>XOP</tt> command set:  Since the
+<tt>XOP</tt> commands always use the same fixed access levels (100, 50, 40,
+30, and -1), changing the automatic mode levels, in particular, can have
+unexpected effects!  For example, if the auto-op level is raised to 75,
+then users on the <tt>AOP</tt> (supposedly "auto-op") list will not get
+ops when they enter the channel.  In general, it is not a good idea to use
+both the <tt>LEVELS</tt> and <tt>XOP</tt> commands on the same channel.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=2-3></a>
+<h4>3-2-3. Channel expiration</h4>
+
+<p>Channel expiration is a somewhat complex issue.  The major problem in
+determining when to expire a channel is:  How do you determine whether the
+channel is "in use"?
+
+<p>One simple idea is to measure from the last time any user was in the
+channel, but this can be overly protective in some circumstances.  For
+example, suppose user A has registered channel <tt>#mychannel</tt>, but no
+longer uses it.  One day before the channel is to expire, user B comes onto
+the network, wanting to use <tt>#mychannel</tt> herself but not knowing
+that it has already been registered.  When user B enters the channel,
+ChanServ tells her that it is registered&mdash;and updates the last-used time, forcing her to wait much longer than one day before the
+channel is finally released.
+
+<p>Clearly, Services needs some way to determine whether a user should be
+considered a user of the registered channel, as opposed to an unrelated
+user who just happened to enter the channel.  The wide variety of channel
+management styles makes this difficult, but since most channels are likely
+to take advantage of the auto-op channel privilege (as described in
+<a href="#2-2">section 3-2-2</a>), Services uses this privilege as a basis
+for determining who to count as a user of the registered channel.
+
+<p>Thus, the rule for channel expirations is:  <b>A channel's expiration
+timer counts from the last time a user with auto-op provileges was present
+in the channel.</b>  (This time is the "last used time" shown in the
+channel information.)  As a corollary, <i>channels will not expire as long
+as a user with auto-op privileges is in the channel.</i>
+
+<p>If you only use the <tt>XOP</tt> commands to modify the channel list,
+this is easy to understand: anyone on the <tt>AOP</tt> and <tt>SOP</tt>
+lists, as well as the channel founder, will cause the channel's last-used
+time to be updated.  Likewise, with the <tt>ACCESS</tt> command, any user
+with access level 50 or above will reset the expiration countdown.
+However, if you use the <tt>LEVELS</tt> command to alter the auto-op
+privilege level, then this no longer holds; in particular, <b>if you
+disable the auto-op channel privilege, then you will not be able to stop
+the channel from expiring!</b>
+
+<p>Also, for the purpose of these checks, Services uses each user's
+<i>current</i> channel privileges on the channel.  Even if the channel
+founder remains in the channel, he will not be counted as a channel user
+unless he has identified for his nickname (or the nickname and channel
+<tt>SECURE</tt> options are disabled).
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=3></a>
+<h3>3-3. Memo sending (MemoServ)</h3>
+
+<a name=3-1></a>
+<h4>3-3-1. MemoServ core features</h4>
+
+<p>"Memos" are short messages which can be sent to users even if they are
+not online, and will be stored by Services for the recipient to read later.
+Memos are handled by the "<b>MemoServ</b>" pseudoclient, which functions in
+the same way as NickServ and ChanServ.  (The nickname can be changed via
+the <a href="a.html#memoserv/main.MemoServName"><tt>MemoServName</tt></a>
+option in <tt>modules.conf</tt>.)  To avoid potential problems with
+anonymous memo flooding and other issues, as well as to simplify memo
+storage, MemoServ requires a user to register and identify for their
+nickname before sending or receiving memos or performing other memo-related
+operations.  If a user has two or more nicknames linked together into a
+group, then all of those nicknames share the same set of memos, and memos
+to one nickname in the group can be read using another one.
+
+<p>Sending a memo to another user is accomplished via the
+<a href="4.html#memo.send"><tt>SEND</tt></a> command.  When you send a memo
+to a user, it will be stored in Services' database, ready for the recipient
+to read the next time they connect.  If the recipient happens to be online
+(and identified for their nickname) at the time the memo is sent, they will
+receive a notice that a memo has been sent to them.  If nickname linking
+is enabled, the recipient will also receive a notice if they are using any
+nickname linked to the nickname that received the memo.
+
+<p>When a user receives a memo, they can use the
+<a href="4.html#memo.read"><tt>READ</tt></a> command to view its contents.
+This command displays the text of the memo whose number is given with the
+command (the string "<tt>LAST</tt>" can be used to mean "the last memo
+received", or "<tt>NEW</tt>" to mean "all unread memos"), as well as the
+nickname of the user who sent it and the date and time it was sent.  It is
+also possible to read multiple memos at once, by separating the numbers
+with commas (for individual memos) or hyphens (for ranges of memos); for
+example, "<tt>READ 2,4-6,9</tt>" causes memos 2, 4, 5, 6, and 9 to be
+displayed.
+
+<p>If a user has several new memos, or wants to look for an old memo, it is
+usually easier to get a one-line-per-memo list of memos; this is
+accomplished with the <a href="4.html#memo.list"><tt>LIST</tt></a> command,
+which displays the sender's nickname and time sent for each memo requested.
+This command can take either a single memo number, a list or range of
+numbers, the string "<tt>NEW</tt>" for all new memos, or nothing at all to
+list every saved memo.
+
+<p>Once a memo has been read, it typically is not needed any more, and can
+be deleted.  In fact, since a single nickname group can only receive a
+limited number of memos (20 by default, changeable via the
+<a href="a.html#memoserv/main.MSMaxMemos"><tt>MSMaxMemos</tt></a> option in
+<tt>modules.conf</tt>), deleting unused memos is important to make room for
+new ones.  This is done with the <a href="4.html#memo.del"><tt>DEL</tt></a>
+command, which takes as a parameter a single memo number or list of numbers,
+or the string "<tt>ALL</tt>" to delete every stored memo.  Be aware that
+deletion is an irreversible operation: once memos are deleted, there is no
+way to get them back!
+
+<p>If the <a href="a.html#memoserv/main.MSExpire"><tt>MSExpire</tt></a>
+option is set in <tt>modules.conf</tt>, then memos will be automatically
+deleted after the period of time given with that option even if they are
+not explicitly deleted with the <tt>DEL</tt> command (unread memos will
+never be automatically deleted).  However, the
+<a href="4.html#memo.save"><tt>SAVE</tt></a> command is available to mark
+certain memos as non-expiring.  Once a memo is so marked, it remains that
+way until the <tt>DEL</tt> command is used to delete it, and will never be
+automatically deleted.
+
+<p>To avoid old but unread memos from being deleted immediately upon being
+read, the
+<a href="a.html#memoserv/main.MSExpireDelay"><tt>MSExpireDelay</tt></a>
+option can be set in <tt>modules.conf</tt>.  If set, this option specifies
+how long Services should wait <i>after the memo is first read</i> before
+expiring the memo.  If memo expiration is not in use, this option is
+ignored.
+
+<p>Note that when a memo in the middle of the memo list is deleted or
+expires, the numbers of later memos do <i>not</i> change; this is to
+prevent successive <tt>DEL</tt> commands from doing the wrong (unintuitive)
+thing.  For example, imagine a user who has four memos, numbered 1, 2, 3,
+and 4.  If the user gives the command <tt>DEL 2</tt>, then memo 2 will be
+deleted, but memos 3 and 4 will remain as memos 3 and 4; thus, if the user
+then enters <tt>DEL 3</tt>, the third memo in the original list will be
+deleted.  (If the memos were automatically renumbered, <tt>DEL 3</tt> would
+instead delete what was originally memo 4&mdash;probably not what the user
+wanted to do!)  However, this leaves "holes" in the numbering, and if a
+user keeps some memos for a long time or receives memos more frequently
+than they expire, they can end up with very large memo numbers.  To resolve
+this problem, the user can use the
+<a href="4.html#memo.renumber"><tt>RENUMBER</tt></a> command, which keeps
+the user's memos in the same order but reassigns numbers sequentially
+starting with 1.
+
+<p>Normally, users will be notified when they connect to the network of any
+new memos, and will also be notified when they receive new memos, as
+described above.  This behavior can be altered using the
+<a href="4.html#memo.set_notify"><tt>SET NOTIFY</tt></a> command.  Users
+can also set a limit on the number of memos they can receive between 0,
+which prevents the user from receiving any memos at all, and the default
+limit using the <a href="4.html#memo.set_limit"><tt>SET LIMIT</tt></a>
+command.  (Note, however, that the limit is ignored for memos sent by
+Services administrators.)
+
+<p>However, the <tt>SET LIMIT</tt> command is more intended for Services
+administrators (see <a href="#4-1">section 3-4-1</a>), who can use it to
+allow a nickname to receive an unlimited number of memos ("<tt>SET LIMIT
+<i>nickname</i> NONE</tt>") or to prevent a user from changing their own
+limit ("<tt>SET LIMIT <i>nickname</i> 0 HARD</tt>" to enforce a limit of 0,
+preventing receipt of any memos).
+
+<p>Finally, the <a href="4.html#memo.info"><tt>INFO</tt></a> command can be
+used to display a user's number of stored and unread memos, memo limit, and
+notification options.  Ordinary users can only use this command for their
+own nick, while Services administrators can view memo information for any
+nick ("<tt>INFO <i>nickname</i></tt>").
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=3-2></a>
+<h4>3-3-2. Memos and channels</h4>
+
+<p>While MemoServ is typically used to send messages from one user
+(nickname) to another, it can also be used to leave messages for a
+channel instead.  In this case, the memo is sent to the founder of the
+channel and any user with the <tt>MEMO</tt> privilege on the channel (see
+<a href="#2-2">section 3-2-2</a>).  The channel must be registered in order
+to receive memos, and if the
+<a href="4.html#chan.set_memo_restricted"><tt>MEMO-RESTRICTED</tt></a>
+channel option is set on the channel, only users with the <tt>MEMO</tt>
+privilege will be allowed to send memos to the channel.
+
+<p>When sending the memo, simply replacing the target nickname with a
+channel name is sufficient to send the memo.  Any user of that channel with
+the <tt>MEMO</tt> privilege will be notified of the new memo (depending on
+the user's <tt>SET NOTIFY</tt> setting), and can read or delete it with the
+<tt>READ</tt> or <tt>DEL</tt> commands, in the same way as ordinary memos.
+In order to differentiate channel memos from ordinary memos, Services will
+include the name of the channel the memo was sent to when notifying users
+of or displaying channel memos.
+
+<p>Since a channel memo can have multiple recipients, the memo might not
+be deliverable to all of them; for example, one of the recipients might be
+on vacation and have disabled memos for their nickname.  However, Services
+will say "message sent successfully" if the memo was delivered to at least
+one user; only if all recipients are unable to receive the memo will
+Services display an error message.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=3-3></a>
+<h4>3-3-3. Memo ignore lists</h4>
+
+<p>Users may, on occasion, want to avoid receiving memos from certain other
+users, such as in cases of harrassment.  The <tt>memoserv/ignore</tt>
+module allows users to do exactly that, by maintaining an <i>ignore
+list</i> of wildcard masks (which can be either nickname or
+<tt><i>user</i>@<i>host</i></tt> masks) from which memos should not be
+received.  When a memo is sent to the user, Services compares the nickname
+and <tt><i>user</i>@<i>host</i></tt> address of the sender to each entry on
+the recipient's ignore list; if a match is found, Services will refuse to
+send the memo, informing the sender that the recipient is "not allowed to
+receive memos" (using the same message sent when the recipient has used the
+<tt>SET LIMIT 0</tt> command to prevent receipt of any memos at all; this
+way, the sender cannot tell directly whether the user is refusing all memos
+or only memos from that particular nickname or address).  <tt>IGNORE</tt>
+also blocks delivery of channel memos from users on the ignore list.
+
+<p>The <a href="4.html#memo.ignore"><tt>IGNORE</tt></a> command is used to
+manage the ignore list.  It has three subcommands: <tt>ADD</tt> to add a
+mask to the ignore list, <tt>DEL</tt> to delete a mask, and <tt>LIST</tt>
+to display all masks on the list.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=3-4></a>
+<h4>3-3-4. Memo forwarding</h4>
+
+<p>Some users may find it easier to have their memos forwarded directly to
+their E-mail address rather than connecting to IRC to check them.  The
+<tt>memoserv/forward</tt> module allows users to select this behavior for
+their nicknames, and will convert each memo to the user into an E-mail
+message sent to the E-mail address registered with the nickname.  (To
+prevent spamming, this module requires that nickname E-mail authentication
+be active; see <a href="#1-4">section 3-1-4</a> for details.)  Note that
+this module requires a mail module (<a href="#8">section 3-8</a>) to be
+loaded in order to function.
+
+<p>When this module is loaded, users can use the
+<a href="4.html#memo.set_forward"><tt>SET FORWARD</tt></a> command to
+select whether to have their memos forwarded to their E-mail address.  This
+option can be set to either "<tt>ON</tt>" (forward memos via E-mail),
+"<tt>OFF</tt>" (do not forward), or "<tt>COPY</tt>" (forward memos but also
+store a copy in the Services database).  When set to <tt>COPY</tt>, the
+limit on the number of stored memos per nickname group applies to E-mail as
+well: if the limit is reached, all further memos will be refused, even
+though they could potentially have been sent via E-mail.  In such a case,
+the user must connect to IRC and delete unneeded memos before being
+allowed to receive more, just as if the <tt>FORWARD</tt> option was set to
+<tt>OFF</tt>.
+
+<p>Additionally, a separate <a href="4.html#memo.forward"><tt>FORWARD</tt></a>
+command is available which allows users to selectively forward memos to
+their E-mail address.  This can be useful, for example, to save certain
+messages in a more permanent form without having every single memo sent to
+one's mailbox.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=4></a>
+<h3>3-4. Network/Services control and maintenance (OperServ)</h3>
+
+<a name=4-1></a>
+<h4>3-4-1. Services privilege levels</h4>
+
+<p>Before discussing OperServ's functions, it is necessary to understand
+the concept of <i>Services privilege levels</i>.  These are privilege
+levels assigned to IRC operators which are used by both OperServ and other
+parts of Services to limit access to certain functions.  There are four
+different Services privilege levels a user can have:
+<ul>
+<li>No privilege
+<li>Services operator privilege
+<li>Services administrator privilege
+<li>Services super-user privilege
+</ul>
+By default, all users have no special privileges.
+
+<p><b>Services operator</b> (also known as "Services oper" or "servoper")
+privilege allows IRC operators to change modes on or kick users from any
+channel or "mass-kill" users sharing the same hostname (clones, for
+example), as well as modify the autokill, session exception, and S-line
+lists when the relevant modules are in use, and is intended for IRC
+operators who can be trusted not to run wild on the network.  The
+<a href="4.html#oper.oper"><tt>OPER</tt></a> command is used to change or
+view the list of users with Services operator status.
+
+<p><b>Services administrator</b> (also known as "Services admin" or
+"servadmin") privilege allows IRC operators control of Services itself;
+Services administrators can set various Services options, rehash (re-read)
+the configuration files and update settings, and restart or terminate
+Services entirely.  Services administrator privilege is also needed to
+modify the Services operator list or to gain Services super-user privilege
+(see below).  The <a href="4.html#oper.admin"><tt>ADMIN</tt></a> command is
+used to change or view the list of users with Services administrator
+status.  Note that giving a user Services administrator status will cause
+them to be removed from the Services operator list if they are on it; users
+on the Services administrator list must first be removed from that list
+before they can be added to the Services operator list, thus preventing one
+Services administrator from downgrading another's privilege level by making
+them a Services operator.
+
+<p><b>Services super-user</b> (also known as "Services root", after the
+Unix super-user username <tt>root</tt>) privilege is the highest Services
+privilege level available, and is required for modifying the Services
+administrator list.  It also allows the use of the dangerous
+<a href="4.html#oper.raw"><tt>RAW</tt></a> command, which sends text
+directly to the IRC network without intervention by Services, if the
+<a href="a.html#operserv/main.AllowRaw"><tt>AllowRaw</tt></a> option is set
+in <tt>modules.conf</tt>; this can be useful for testing new features of an
+IRC server, but improper use can cause Services and other servers on the
+network to behave improperly or even crash.  Normally, only the nickname
+given with the
+<a href="a.html#operserv/main.ServicesRoot"><tt>ServicesRoot</tt></a>
+configuration directive in <tt>modules.conf</tt> has Services super-user
+privilege, but if that user sets a super-user password with the
+<a href="4.html#oper.set_supass"><tt>SET SUPASS</tt></a> command, Services
+administrators can obtain temporary Services super-user privilege by giving
+that password with the <a href="4.html#oper.su"><tt>SU</tt></a> command.
+
+<p>As a special exception to the normal nickname dropping and expiration
+rules, the nickname designated as the Services super-user with the
+<tt>ServicesRoot</tt> directive will never expire regardless of the setting
+of the nickname's <tt>NOEXPIRE</tt> option and cannot be dropped by other
+Services administrators with the <tt>DROPNICK</tt> command.  This prevents
+unauthorized users from capitalizing on the accidental or deliberate
+deletion of the nickname by re-registering it themselves.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=4-2></a>
+<h4>3-4-2. Core OperServ features</h4>
+
+<p>This section discusses the core features provided by OperServ (in the
+<tt>operserv/main</tt> module).  It is split into four subsections by
+Services privilege level:
+<ul>
+<li><a href="#4-2.all">Commands for all IRC operators</a>
+<li><a href="#4-2.oper">Commands limited to Services operators</a>
+<li><a href="#4-2.admin">Commands limited to Services administrators</a>
+<li><a href="#4-2.root">Commands limited to the Services super-user</a>
+</ul>
+An IRC operator with a certain Services privilege level also has access to
+commands for lower privilege levels; for example, a Services administrator
+has access to Services operator commands as well, and a user with Services
+super-user privilege can use every OperServ command.  If a user who is not
+an IRC operator sends a command to OperServ, it will be refused regardless
+of content, and (if the
+<a href="a.html#operserv/main.WallBadOS"><tt>WallBadOS</tt></a> option is
+set in <tt>modules.conf</tt>) a message will be broadcast to all online IRC
+operators.
+
+<p>Note that all commands sent to OperServ are recorded in the Services log
+file (with the exception of passwords given for the <tt>SU</tt> and <tt>SET
+SUPASS</tt> commands, discussed below), so be careful of what you type!
+
+<a name="4-2.all"></a>
+<p><b>Commands for all IRC operators</b>
+
+<p>IRC operators without any Services privileges are primarily limited to
+commands for displaying the current status of Services and the IRC network.
+These commands include <a href="4.html#oper.stats"><tt>STATS</tt></a>
+command, which displays the time elapsed since Services was started and
+current/maximum number of users and IRC operators, and the
+<a href="4.html#oper.servermap"><tt>SERVERMAP</tt></a> command, which
+displays the IRC network's topology from the viewpoint of Services.
+Another command, <a href="4.html#oper.global"><tt>GLOBAL</tt></a>, allows a
+notice to be sent to all users on the IRC network.
+
+<p>Additionally, the <a href="4.html#oper.admin"><tt>ADMIN</tt></a> and
+<a href="4.html#oper.oper"><tt>OPER</tt></a> commands can be used by any
+IRC operator to view the current list of Services administrators and
+operators, respectively (the <tt>LIST</tt> subcommand).  However, Services
+will not permit any changes to either of these lists from a user without
+the necessary privileges.
+
+<a name="4-2.oper"></a>
+<p><b>Commands limited to Services operators</b>
+
+<p>In addition to the commands usable by all IRC operators, Services
+operators have access to commands which can be used to maintain stability
+and resolve problems in the IRC network.  Five of these
+commands&mdash;<a href="4.html#oper.getkey"><tt>GETKEY</tt></a>,
+<a href="4.html#oper.mode"><tt>MODE</tt></a>,
+<a href="4.html#oper.clearmodes"><tt>CLEARMODES</tt></a>,
+<a href="4.html#oper.kick"><tt>KICK</tt></a>, and
+<a href="4.html#oper.clearchan"><tt>CLEARCHAN</tt></a>&mdash;allow control of
+channel modes as well as providing the ability to remove a user (or all
+users) from a channel.  The last Services operator-specific command,
+<a href="4.html#oper.killclones"><tt>KILLCLONES</tt></a>, allows quick
+resolution to "clone" problems, where many clients connect to the IRC
+network at once from the same address; this command causes all clients with
+the same address as the nickname given to the command to be immediately
+disconnected, and will also add a temporary autokill (if
+<a href="#4-3">autokill support</a> is enabled) to prevent the clients from
+immediately reconnecting.
+
+<a name="4-2.admin"></a>
+<p><b>Commands limited to Services administrators</b>
+
+<p>Services administrators have access to commands which control Services
+itself.  One of these is the <a href="4.html#oper.set"><tt>SET</tt></a>
+command, which allows various Services options to be set:
+<a href="4.html#oper.set_readonly"><tt>READONLY</tt></a>, which controls
+whether Services allows changes to be made to its database, and
+<a href="4.html#oper.set_debug"><tt>DEBUG</tt></a>, which controls whether and
+how much debugging information is written to the log file.  (The third
+<tt>SET</tt> option, <a href="4.html#oper.set_supass"><tt>SUPASS</tt></a>,
+is restricted to users with Services super-user privileges.)  Services
+administrators can also force Services to update the on-disk copies of its
+databases with the <a href="4.html#oper.update"><tt>UPDATE</tt></a>
+command, make Services re-read its configuration file with the
+<a href="4.html#oper.rehash"><tt>REHASH</tt></a> command, and shut down or
+restart Services with the <a href="4.html#oper.shutdown"><tt>SHUTDOWN</tt></a>,
+<a href="4.html#oper.quit"><tt>QUIT</tt></a>, and
+<a href="4.html#oper.restart"><tt>RESTART</tt></a> commands.
+
+<p>With respect to the IRC network, Services administrators can use the
+<a href="4.html#oper.jupe"><tt>JUPE</tt></a> command to "jupiter" a
+server&mdash;that is, to make Services create a fake server with a particular
+name to prevent a real server of the same name from connecting.  This can
+be useful if a server on your network is broken (or hacked into) and causes
+problems for other servers on the network.
+
+<p>Finally, if the Services super-user has set a super-user password with
+the <tt>SET SUPASS</tt> command, Services administrators can use that
+password with the <a href="4.html#oper.su"><tt>SU</tt></a> command to gain
+super-user privileges.
+
+<a name="4-2.root"></a>
+<p><b>Commands limited to the Services super-user</b>
+
+<p>The Services super-user privilege level is similar to the Services
+administrator level; it primarily exists to allow modification of the
+Services administrator list (with the
+<a href="4.html#oper.admin"><tt>ADMIN</tt></a> command) and setting of the
+super-user password (with the <a href="4.html#oper.set_supass"><tt>SET
+SUPASS</tt></a> command).  However, one other command is limited to the
+Services super-user (or Services administrators with super-user privilege):
+the <a href="4.html#oper.raw"><tt>RAW</tt></a> command, which allows any
+arbitrary data to be sent directly to the server to which Services is
+connected. This can be used to achieve certain kinds of "special effects"
+or to aid in development or debugging of an IRC server or Services module.
+As mentioned earlier, however, this command is <i>very dangerous,</i> and
+improper use can easily cause Services or your network's IRC servers (or
+both) to crash or corrupt data.  For this reason, the <tt>RAW</tt> command
+is unavailable even to the Services super-user unless the
+<a href="a.html#operserv/main.AllowRaw"><tt>AllowRaw</tt></a> option is set
+in <tt>modules.conf</tt> (it is disabled by default).
+
+<p>Additionally, certain debugging commands are available to the Services
+super-user if enabled in the <tt>Makefile</tt>.  These commands are not
+documented; see the source code (<tt>modules/operserv/main.c</tt>) for
+information.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=4-3></a>
+<h4>3-4-3. Autokills and S-lines</h4>
+
+<p>Just about any network will have its share of troublemakers or other
+"unwanted" users.  IRC servers have always provided a
+method&mdash;"K-lines", so named because the lines in the configuration
+file defining them begin with the letter "<tt>K</tt>"&mdash;of preventing
+these users from connecting to the network.  The problem with these,
+however, is that they only affect the server on which they are defined; to
+prevent a user from connecting to the network at all, every server has to
+add the appropriate K-lines for that user.  Additionally, K-lines can only
+be used to block username/hostname combinations; in some circumstances it
+may be desirable to block users based on nickname, "real name", or IP
+address.
+
+<p>The former problem, of keeping K-lines synchronized across servers, is
+solved by Services' <i>autokill</i> feature, provided by the
+<tt>operserv/akill</tt> module.  This module keeps a list of K-lines
+(<i>i.e.,</i> username/hostname wildcard masks) which should be maintained
+across all servers, and if a user matching any such mask attempts to
+connect to the network, Services will automatically issue a <tt>KILL</tt>
+message for that user, removing them from the network (hence the name
+"autokill").  Some servers support a feature which allows Services to
+dynamically update K-lines for all servers, and Services takes advantage of
+this as well.
+
+<p>The latter problem, of blocking users based on things other than their
+username and hostname, is handled by the <i>S-line</i> feature, provided by
+the <tt>operserv/sline</tt> module.  There are three varieties of S-line:
+<ul>
+<li><b>SGline</b>, which matches against a user's "real name" (also called
+"gecos", hence the "G");
+<li><b>SQline</b>, which matches against a user's nickname (the "Q" comes
+from "quarantine", and some servers support "Q-lines" in configuration files
+to ban certain nicknames from being used on that server); and
+<li><b>SZline</b>, which matches against a user's IP address (the "Z" comes
+from "zap", and some servers support "Z-lines" in configuration files).
+</ul>
+As with autokills, Services will automatically issue a <tt>KILL</tt>
+message for any user which matches any of these masks, with two exceptions.
+For SQlines, if the IRC server in use supports forced nick changing and if
+<a href="a.html#operserv/sline.SQlineKill"><tt>SQlineKill</tt></a> is not
+set in <tt>modules.conf</tt>, Services will not kill the user, but rather
+change the user's nickname to a "guest" nickname, and also send an error
+message which will cause the client to force the user to choose a different
+nickname.  IRC operators can be exempted from the SQline check by setting
+the
+<a href="a.html#operserv/sline.SQlineIgnoreOpers"><tt>SQlineIgnoreOpers</tt></a>
+option in <tt>modules.conf</tt>.  Also, some servers do not provide IP
+address information, and thus Services will be unable to check SZlines on
+these servers; in this case, Services will issue a warning and SZlines will
+be disabled.  (Some servers allow SZlines to be set by Services on each
+server, and in this case SZlines can still be used if the
+<a href="a.html#operserv/sline.ImmediatelySendSline"><tt>ImmediatelySendSline</tt></a>
+option is set in <tt>modules.conf</tt>.)
+
+<p>Since the autokill and S-line features are virtually identical, only the
+autokill feature will be described in detail here; see the documentation
+for the <a href="4.html#oper.sgline"><tt>SGLINE</tt></a>,
+<a href="4.html#oper.sqline"><tt>SQLINE</tt></a>, and
+<a href="4.html#oper.szline"><tt>SZLINE</tt></a> commands and the
+<a href="a.html#operserv/sline"><tt>operserv/sline</tt></a> section of
+<tt>modules.conf</tt> for details on S-line usage.
+
+<p><b>How autokills work</b>
+
+<p>When a user connects to the IRC network, the server to which the user
+connected will forward information about that user, including the user's
+username and hostname, to Services along with the other IRC servers on the
+network.  When Services receives this information, it joins the username
+and hostname with an at-sign character to form a
+<tt><i>username</i>@<i>hostname</i></tt> string.  This string is then
+compared against each mask in the autokill list.  If a match is found,
+Services issues a <tt>KILL</tt> message for the user, causing the user to
+be disconnected from the network; the text used in the <tt>KILL</tt>
+message can be set with the
+<a href="a.html#operserv/akill.AutokillReason"><tt>AutokillReason</tt></a>
+option in <tt>modules.conf</tt>.  Additionally, for servers supporting a
+"network K-line" mechanism, which includes every supported server except
+for classic RFC 1459 and TS8-based servers, Services will send out a K-line
+for the username and hostname which the user matched; this directs the
+servers to immediately disconnect any user matching that username and
+hostname mask.  (If more than one autokill mask matches, then the first one
+found will be used.)
+
+<p>Autokills can be set to expire (be automatically deleted) after a
+certain length of time.  This length of time is set by the
+<a href="a.html#operserv/akill.AutokillExpiry"><tt>AutokillExpiry</tt></a>
+configuration option in <tt>modules.conf</tt>, and is set to 30 days in the
+example <tt>modules.conf</tt> file distributed with Services.  After this
+length of time, Services will remove the mask from the autokill list,
+allowing users matching the mask to connect again; if the
+<a href="a.html#operserv/akill.WallAutokillExpire"><tt>WallAutokillExpire</tt></a>
+configuration option is set, Services will inform all IRC operators when
+this occurs.  For servers with a "network K-line" mechanism, K-lines
+corresponding to a mask will automatically be removed when it expires (or
+is explicitly deleted).  The length of time before expiration can also be
+set for each individual autokill mask, as described below.
+
+<p><b>Using the <tt>AKILL</tt> command</b>
+
+<p>The <a href="4.html#oper.akill"><tt>AKILL</tt></a> command, available
+only to Services operators, is used to manage the autokill list.  It has
+five subcommands:
+<ul>
+<li><b><tt>ADD</tt></b>, to add a mask to the autokill list;
+<li><b><tt>DEL</tt></b>, to remove a mask from the autokill list;
+<li><b><tt>LIST</tt></b>, to list all masks on the autokill list;
+<li><b><tt>VIEW</tt></b>, to give detailed information about masks on the
+	autokill list;
+<li><b><tt>CHECK</tt></b>, to find autokill masks that match a given
+	<tt><i>user</i>@<i>host</i></tt> pair; and
+<li><b><tt>COUNT</tt></b>, to show the number of masks on the autokill list.
+</ul>
+
+<p>Autokill masks take the form <tt><i>user</i>@<i>host</i></tt>&mdash;note
+that nicknames are <i>not</i> used.  (S-lines use different formats; see
+the relevant command documentation.)  When adding a mask to the autokill
+list, you must also include a reason for it; this allows other Services
+operators (or you, if you later forget) to know why the mask was added.
+The reason is shown in the response to a <tt>LIST</tt> or <tt>VIEW</tt>
+command.  If the
+<a href="a.html#operserv/akill.WallOSAkill"><tt>WallOSAkill</tt></a> option
+is set in <tt>modules.conf</tt>, OperServ will send a notice to all IRC
+operators when an autokill is added or deleted.
+
+<p>As mentioned above, autokills expire by default after the amount of time
+specified in the
+<a href="a.html#operserv/akill.AutokillExpiry"><tt>AutokillExpiry</tt></a>
+option in <tt>modules.conf</tt>.  A particular autokill can be set to
+expire in a different amount of time, or to not expire at all, by including
+the desired expiration time in the <tt>ADD</tt> command, as described in
+the <tt>AKILL</tt> command documentation.  It is also possible to place an
+upper limit on expiration times set by Services operators (as opposed to
+Services administrators), using the
+<a href="a.html#operserv/akill.OperMaxExpiry"><tt>OperMaxExpiry</tt></a>
+option in <tt>modules.conf</tt>; if this is set, Services operators will
+not be allowed to set autokills that last longer than the given period of
+time or that do not expire.
+
+<p>The difference between the <tt>LIST</tt> and <tt>VIEW</tt> subcommands
+is their verbosity.  <tt>LIST</tt> displays each autokill mask on one line,
+showing only the mask and the reason (though if the mask or reason is long,
+this may be wrapped onto multiple lines by your IRC client).  <tt>VIEW</tt>,
+on the other hand, uses multiple lines for each mask, displaying the
+nickname of the person who added it, the date and time it was added, the
+last time it was used (if at all), and when it expires, in addition to the
+mask itself and reason.  The last-used time shows the last time a user who
+matched the mask connected to the network, and is helpful when determining
+whether an autokill mask is still needed.  However, this may not be
+accurate if your IRC servers support a server-based autokill mechanism;
+such servers will block the user from connecting without informing
+Services, so the last-used time will show only the first time a matching
+user connected.  (If the
+<a href="a.html#operserv/akill.ImmediatelySendAutokill"><tt>ImmediatelySendAutokill</tt></a>
+option in <tt>modules.conf</tt> is enabled, the last-used time will never
+be set at all on these servers.)
+
+<p>The <tt>CHECK</tt> command can be thought of as an "inverse <tt>LIST</tt>":
+instead of finding autokills which match a given pattern, <tt>CHECK</tt>
+looks for autokills which a given <tt><i>user</i>@<i>host</i></tt> string
+would match.  This can be useful in finding which autokill was applied to a
+particular user who was disconnected from the network.
+
+<a name=4-3-exclude></a>
+<p><b>Autokill exclusions</b>
+
+<p>(Note: this section applies to autokills only; S-lines do not have
+exclusion capability.)
+
+<p>It is also possible to add "anti-autokill" masks&mdash;that is, masks
+for users that should be allowed to connect even if they match an autokill.
+These are known as <i>autokill exclusions</i>, and are enabled with the
+<a href="a.html#operserv/akill.EnableExclude"><tt>EnableExclude</tt></a>
+option in <tt>modules.conf</tt>.  The autokill exclusion list is managed
+with the <a href="4.html#oper.exclude"><tt>EXCLUDE</tt></a> command, which
+functions in much the same way as the <tt>AKILL</tt> command described
+above.  (However, newly-added exclusions are always sent immediately to the
+server regardless of the state of the
+<a href="a.html#operserv/akill.ImmediatelySendAutokill"><tt>ImmediatelySendAutokill</tt></a>
+setting; this is to avoid an autokill being triggered by a non-excluded
+match before the exclusion has been sent, resulting in the excluded users
+being blocked as well.)
+
+<p>When autokill exclusions are in use, Services will first check the
+exclusion list for each user connecting to the network.  If a matching mask
+is found on the exclusion list, Services allows that user to connect,
+skipping the ordinary check of the autokill list for that user.  For
+example, if an autokill was placed on <tt>*@*.example.com</tt>, but one of
+the IRC operators for a server on the network connected from the host
+<tt>foo.example.com</tt>, an autokill exclusion for
+<tt>*@foo.example.com</tt> would allow that user to connect, while still
+preventing any other users in the <tt>example.com</tt> domain from
+connecting.
+
+<p>One important side effect of autokill exclusions is a potential increase
+in network traffic.  If the IRC server in use supports server-based
+autokills, then ordinarily Services will take advantage of it to prevent
+users matching autokills from connecting to the network on the server end.
+However, if the servers do not support server-based autokill exclusions
+(the only supported servers which have this ability are the InspIRCd,
+tr-ircd, and Unreal 3.2 IRC servers), then Services will not be able to use
+server-based autokills either&mdash;if it did, the servers would block
+users on the exclusion list as well without Services being able to
+intervene&mdash;and will fall back to the default method of sending a
+<tt>KILL</tt> message for autokilled users.  Aside from resulting in more
+traffic on the IRC network, this leaves open the potential for autokilled
+users to send messages before getting killed if there is enough lag between
+Services and the server to which the user connected.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=4-4></a>
+<h4>3-4-4. Session limiting</h4>
+
+<p>One other way of preventing undesired clients from connecting to the
+network is via <i>session limiting</i>, provided by the
+<tt>operserv/sessions</tt> module.  When session limiting is active
+(<i>i.e.,</i> when the module is in use), Services will keep track of the
+number of clients connected from each host, and will issue <tt>KILL</tt>
+messages for any clients exceeding the limit set by the
+<a href="a.html#operserv/sessions.DefSessionLimit"><tt>DefSessionLimit</tt></a>
+configuration option in <tt>modules.conf</tt> (or specific limits for the
+host as set by session exceptions, described below).  Before actually
+disconnecting the client, Services can be configured to send notices with the
+<a href="a.html#operserv/sessions.SessionLimitExceeded"><tt>SessionLimitExceeded</tt></a> and
+<a href="a.html#operserv/sessions.SessionLimitDetailsLoc"><tt>SessionLimitDetailsLoc</tt></a>
+configuration options.
+
+<p>If the autokill module (see <a href="#4-3">section 3-4-3</a>) is loaded,
+Services can also add an autokill if a particular host's session limit is
+exceeded frequently in a short period of time.  This is controlled by the
+<a href="a.html#operserv/sessions.SessionLimitAutokill"><tt>SessionLimitAutokill</tt></a>
+configuration directive, which allows precise definitions of "frequently"
+and "short" as well as the expiration time for such autokills to be set.
+
+<p>Session exceptions are managed through the
+<a href="4.html#oper.exception"><tt>EXCEPTION</tt></a> command.  This
+command functions similarly to the <tt>AKILL</tt> command, but when adding
+session exceptions, you need to include the limit (the maximum number of
+clients to allow) in the command.  An upper bound can be set on this value
+with the
+<a href="a.html#operserv/sessions.MaxSessionLimit"><tt>MaxSessionLimit</tt></a>
+option.  As with autokills, exceptions can be set to expire after a
+certain amount of time
+(<a href="a.html#operserv/sessions.ExceptionExpiry"><tt>ExceptionExpiry</tt></a>),
+and Services can be set to inform IRC operators when an exception is added
+or deleted
+(<a href="a.html#operserv/sessions.WallOSException"><tt>WallOSException</tt></a>)
+or expires
+(<a href="a.html#operserv/sessions.WallExceptionExpire"><tt>WallExceptionExpire</tt></a>),
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=4-5></a>
+<h4>3-4-5. News</h4>
+
+<p>The <tt>operserv/news</tt> module provides a simple "news" service to
+allow messages to be automatically sent to all users when logging onto the
+network, or to IRC operators when they give the <tt>/oper</tt> command.
+News items are added and deleted through the
+<a href="4.html#oper.logonnews"><tt>LOGONNEWS</tt></a> and
+<a href="4.html#oper.opernews"><tt>OPERNEWS</tt></a> commands, respectively.
+For each set, the most recent three items (or all the items, if there are
+three or less) are displayed.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=5></a>
+<h3>3-5. Network statistics collection (StatServ)</h3>
+
+<p>IRC Services provides a simple network statistics collection service,
+accessible through the "<b>StatServ</b>" pseudoclient.  StatServ tracks the
+last time each server on the network connected and disconnected, along with
+the number of users on each server and the total number of users on the
+network.  Normally all users have access to this information, but use of
+StatServ can be limited to IRC operators only by setting the
+<a href="a.html#statserv/main.SSOpersOnly"><tt>SSOpersOnly</tt></a> option
+in <tt>modules.conf</tt>.
+
+<p>Server information is accessed through the
+<a href="4.html#stat.servers"><tt>SERVERS</tt></a> command.  StatServ can
+display information on all servers or only online or offline servers,
+including the last connect and disconnect time, the current number of users
+and IRC operators, and the respective percentages of the total number of
+users and IRC operators on the network.  Additionally, Services
+administrators can copy, rename, or delete server entries to keep the data
+up-to-date with respect to network changes.
+
+<p>The <a href="4.html#stat.users"><tt>USERS</tt></a> command can be used
+to display the current number of users and IRC operators on the network, as
+well as the average number of users and operators per server.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=6></a>
+<h3>3-6. Built-in HTTP server</h3>
+
+<p>Aside from interacting directly with the IRC network, Services is also
+capable of providing information to World Wide Web clients (browsers) via
+the HTTP protocol.  While this functionality is not nearly as extensive as
+full-fledged HTTP servers such as Apache, it does provide the ability to
+access current information on Services and the IRC network without having
+to go through a CGI or other external program.
+
+<p>Services' HTTP server functionality is comprised of three parts: the
+core HTTP server module, authorization modules, and content modules.  These
+are discussed in the following sections.
+
+<a name=6-1></a>
+<h4>3-6-1. Core HTTP server module</h4>
+
+<p>The core HTTP server module, <tt>httpd/main</tt>, provides the
+foundation for the other HTTP modules, including the ability to listen for
+and parse HTTP requests.  This module is akin to, although considerably
+less full-featured than, a typical standalone HTTP server (httpd).
+
+<p>The HTTP server's behavior is defined by settings in the
+<tt>modules.conf</tt> file.  The most important of these,
+<a href="a.html#httpd/main.ListenTo"><tt>ListenTo</tt></a>, specifies the
+IP address and port number on which the HTTP server listens for
+connections; it is possible to specify multiple addresses, which will cause
+Services to listen for connections on all of them.  The port number can be
+any port which is not already used by another service on the same machine,
+although using ports below 1024 normally requires super-user privileges.
+The IP address can be specified as "<tt>*</tt>" in the simplest case; this
+means "listen for connections on any IP address".  However, if you are
+using a machine with multiple IP addresses, you may need to enter a
+specific IP address to avoid collisions with services listening on other IP
+addresses.  You may also choose to only allow connections from clients on
+the same machine by specifying the "<tt>localhost</tt>" address,
+<tt>127.0.0.1</tt>; the same sort of access control can also be performed
+on a per-resource basis using the <tt>httpd/auth-ip</tt> authorization
+module, discussed later, but if you want to limit all resources to the
+local machine, this method is safer and more efficient.
+
+<p>It is also possible to use a hostname in place of the IP address; in
+this case, Services will look up the hostname at startup and use the IP
+address found (all addresses, if more than one is found) as the address to
+listen to.  However, these addresses will not change even if the hostname's
+DNS information changes, unless Services is restarted or instructed to
+reread the configuration files (see <a href="2.html#6">section 2-6</a>).
+
+<p>The number of connections allowed at once and the length of time a
+single connection can remain open are set by the
+<a href="a.html#httpd/main.MaxConnections"><tt>MaxConnections</tt></a>,
+<a href="a.html#httpd/main.MaxRequests"><tt>MaxRequests</tt></a>, and
+<a href="a.html#httpd/main.IdleTimeout"><tt>IdleTimeout</tt></a>
+directives.  <tt>MaxConnections</tt> sets the maximum number of
+simultaneous connections Services will accept; any connections above this
+limit will be dropped as soon as they are accepted.  <tt>MaxRequests</tt>
+sets the maximum number of HTTP requests that can be sent over a single
+connection, while <tt>IdleTimeout</tt> gives the maximum length of time a
+connection can be idle (<i>i.e.,</i> not receiving any data from the
+client); if either of these limits are passed, the connection is dropped.
+(Note that some resources cause the connection to be dropped after the
+server finishes sending data, regardless of these settings.)
+
+<p>If the
+<a href="a.html#httpd/main.LogConnections"><tt>LogConnections</tt></a>
+directive is given, the HTTP server will write a log message to the
+Services log file for each connection accepted.  Note that the resource
+(URL) requested is not logged, and only one message is written per
+connection, even if several HTTP requests are made over the same
+connection.  (If per-request logging is desired, <tt>MaxRequests</tt> can
+be set to 1 to force clients to open a new connection for each request.)
+
+<p>The remaining settings,
+<a href="a.html#httpd/main.ListenBacklog"><tt>ListenBacklog</tt></a> and
+<a href="a.html#httpd/main.RequestBufferSize"><tt>RequestBufferSize</tt></a>,
+can usually be left as is.  <tt>ListenBacklog</tt> specifies how many
+connections the OS should allow to be made to a single HTTP server port
+without being accepted by Services, a situation which can arise if the HTTP
+server is under heavy load and requests come in faster than Services can
+process them.  (However, some operating systems do not allow a value
+greater than the default of 5; on such systems, increasing the value will
+not cause an error but will have no effect.)  <tt>RequestBufferSize</tt>
+specifies the size of the receive buffer allocated for each request; if a
+request exceeds this size, the client will be sent a "Request Entity Too
+Large" error and the connection will be dropped.  There should be no need
+to modify this value for the modules distributed with Services.
+
+<p>Note that the <tt>RequestBufferSize</tt> setting only affects the size
+of the receive buffer itself.  In addition to this buffer, a fixed-size
+control structure and a list of headers and form variables are also
+allocated for each connection; in the worst case, these will require
+approximately 4/3 of the value given for <tt>RequestBufferSize</tt>.  Thus,
+the maximum amount of memory used by the HTTP server module can be
+conservatively calculated as approximately <tt>MaxConnections *
+RequestBufferSize * 2.5</tt>.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=6-2></a>
+<h4>3-6-2. Authorization modules</h4>
+
+<p>Since it may not be desirable to allow anyone access to the resources
+provided by the HTTP server, Services provides "authorization modules",
+whose names start with "<tt>auth-</tt>", to control access to those
+resources.
+
+<p><b>Control by client IP address: the <tt>httpd/auth-ip</tt> module</b>
+
+<p>The <tt>httpd/auth-ip</tt> module allows access control based on the IP
+address of the connecting client.  The module uses two configuration
+directives, <a href="a.html#httpd/auth-ip.AllowHost"><tt>AllowHost</tt> and
+<tt>DenyHost</tt></a>, to control access to particular resources (URLs).
+Both directives take two parameters: the resource to control access to, and
+the IP address or hostname to allow or deny access from.
+
+<p>The first parameter, the resource to control access to, consists of a
+relative URL beginning with the <tt>/</tt> character; <i>i.e.,</i> not
+including the leading "<tt>http://<i>host.name</i></tt>" typed into the
+browser.  Services will control access as specified by the directive to
+this resource, <i>and</i> to any resource whose URL begins with the same
+string&mdash;so, for example, giving "<tt>/dir</tt>" as the resource to
+control will affect not only "<tt>/dir/file</tt>" but "<tt>/dirty</tt>" as
+well.  To limit the directive's effect to a particular directory, make sure
+to include a "<tt>/</tt>" at the end of the resource URL, <i>e.g.</i>
+"<tt>/dir/</tt>".  Access control can be applied to every resource on the
+server by using the resource URL "<tt>/</tt>".
+
+<p>The second parameter, the IP address, is specified much the same as with
+the core module's <tt>ListenTo</tt> directive: the string "<tt>*</tt>" can
+be used to mean "all IP addresses", and a hostname will be replaced with
+the IP address or addresses associated with that hostname.  (Keep in mind
+that hostnames are resolved to IP address only once, at program startup; if
+the hostname's IP address changes while Services is running, Services will
+not recognize the new IP address for authorization purposes.)  For these
+directives, one additional type of IP address specification is possible: a
+network specification of the form
+<tt><i>aaa</i>.<i>bbb</i>.<i>ccc</i>.<i>ddd</i>/<i>xx</i></tt>, where
+<tt><i>xx</i></tt> is an integer from 1 to 31 inclusive that gives the
+number of bits in the network part of the address.  For example,
+<tt>192.168.1.64/26</tt> represents the range of IP addresses from
+192.168.1.64 through 192.168.1.127 (all IP addresses whose first 26 bits
+are the same as those in 192.168.1.64).
+
+<p>When specifying multiple control directives, it is important that they
+are given in the proper order.  All <tt>AllowHost</tt> and <tt>DenyHost</tt>
+directives are checked in the order they are listed in <tt>modules.conf</tt>
+without regard to specificity of either the IP address or the resource, and
+the first matching entry found is used; as a result, a more specific entry
+will have no effect if placed below (after) a more general one.  As an
+example, consider the following pair of directives:
+
+<blockquote>
+<tt>AllowHost / 192.168.0.1
+<br>DenyHost&nbsp;&nbsp;/ 192.168.0.0/24</tt>
+</blockquote>
+
+The first one allows access to the entire server from the IP address
+<tt>192.168.0.1</tt>, while the second denies access from all IP addresses
+in the <tt>192.168.0.*</tt> network.  In the order given, this allows
+access from <i>only</i> <tt>192.168.0.1</tt> in that network, while
+preventing all other hosts in the network from connecting.  However, if the
+directives are given in the reverse order:
+
+<blockquote>
+<tt>DenyHost&nbsp;&nbsp;/ 192.168.0.0/24
+<br>AllowHost / 192.168.0.1</tt>
+</blockquote>
+
+then clients from <tt>192.168.0.1</tt> will be blocked along with the rest
+of the <tt>192.168.0.*</tt> network, because the first directive tells
+Services to deny access to <tt>192.168.0.1</tt> as well as other hosts on
+that network, so the second directive is never checked.
+
+<p>The list of directives should always end with either
+"<tt>AllowHost / *</tt>" or "<tt>DenyHost / *</tt>" to control whether
+requests which do not match any other directive should be allowed or
+denied.  The behavior of the module when no entries match a particular
+client's IP address is undefined.
+
+<p><b>Control by password: the <tt>httpd/auth-password</tt> module</b>
+
+<p>It is also possible to control access by requiring the client to enter a
+username and password to access a particular resource.  This is
+accomplished using the <tt>httpd/auth-password</tt> module.  Like the
+<tt>httpd/auth-ip</tt> module, access is controlled by a list of
+directives; for this module, the directive name is
+<a href="a.html#httpd/auth-password.Protect"><tt>Protect</tt></a>, and the
+second parameter is a username and password pair with the username and
+password separated by a colon (<i>e.g.,</i> "<tt>username:password</tt>").
+Additionally, the
+<a href="a.html#httpd/auth-password.AuthName"><tt>AuthName</tt></a>
+directive specifies the name used by the HTTP client in password prompts,
+such as "Enter username and password for <i>name</i>:".
+
+<p>Like the <tt>httpd/auth-ip</tt> module, the first <tt>Protect</tt>
+directive matching a particular request will be used, so specific entries
+should be placed before general ones.  However, it is not necessary to
+include a <tt>Protect /</tt> directive at the end of the list, unless you
+want password protection for the entire server; if a request does not match
+any directives, then it is allowed through without a password.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<a name=6-3></a>
+<h4>3-6-3. Content modules</h4>
+
+<p>The remainder of the HTTP server modules are "content modules", which,
+as the name suggests, provide the actual content served to browsers.
+
+<p><b>"Index" page: the <tt>httpd/top-page</tt> module</b>
+
+<p>This simple module allows you to provide an HTML (or other) file to be
+served when the HTTP server's "top page" (the "<tt>/</tt>" URL) is accessed.
+Since in a typical setup, other content modules will each have their own
+sub-path within the HTTP server, this module lets you provide (for example)
+an index of the information available.  The file to serve is given by the
+<a href="a.html#httpd/top-page.Filename"><tt>Filename</tt></a> directive in
+<tt>modules.conf</tt>; the file's MIME type can optionally be specified as
+well.
+
+<p>It is also possible to specify a URL to a remote site (which could be a
+separate HTTP server on the same machine) for the top page, using the
+<a href="a.html#httpd/top-page.Redirect"><tt>Redirect</tt></a> directive;
+in this case, Services will redirect top-page accesses to the given URL.
+If both <tt>Redirect</tt> and <tt>Filename</tt> are given,
+<tt>Redirect</tt> takes precedence, and <tt>Filename</tt> is ignored.
+
+<p>Note that with <tt>Filename</tt>, the file specified is served as-is;
+Services will not attempt to execute it even if it looks like a CGI script,
+and cannot process PHP or other such languages embedded in the file.
+
+<p><b>Providing links to nickname and channel URLs: the
+	<tt>httpd/redirect</tt> module</b>
+
+<p>The <tt>httpd/redirect</tt> module can be used to provide automatic
+redirects from a nickname or channel to the URL (if any) registered for the
+nickname or channel.  This can be used as a simple way to let your users
+provide information about themselves without requiring the viewer to log
+onto IRC and execute a NickServ or ChanServ <tt>INFO</tt> command.
+
+<p>Nickname and channel redirects each use a base URL specified in
+<tt>modules.conf</tt>:
+<a href="a.html#httpd/redirect.NicknamePrefix"><tt>NicknamePrefix</tt></a>
+for nicknames, and
+<a href="a.html#httpd/redirect.ChannelPrefix"><tt>ChannelPrefix</tt></a>
+for channels.  The nickname or channel whose URL is used is the string
+immediately following the given prefix (in the case of channels, the
+leading "<tt>#</tt>" is discarded, since it cannot be used in URLs).  This
+means that to get URLs like
+"<tt>http://services.example.net/channel/<i>channel-name</i></tt>", the prefix
+should be specified as "<tt>/channel/</tt>" with a trailing slash, but also
+allows you to specify "<tt>/~</tt>" for the nickname prefix and get URLs
+like "<tt>http://services.example.net/~<i>nickname</i></tt>".  (Both of
+these are the default settings.)
+
+<p><tt>NicknamePrefix</tt> and <tt>ChannelPrefix</tt> should be specified
+so that they do not overlap; if a particular URL can be interpreted as both
+a nickname reference and a channel reference, the nickname will always take
+precedence, even if it is not registered or does not have a URL associated
+with it.
+
+<p><b>Online database access: the <tt>httpd/dbaccess</tt> module</b>
+
+<p><b>Warning:</b> This module provides complete access to all Services
+data; unauthorized access can result in password theft, denial of service
+attacks, or worse.  Be certain to protect access to this module with
+authorization modules or other means.
+
+<p>The <tt>httpd/dbaccess</tt> module is an administrative tool which
+allows the Services databases to be accessed through the simple
+point-and-click interface of a browser rather than the text-based commands
+of IRC.  While the module does not permit the databases to be modified,
+registered nicknames and channels, autokills and S-lines, and so on can all
+be accessed and viewed through a simple menu system.  Additionally, a copy
+of all Services data in XML format can be downloaded if the
+<tt>misc/xml-export</tt> module is loaded (see <a href="5.html#1">section
+5-1</a> for details).
+
+<p>Especially when performing an XML download of the Services databases,
+keep in mind that Services will not respond to any network activity until
+the HTTP request completes; if you have a slow machine or a large database,
+this can cause Services to appear to "lag" on the IRC network, or in
+extreme cases get disconnected from the network entirely, so use caution.
+
+<p>The URL at which the data is accessible is set by the
+<a href="a.html#httpd/dbaccess.Prefix"><tt>Prefix</tt></a> directive in
+<tt>modules.conf</tt>; if it does not end with a slash, one will be
+appended automatically.  Accessing this URL will bring up a menu of
+available data.  If you want to use different access rules for different
+categories of data, refer to the following table for the appropriate
+pathnames (in all cases, <tt><i>path</i></tt> is the URL pathname given in
+the <tt>Prefix</tt> directive):
+
+<div align=center><p><table border=0 cellspacing=2>
+<tr><td><tt><i>path</i>/</tt>
+    <td>Main menu
+<tr><td><tt><i>path</i>/operserv/</tt>
+    <td>OperServ data and menu
+<tr><td><tt><i>path</i>/operserv/akill/</tt>
+    <td>Autokill list
+<tr><td><tt><i>path</i>/operserv/news/</tt>
+    <td>News item list
+<tr><td><tt><i>path</i>/operserv/sessions/&nbsp;&nbsp;</tt>
+    <td>Session and exception lists
+<tr><td><tt><i>path</i>/operserv/sline/</tt>
+    <td>S-line lists
+<tr><td><tt><i>path</i>/nickserv/</tt>
+    <td>Nickname list and information
+<tr><td><tt><i>path</i>/chanserv/</tt>
+    <td>Channel list and information
+<tr><td><tt><i>path</i>/statserv/</tt>
+    <td>Network statistics
+<tr><td><tt><i>path</i>/xml-export/</tt>
+    <td>XML-format database download
+</table></div>
+
+<p><b>Debugging information: the <tt>httpd/debug</tt> module</b>
+
+<p>The <tt>httpd/debug</tt> module is intended primarily for module
+developers, and provides information about the HTTP request received by
+Services at a URL specified by the
+<a href="a.html#httpd/debug.DebugURL"><tt>DebugURL</tt></a> directive in
+<tt>modules.conf</tt>.  This module is unneeded for normal operation of
+Services, and should not be enabled except when testing the HTTP server.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=7></a>
+<h3>3-7. Password encryption</h3>
+
+<p>Services has the ability to encrypt passwords (nickname passwords,
+channel passwords, and the OperServ super-user password) to provide an
+additional layer of protection against password theft.  Normally, passwords
+are not encrypted, and if an unauthorized user gains access to the
+databases, users' passwords will be compromised; encryption prevents this
+compromise from occurring (although it is still possible for an attacker to
+"crack" the encrypted passwords, especially if the passwords are easily
+guessable).  Note that under the default installation procedures, only the
+user installing Services and the administrator of the machine Services is
+installed on will have access to the databases.
+
+<p>The downside to using encryption, although minor, is that the NickServ
+and ChanServ <tt>GETPASS</tt> commands will become unusable.  This is
+because some types of encryption, including all the types supported by
+Services, are one-way only (also known as "trapdoor functions"); such
+encryption types allow a password to be converted into an encrypted string,
+but do not allow the password to be recovered from that string.
+
+<p>To enable encryption of passwords, ensure that the desired encryption
+module is loaded with a <tt>LoadModule</tt> directive, then enter the
+encryption type (the name of the module without the leading
+"<tt>encryption/</tt>") in the
+<a href="a.html#EncryptionType"><tt>EncryptionType</tt></a> directive in
+<tt>ircservices.conf</tt>.  There is no penalty for loading multiple
+encryption modules, but only the module specified by the
+<tt>EncryptionType</tt> directive will be used to encrypt new passwords.
+
+<p>The available encryption modules are as follows:
+
+<p><ul>
+<li><b><tt>encryption/md5</tt></b>: Uses the MD5 hashing algorithm to
+encrypt passwords.  This is a one-way encryption algorithm which generates
+a 128-bit "digest" of the password, and is used by several Unix systems to
+encrypt user passwords as well.
+<p><li><b><tt>encryption/unix-crypt</tt></b>: <b>DISCOURAGED.</b>  Uses the
+<tt>crypt()</tt> function available in most Unix systems, typically a
+variant of the DES encryption algorithm, to encrypt passwords.  This is a
+one-way encryption algorithm; as it is not very strong (only 56 bits),
+recent operating systems tend to avoid it in favor of MD5, SHA1, or other
+stronger algorithms, and this module is provided primarily for
+compatibility with externally-generated passwords or databases from other
+Services-like programs.  Note that this module requires that your operating
+system support the <tt>crypt()</tt> function, and it will refuse to load
+otherwise.
+</ul>
+
+<p>When a password is encrypted, Services stores the encryption type used,
+so that even if the <tt>EncryptionType</tt> directive is later changed,
+older passwords can still be used (provided the appropriate module is
+loaded).
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=8></a>
+<h3>3-8. E-mail sending</h3>
+
+<p>Services has the ability to send E-mail to users outside of the IRC
+protocol.  This ability is used, for example, by the NickServ E-mail
+authentication (<a href="#1-4">section 3-1-4</a>) module.  E-mail
+functionality is split into two parts: a main module, which provides an
+interface for other modules to use, and method modules, which actually
+implement the E-mail functions at the system level.
+
+<p>The main module, <tt>mail/main</tt>, provides a method-independent
+interface for sending mail, and this module is used by other modules which
+need to send mail.  (If you do not load this module, then other modules
+which depend on it may print errors such as "<tt>unable to resolve symbol
+`sendmail'</tt>" and cause Services to abort.  Remember that order of
+module loading is important&mdash;you must load this module before any that
+use it!)
+
+<p>The main mail module has four configuration settings in
+<tt>modules.conf</tt>:
+<a href="a.html#mail/main.FromAddress"><tt>FromAddress</tt></a> and
+<a href="a.html#mail/main.FromName"><tt>FromName</tt></a>, which indicate
+the E-mail address and name to be used in the "From" line of E-mail
+messages; <a href="a.html#mail/main.MaxMessages"><tt>MaxMessages</tt></a>,
+which sets the maximum number of messages which can be "in transit" (not
+yet finished sending) at once; and
+<a href="a.html#mail/main.SendTimeout"><tt>SendTimeout</tt></a>, which
+sets the amount of time Services will wait for a message to finish being
+sent before aborting it.
+
+<p>The method modules provide the interface between the main module and the
+operating system.  Two method modules are available:
+
+<p><ul><li><b><tt>mail/sendmail</tt></b>:  Uses the Sendmail program found
+on many Unix systems to send e-mail.  The module may also work with other
+mail software that provides a <tt>sendmail</tt> executable program. 
+However, this method is subject to delays by the <tt>sendmail</tt> program,
+during which Services will not be able to respond to any messages; some
+<tt>sendmail</tt> programs also do not let you set the "From" address to
+anything but your real address and name, which may not be desirable in some
+cases.  Thus, it is recommended that the <tt>mail/smtp</tt> module (below)
+be used when possible.
+
+<p>The configuration setting
+<a href="a.html#mail/sendmail.SendmailPath"><tt>SendmailPath</tt></a> (in
+<tt>modules.conf</tt>) should be set to the pathname of your
+<tt>sendmail</tt> program.  Typical locations on Unix systems are
+<tt>/usr/lib/sendmail</tt> or <tt>/usr/sbin/sendmail</tt>; if you do not
+know the proper setting for your system, ask your system administrator.
+
+<p><li><b><tt>mail/smtp</tt></b>:  Uses the SMTP protocol to send E-mail
+through an SMTP relay server.  The server to use is specified by the
+<a href="a.html#mail/smtp.RelayHost"><tt>RelayHost</tt></a> configuration
+directive (in <tt>modules.conf</tt>); if possible, this should be set to
+either the same machine Services is running on or another server on the
+same local network, to reduce delays in sending mail.  (Services does not
+perform actual delivery of mail; that is left to the relay server.)  The
+server name to use when connecting to the remote server is set by the
+<a href="a.html#mail/smtp.SMTPName"><tt>SMTPName</tt></a> directive; this
+should usually be the same as the hostname of the machine on which
+Services runs.
+
+</ul>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=9></a>
+<h3>3-9. Multilingual support</h3>
+
+<p>Services has the ability to send messages to users in several different
+languages, allowing users from different countries to read messages in
+their own native language.  The following non-English languages are fully
+or almost fully supported:
+<ul>
+<li>Dutch
+<li>Hungarian
+<li>Japanese
+<li>Spanish
+<li>Turkish
+</ul>
+
+<p>The following languages are partially supported (some messages in these
+languages are out of date or missing, and will be displayed in English):
+<ul>
+<li>French
+<li>German
+<li>Russian
+</ul>
+
+<p>Users with registered nicknames can use the NickServ
+<a href="4.html#nick.set_language"><tt>SET LANGUAGE</tt></a> command to
+select the language to be used by Services for notices and replies
+(this does not include things like memos and channel entry messages which
+are entered by users).  By default, Services will use the language given by
+the <tt>DEF_LANGUAGE</tt> constant defined in the <tt>defs.h</tt> source
+file.  As distributed, this is set to English (<tt>LANG_EN_US</tt>); unless
+you plan to run a regional network where the majority of the users speak
+the same non-English language, you should probably leave the default
+setting alone.
+
+<p>It is possible to change the messages used by Services through the use
+of "external language files" (as opposed to the standard language files
+included with Services) and the
+<a href="a.html#LoadLanguageText"><tt>LoadLanguageText</tt></a>
+configuration directive in <tt>ircservices.conf</tt>.  Any message which is
+handled by Services' multilingual system&mdash;which includes almost all
+messages sent to users, with the exception of a few messages intended for
+administrators&mdash;can be modified in this way.  ("Message" here refers
+to a unit of text sent by Services in response to a specific event; there
+is not always a one-to-one correspondence between these units of text and
+the "messages" as seen by users, as described below.)
+
+<p>External language files are simple text files that consist of a series
+of <i>message descriptors</i>, each containing a one-line header followed
+by zero or more lines of replacement text.  As with the Services
+configuration files, blank lines and lines beginning with the <tt>#</tt>
+character are ignored.  If you give a message identifier line without any
+following text, then nothing will be output for that message.  Each line of
+replacement text must start with a tab character (ASCII 9, TAB), which will
+not be included in the text itself; when creating your file, make sure that
+your text editor does not convert tabs into spaces, which Services will not
+recognize.
+
+<p>The first line of a message descriptor consists of a message identifier
+and language identifier separated by whitespace.  The language identifier
+is simply the filename of the corresponding standard language file
+(installed into the <tt>languages</tt> subdirectory of the data directory);
+for example, the language identifier for United States English is
+<tt>en_us</tt>.  The message descriptor is the internal name used by
+Services to refer to the message, and is written in upper case.  To find
+the message name for a particular message, search the Services language
+source files (the <tt>*.l</tt> files in the <tt>lang</tt> directory of the
+source distribution) for the desired text, then find the first line above
+that message that does not contain a tab; that line is the message name.
+
+<p>As an example, the following two-line file could be used to replace the
+"password incorrect" message (note that the second line begins with a tab
+character, not spaces):
+
+<pre>
+PASSWORD_INCORRECT en_us
+	This is a replacement for the PASSWORD_INCORRECT message.
+</pre>
+
+<p>One thing that is important to remember when replacing messages is that
+some "messages" actually consist of several distinct units of text, some of
+which may only be displayed under certain conditions.  For example, the
+basic help text for NickServ, displayed in response to a
+<tt>/msg&nbsp;NickServ&nbsp;HELP</tt> command, is made up of three
+"messages" in the Services sense: <tt>NICK_HELP</tt>, with the basic help
+text; <tt>NICK_HELP_EXPIRES</tt>, displayed if nickname expiration is
+active; and <tt>NICK_HELP_WARNING</tt>, displayed if the
+<a href="a.html#nickserv/main.NSHelpWarning"><tt>NSHelpWarning</tt></a>
+configuration option is set.  If you want to change the NickServ help
+message, you will probably want to redefine all three of these messages.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=10></a>
+<h3>3-10. Third-party extensions</h3>
+
+<p>The module system in IRC Services allows the easy addition of features
+to Services by third-party contributors.  Third-party extension modules are
+typically distributed as source code packages, consisting of a directory
+containing a <tt>Makefile</tt> and various source code files.
+
+<p>To install such a third-party extension, you need to copy the extension
+module's source code directory into the Services source code tree under the
+<tt>modules</tt> directory.  (Make certain that you do not copy the source
+files themselves into the <tt>modules</tt> directory, or Services may no
+longer compile correctly!  For example, if the source code is contained in
+a directory called "<tt>mymodule</tt>", you might use the command:
+"<tt>cp&nbsp;-dpr&nbsp;mymodule&nbsp;/usr/local/src/ircservices/modules/mymodule</tt>"
+to copy the files.)  Once this is done, you can compile Services as usual
+(see <a href="2.html#3">section 2-3</a>), and Services will automatically
+recognize the extension module and compile it.  When the compilation
+completes, the extension module can then be used in exactly the same way as
+a built-in module, by adding an appropriate <tt>LoadModule</tt> directive
+to the <tt>ircservices.conf</tt> file.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<p align=right><font size=-1><a href=2.html>Previous section: Installing and using Services</a> |
+<a href=index.html>Table of Contents</a> |
+<a href=4.html>Next section: Services command reference</a></font>
+
+</body>
+</html>

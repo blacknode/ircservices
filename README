@@ -1,0 +1,16 @@
+IRC Services -- a system of IRC services for IRC networks
+---------------------------------------------------------
+
+IRC Services is copyright (c) 1996-2009 Andrew Church.  There is absolutely
+NO WARRANTY provided with this program; if it blows up in your face, you
+get to clean up the mess.  Services is provided under the terms of the GNU
+General Public License, version 2 or later, and may be freely redistributed,
+with certain limitations described in that license (notably, if you
+distribute IRC Services at all then you must distribute the source code as
+well).  See the GNU General Public License (in the file GPL.txt) and the
+relevant section of the manual (docs/copyright.html).
+
+---------------------------------------------------------------------------
+
+Documentation is located in the docs/ directory; point your browser at
+docs/index.html to start reading.

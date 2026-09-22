@@ -1,0 +1,348 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services Manual - 1. About IRC Services</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>1. About IRC Services</h2>
+
+<p>1-1. <a href="#1">Introduction</a>
+<br>1-2. <a href="#2">Overview of IRC Services clients</a>
+<br>1-3. <a href="#3">IRC Services download site</a>
+<br>1-4. <a href="#4">IRC Services discussion forums</a>
+<br>1-5. <a href="#5">Credits and acknowledgements</a>
+<br>1-6. <a href="#6">Contacting the author</a>
+
+<p align=right><font size=-1><a href=index.html>Table of Contents</a> |
+<a href=2.html>Next section: About IRC Services</a></font>
+
+<p><hr>
+
+<a name=1></a>
+<h3>1-1. Introduction</h3>
+
+<p>IRC Services (also called just "Services" for short) is a system of
+services to be used with Internet Relay Chat networks.  Services provides
+for definitive nickname and channel ownership, as well as the ability to
+send messages ("memos") to offline users, and gives IRC operators
+considerably more control over the network.
+
+<p>In particular, Services provides the following features to an IRC
+network:
+
+<p><ul>
+<li><b>Nickname management.</b>  Services allows users to "register"
+nicknames, and will prevent users other than the registrant from using
+them.  Services also maintains information about each registered nickname,
+including the last time the nick's owner was online as well as a URL and
+E-mail address that can be set by the user.
+
+<li><b>Channel management.</b>  Like nicknames, Services allows users to
+register channels as well.  A channel's owner can give privileges to other
+users of the channel, such as auto-opping or the ability to set various
+channel options, or conversely deny other users the ability to obtain
+channel operator privileges or even enter the channel altogether.  Services
+will remember the topic on the channel even after the last user leaves, and
+can automatically set modes on the channel whenever a user joins it.
+
+<li><b>Messages to offline users.</b>  Probably every IRC user has gone
+through the experience of waiting and waiting for someone to come online in
+order to pass a message along or ask a question.  Services alleviates this
+with a "memo" system, allowing users to leave messages for other users even
+if the recipient is not online at the time; the recipient will be notified
+of the memo the next time they log on.
+
+<li><b>Centralized network control.</b>  Services includes features which
+allow IRC operators greater control over the IRC network through a single
+point, and also defines multiple privilege levels for IRC operators with
+respect to Services itself.  For example, IRC operators with sufficient
+privileges can use Services to set modes on any channel; it is also
+possible to ban users or groups of users from connecting to the network
+entirely, and such bans ("autokills" in Services terminology) will remain
+active even if a server, or Services itself, splits from the network.
+</ul>
+
+<p>Furthermore, each of these sets of features can be configured or
+disabled to match individual networks' policies.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=2></a>
+<h3>1-2. Overview of Services clients</h3>
+
+<p>Each of the major feature groups mentioned in <a href="#1">section
+1-1</a> above is controlled through a Services <i>client</i>, a nickname
+associated with that particular set of features.  (These are often called
+"pseudoclients", since they are not true clients, like IRC programs used by
+humans, but conveniences to simplify access to Services' features.)  These
+clients, as well as others which handle smaller areas of network control,
+are briefly described below; a more detailed discussion of each feature is
+presented in <a href=3.html>section 3</a>, while complete information on
+each of the commands used to control each client can be found in
+<a href=4.html>section 4</a>.
+
+<p><b>NickServ</b> handles registration and maintenance of nicknames.  Its
+primary functions include:
+<p>
+<ul><li>registration and de-registration (dropping) of nicknames;
+    <li>verification of nickname users, including password authentication,
+	and removal (either automatically or upon request) of unauthorized
+	users;
+    <li>creation and deletion of nickname aliases (links), which allow a
+	single user to own and switch between multiple nicknames which
+	share settings;
+    <li>control of nickname options, including security level (whether to
+	require a password or simply check the user's username and
+	hostname), associated URL and E-mail address, and what information
+	to show or not show to other users;
+    <li>recording of nickname usage information, including the nickname's
+	last used time and the username and hostname of the nickname's last
+	user; and
+    <li>expiration of nicknames that have not been used in a certain period
+	of time.</ul>
+
+<p>Services has the ability to send messages to users in multiple
+languages; a user who has registered their nickname can select from any of
+the supported languages (English, Dutch, French, German, Hungarian,
+Japanese, Russian, Spanish, and Turkish).  A default language can also be
+configured for users who have not registered their nicknames or have not
+selected a specific language.
+
+<p>Furthermore, NickServ has the ability to verify E-mail addresses
+associated with nicknames, by sending an "authentication code" to the
+E-mail address and not allowing the owner any privileges associated with
+the nickname until the owner sends that authentication code back to
+NickServ.  This feature can help maintain accountability of users for their
+actions on IRC by requiring a valid E-mail address at which the user of a
+nickname can be contacted if problems arise.
+
+<p><b>ChanServ</b> is to channels what NickServ is to nicknames; it handles
+registration and maintenance of channels on the IRC network.  Its functions
+in large part mirror those of NickServ, and include:
+<p>
+<ul><li>registration and dropping of channels (a user who registers a
+	channel is known as the channel's <i>founder</i>);
+    <li>verification of channel users, through either direct password
+	authentication or NickServ verification;
+    <li>control of channel access and autokick lists (see below);
+    <li>monitoring and adjustment of channel modes, including automatically
+	giving channel-operator or voice privileges or "inviting"
+	authorized users into invite-only channels;
+    <li>control of channel options, such as preventing users from changing
+	the topic or controlling the strictness with which channel modes
+	and privileges are enforced, and setting a URL or E-mail address
+	for the channel;
+    <li>recording of channel usage information, including the last time a
+	verified user was in the channel; and
+    <li>expiration of channels that have not been used in a certain period
+	of time.
+</ul>
+
+<p>One major difference between nicknames and channels is the <i>access
+list</i>.  While nicknames may have an "access list" that lists addresses
+which NickServ will recognize as "allowed to use the nickname"&mdash;a
+feature that has little value if passwords are used as the primary means of
+verification&mdash;channel access lists play a much greater role, in that
+they control which users (nicknames) have what degree of access to
+(privileges in) the channel.  The founder of a channel will always have
+full access to the channel, but the founder can, via the access list,
+designate other users who will receive a certain subset of channel
+privileges.  For example, the founder might give privileges to some users
+to automatically receive channel operator (<tt>+o</tt>) status when they
+enter the channel; those users might then, in turn, designate other users
+to automatically receive voice (<tt>+v</tt>) status if the channel is
+moderated.  Certain levels of access also allow users to use privileged
+ChanServ features, such as management of the "autokick list", explained
+below, or commands which remove channel bans on a user or invite the user
+into a channel.
+
+<p>Conversely, the <i>autokick list</i> (often referred to as the "AKICK
+list", from the name of the command&mdash;<tt>AKICK</tt>&mdash;which
+controls it) specifies users which are not to be allowed access to the
+channel at all.  If a user joins a channel whose autokick list they are
+listed on, ChanServ will kick them out of the channel and set a channel ban
+which prevents them from entering again.  Since a malicious user could
+easily enter using an unregistered nickname, channel founders (or other
+privileged users) can enter username/hostname masks as well as nicknames in
+the autokick list.
+
+<p>As channels are complex beasts, ChanServ features many options which
+control how the channel is managed; for example, ChanServ can be set to
+disallow any changes to the channel topic (if a user changes the topic,
+ChanServ will cancel the change by restoring the previous topic), or to
+prevent any users not explicitly entered in the access list from using the
+channel.  ChanServ can also enforce a certain set of modes on a channel;
+for example, a channel which wants to stay hidden from casual users could
+use ChanServ to ensure that the <tt>+s</tt> (secret) mode is always set on
+the channel.
+
+<p>If the founder of a channel loses his nickname, whether by explicitly
+dropping it or by letting it expire, the channel will be dropped as well.
+If this should happen by accident, it can be difficult to restore all of
+the channel settings.  To help avoid this problem, ChanServ allows channel
+founders to designate a <i>successor</i> for the channel.  If the founder's
+nickname should ever be dropped or expire, then ChanServ will give the
+channel to the successor&mdash;making them the new founder of the
+channel&mdash;rather than dropping the channel.
+
+<p><b>MemoServ</b> handles storage and notification of <i>memos</i>, short
+messages between IRC users.  Memos can be thought of as an intermediate
+stage between realtime chat and E-mail; they are sent and read in the same
+way as ordinary chatting, but can be sent even if the recipient is not
+online at the time, and the recipient can read the memos at his or her
+leisure.  Memos are particularly useful for short messages for which it
+would not be worth the time to start up an E-mail client and type out a
+complete message, or for cases where the nickname of the recipient is known
+but the recipient's E-mail address is not (or the recipient does not have
+an E-mail address at all).
+
+<p>MemoServ's four main functions are <i>sending</i> memos, <i>listing</i>
+memos which have been received, <i>reading</i> memos, and <i>deleting</i>
+memos after they have been read.  Users can also set memo options, which
+include whether to notify them of new memos when they log on and whether
+they should be able to receive memos at all, and can have memos
+automatically forwarded to an authenticated E-mail address.
+
+<p>In addition to memos between users, memos can also be sent to channels;
+such memos will be sent to all users with sufficient privileges on the
+channel.  This type of memo can be used, for example, to inform channel
+operators about a problem user, or as a way for users to ask questions
+about the channel.
+
+<p><b>OperServ</b> provides access to the "network control" functionality
+of Services.  Available only to IRC operators, OperServ allows:
+<p>
+<ul><li>broadcasts of messages to the entire network (global notices), as
+	well as recording of news messages to be sent to users when they
+	connect to the network;
+    <li>control of modes in any channel, as well as the ability to kick any
+	user from any channel;
+    <li>banning certain users from the entire network (autokill list and
+	S-lines, described below);
+    <li>limiting the number of users which can connect from a single IP
+	address, useful for preventing "cloning" (sessions), as well as
+	making exceptions to those limits;
+    <li>disconnecting all users from a given IP address;
+    <li>preventing certain servers from connecting to the network
+	("juping");
+    <li>setting global Services options; and
+    <li>restarting or shutting down Services itself.
+</ul>
+
+<p>Many of these functions can, if misused, have disastrous effects for the
+entire network; thus, OperServ implements a privilege system to limit which
+IRC operators can use which functions.  Four different privilege levels are
+defined: normal IRC operator, Services operator, Services administrator,
+and Services super-user (also known as "Services root", from the Unix
+tradition of using the username "root" for the system super-user).  Normal
+IRC operators can use very few of the functions above, while the Services
+super-user has absolute control over Services and the IRC network.
+
+<p>Of particular note are the <i>autokill list</i> and <i>S-line</i>
+features, which are to the network as autokick lists are to channels; users
+in these lists will be prohibited from connecting to any server on the
+network, and will be disconnected immediately if they do connect.  The
+difference between the two is what they prohibit; the autokill list
+prohibits certain combinations of username and hostname, much like autokick
+lists do, while S-lines, named after the commands used by a certain IRC
+server to implement them, prohibit nicknames, "real names", or IP addresses
+(IP address checking is only available with a few IRC servers).
+
+<p>OperServ also includes a separate client, by default called
+<b>Global</b>, which is used to send global (network-wide) notices and news
+messages to users.  Many networks rename this client to the same name as
+their network; the name of the client (as well as all other Services
+clients) can be changed by editing the configuration file, as described in
+<a href="2.html#4">section 2-4</a>.
+
+<p><b>StatServ</b> is an additional client which monitors and keeps basic
+statistical information regarding network usage.  It can be useful to
+check, for example, which servers are getting the most use, or whether
+certain servers have a tendency to split from the network frequently.
+
+<p><b>In addition</b> to the clients above, Services also has a built-in
+HTTP (web) server, which allows access to Services information (such as
+registered nickname and channel information and network statistics) without
+having to connect to the IRC network.  See <a href="3.html#6">section
+3-6</a> for more information about the HTTP server.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=3></a>
+<h3>1-3. IRC Services download site</h3>
+
+<p>Development and maintenance of IRC Services has been discontinued.
+As of the writing of this manual, historical information can be found at
+<a href="http://achurch.org/services/"><tt>http://achurch.org/services/</tt></a>.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=4></a>
+<h3>1-4. IRC Services discussion forums</h3>
+
+<p>Two mailing lists were previously provided for discussion of Services:
+<i>ircservices</i>, for general discussion, and <i>ircservices-coding</i>,
+for technical issues.  These mailing lists were disabled on January 1, 2010,
+but archives of the lists are available at the historical information site
+listed in <a href="#3">section 1-3</a> above.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=5></a>
+<h3>1-5. Credits and acknowledgements</h3>
+
+<p>Services is primarily the work of <a href="http://achurch.org/"><b>Andrew
+Church</b></a>, and was developed from early 1996 through 2009; a somewhat
+more detailed history can be found in <a href="tech/1.html#s3">section 1-3
+of the technical manual</a>.  However, many people have contributed ideas,
+bug reports, or other help to the project as well.  Some of the more
+noteworthy contributors include:
+<ul>
+<li><b>Andrew Kempe</b> (session limiting and news systems, as well as
+	maintenance and development of Services for versions 4.3 and 4.4)
+<li><b>Yusuf Iskenderoglu</b> (Turkish translation and many feature suggestions)
+<li><b>Martin Pels</b> (Dutch translation)
+<li><b>Elijah</b> (French translation)
+<li><b>Jacek Margos</b> and <b>Holger Baust</b> (German translation)
+<li><b>Janos Kapitany</b> and <b>Krisztian Romek</b> (Hungarian translation)
+<li><b>Alexander Zverev</b> (Russian translation)
+<li><b>&lt;RealCFC@chatfirst.com&gt;</b> (Spanish translation)
+</ul>
+Credit is given to all contributions in the
+<tt><a href="Changes">Changes</a></tt> and
+<tt><a href="Changes.old">Changes.old</a></tt> files in this directory,
+which detail all changes made in each version of Services.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=6></a>
+<h3>1-6. Contacting the author</h3>
+
+<p>The author may be contacted via E-mail at
+<tt><a href="mailto:achurch@achurch.org">achurch@achurch.org</a></tt>
+as of the writing of this manual.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<p align=right><font size=-1><a href=index.html>Table of Contents</a> |
+<a href=2.html>Next section: About IRC Services</a></font>
+
+</body>
+</html>

@@ -1,0 +1,1743 @@
+Version 4.5
+-----------
+2003/04/10 .45	Fixed crash on some systems when giving only spaces to
+		    certain commands (backported from 5.0.16).
+2003/02/27 .44	Fixed potential crash related to nickname language setting
+		    (backported from 5.0.12).
+2002/09/07 .43	Fixed cosmetic bug in AKICK DEL.  Reported by <diavol@xchat.gr>
+2002/08/18	Fixed error in MemoServ SET help.  Reported by Ian Justman
+		    <ianj@esper.net>
+2002/08/15 .42	Fixed crash in OperServ CLEARMODES ALL.  Reported by Holger
+		    Baust <holger.baust@freenet-ag.de> and many others.
+2002/08/15	Updated German language file, courtesy of Holger Baust
+		    <holger.baust@freenet-ag.de>
+2002/06/24 .41	Fixed format-string crash bug reported by Lucas Nussbaum
+		    <lucas@lucas-nussbaum.net>
+2002/05/10 .40	Fixed bug causing some mode changes to get lost with
+		    MergeChannelModes.  Reported by <fabulous@t7ds.com.br>
+2002/02/27 .39	Fixed minor security hole allowing users to find out when
+		    nicknames not their own receive memos.
+2002/02/15	Fixed ChanServ LIST syntax error message for Services
+		    admins.  Reported by Mark Hetherington <mark@ctcp.net>
+2002/02/07 .38	Fixed bug causing AUTODEOP channel level to be ignored if
+		    AUTOVOICE was set less or equal.  Reported by Jollino
+		    <jollino@sogno.net>
+2002/01/14 .37	Fixed a bug in the Japanese language file causing crashes.
+		    Reported by <fabulous@t7ds.com.br>
+2002/01/12	Fixed a bug causing the SET HIDE USERMASK setting for
+		    nicknames to get lost when importing Sirv or Auspice
+		    databases.
+2002/01/07 .36	Forbid time is now recorded with forbidden nicknames and
+		    channels.
+2002/01/03	Removed a debugging message that could sometimes get sent
+		    from MemoServ INFO.
+2001/12/17 .35	Added missing support for Unreal CHGIDENT/CHGHOST/CHGNAME.
+		    Reported by Michael Raff <raff@electrocity.com>
+2001/12/17	Fixed bug in TIME reply.  Reported by <v13@priest.com>
+2001/12/17	Fixed typo in Japanese language file causing crashes.
+		    Reported by <fabulous@t7ds.com.br>
+2001/12/03	Fixed bug in import-db preventing compilation when an IRC
+		    server type other than Unreal was selected.  Reported
+		    by Dung T. Nguyen <theonlydung@rogers.com>
+2001/12/02	Fixed bug in autokill checking causing permanent autokills
+		    to expire.  Reported by Lloyd Williams
+		   <binary_frog@chatcircuit.com>
+2001/12/01 .34	Fixed cosmetic bug with autokill expiration wallops.
+		    Reported by Lloyd Williams <binary_frog@chatcircuit.com>
+2001/12/01	Fixed typo in Turkish language file.  Reported by Guven
+		    Guzelbey <guzelbey@cs.utk.edu>
+2001/11/28	Fixed bug in Unreal TKL handling causing permanent autokills
+		    to expire.  Reported by Tom Moyer <squall157@hotmail.com>
+2001/11/26	Fixed bug in importing Sirv databases.  Reported by Hakan
+		    Karakan <hkarakan@zurna.net>
+2001/11/23 .33	Updated E-mail addresses in documentation.
+2001/11/17	Autokicks now remove ban exceptions from channels when
+		    triggered.  Suggested by <RealCFC@chatfirst.com>
+2001/11/17	Corrected typo in OperServ KILLCLONES help.  Reported by
+		    Ali Sor <alisor@softhome.net>
+2001/11/16 .32	433 is no longer sent for users who have identified.
+		    Reported by Michael Sparpaglione <cyxs@cyxs.net>
+2001/11/12 .31	Changed 433 handling to delay a bit before sending.
+2001/11/12	Fixed bug causing crashes on FORBID of logged-on nick.
+		    Reported by <fabulous@t7ds.com.br>
+2001/11/07	Added support for +M channel mode in Bahamut 1.4.30.
+		    Suggested by Andrew Kempe.
+2001/11/06 .30	Fixed bug which left expired autokills in force.
+2001/11/06	Added handling for Unreal TKL messages to avoid expired or
+		    deleted autokills reappearing in the network.  Reported
+		    by <ron885@linuxfreemail.com>
+2001/11/06	Added sending of 433 (nick in use) on regged nick warnings.
+		    Suggested by Finny Merrill <griever@ircd-net.org>
+2001/11/01	Fixed a bug causing list{nicks,chans} -d <dir> to not work.
+2001/10/31	Fixed incorrect check for nick suspension in NickServ
+		    IDENTIFY.  Reported by Lonewolf <lonewolf@lagnet.org.za>
+2001/10/29	Fixed incorrect channel count check in NickServ LINK.
+2001/10/28 .29	Fixed autokills to no longer kill users after the
+		    expiration time but before actually being expired.
+2001/10/28	Added support for the Unreal TKL (timed K:line) message.
+2001/10/27	Added workaround to use DEF_LANGUAGE for forbidden nick
+		    messages.  Reported by Ali Sor <alisor@softhome.net>
+2001/10/27	Fixed bug causing crashes when a user's server is unknown
+		    to Services (e.g. because hostmasking is in use).
+		    Reported by GB_RAIDER1 <raider1@clan-ghost-bear.com>
+2001/10/01 .28	Added Dutch language file, courtesy of Martin Pels
+		    <martinpels@hotmail.com>
+2001/09/14 .27	Fixed bug in configure script causing compilation errors.
+		    Reported by Scott Grayban <borg@borgdrone.net>
+2001/09/14 .26	Fixed bug causing channel mode locks to be lost when
+		    importing Magick 1.4 or SirvNET Services databases.
+2001/09/14	Added support for Auspice 2.5 databases to import-db.
+		    Suggested by MX <darkie@tampabay.rr.com>
+2001/09/11	INFO was not listed in the MemoServ help message; added it.
+		    Reported by Martin Pels <martinpels@hotmail.com>
+2001/09/11	Fixed fakehost-related (Unreal) bug sometimes triggered by
+		    ChanServ bans.  Reported by Carsten V. Munk
+		    <stskeeps@tspre.org>
+2001/09/04 .25	Fixed bug in Turkish language file causing crashes.
+2001/08/14	Added missing LISTCHANS to NickServ help.  Reported by
+		    <gousoufou@hushmail.com>
+2001/08/13	Fixed bug allowing unsetting of E-mail address even when
+		    NSRequireEmail is set.
+2001/08/12 .24	Fixed bug preventing deletion of no-longer-existent servers
+		    from StatServ.  Reported by Josh
+		    <greenday288@geocities.com>
+2001/08/10	Corrected a security-related comment in nickserv.c.
+2001/08/09	Added missing support for PTlink autokill databases to
+		    import-db.  Reported by Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2001/08/07 .23	Fixed bug allowing evasion of nick kill on linked nicks.
+		    Reported by Georges Berscheid <Georges@berscheid.lu>
+2001/08/02 .22	Expanded import-db Epona support to support versions 1.3.0
+		    through 1.4.0.
+2001/08/02	Expanded import-db SirvNET support to support all versions.
+2001/07/31	Fixed bug converting news database from Daylight.
+2001/07/30	Added support for Wrecked IRC Services 1.2.0 databases to
+		    import-db.  Suggested by Jamie Smithson
+		    <jamie@silverdream.org.uk>
+2001/07/29	Fixed bug in import-db causing conversion to fail if there
+		    were no .db files already in place.
+2001/07/28	Added support for IRCS 1.2 databases to import-db.
+		    Suggested by <todd@happyempire.com>
+2001/07/17	Fixed a minor logic bug that could cause newlines at the
+		    end of messages to be delayed until the next message
+		    was sent.
+2001/07/16	Fixed bug causing "nick expires soon" messages to be sent
+		    even when nick expiration is disabled.  Reported by
+		    John Edrington <jledring@oakland.edu>
+2001/07/15	Fixed problem compiling with GCC 3.0 (non-ANSI expression).
+		    Reported by <dreamer@darkness.gr>
+2001/07/11	Updated Spanish language file.
+2001/07/04 .21	Added -no-dir-check option to configure script.  Suggested
+		    by Gabor Z. Papp <gzp@papp.hu>
+2001/07/04	Using the ChanServ OP or IDENTIFY commands now updates the
+		    channel's last used time.  Fixes a problem reported by
+		    Gabor Z. Papp <gzp@papp.hu> and others where channels
+		    without auto-op lists expire even when in use.
+2001/07/04	Added workaround for a(nother) strtok() bug in glibc 2.2.2.
+		    Reported by several people.
+2001/07/04	Fixed warnings when compiling with DEBUG_COMMANDS defined.
+2001/07/04	Fixed compilation problem when using the "-use-local-funcs"
+		    option with ./configure on a glibc system.  Reported by
+		    Gabor Z. Papp <gzp@papp.hu>
+2001/07/01	Made OperServ STATS UPTIME an alias for STATS (by itself).
+2001/07/01	Fixed bug causing OperServ STATS to report statistics even
+		    when an option (other than ALL) is given.  Reported by
+		    James Lester <jamesrlester@hotmail.com>
+2001/06/26	Fixed bugs, including a nasty crash, in handling of
+		    RFC1459/TS8 USER command.  (The fact that nobody
+		    reported these presumably means nobody uses such
+		    servers anymore...)
+2001/06/25	Fixed potential bug in handling of Unreal umode +d.
+2001/06/18 .20	Fixed cosmetic bug in ChanServ DEPROTECT response.
+		    Reported by ViPeRzPiT <viper@imagine2k.com>
+2001/06/15	Changed "channel doesn't exist" message to "channel isn't
+		    currently in use".  Suggested by <RealCFC@chatfirst.com>
+2001/06/13	Fixed missing "HOP" in help messages.  Reported by Scott
+		    Grayban <borg@borgdrone.net>
+2001/06/10	Fixed cosmetic bug showing channel option names to users
+		    with unregistered nicks.
+2001/06/10	Fixed bug allowing improper privileges on a channel
+		    registered immediately after a previous registration
+		    was deleted or expired.
+2001/06/10	Added workaround for a potential servicestamp problem.
+2001/06/09	Fixed a harmless bug allowing the same address to be added
+		    multiple times to a nick access list.
+2001/06/09 .19	Fixed crash in MemoServ HELP SET NOTIFY.  Reported by
+		    Mage <mage@gameznet.com>
+2001/06/01 .18	Updated Spanish and German language files, courtesy of
+		    <RealCFC@chatfirst.com> and Jacek Margos
+		    <jacek.margos@freenet-ag.de> respectively
+2001/06/01	Fixed failure to load German language file.  Reported by
+		    Scott Grayban <borg@borgdrone.net>
+2001/05/26	Fixed sender of internal error messages in chanserv.c.
+2001/05/26	Fixed a potential crash when Services cannot load the
+		    default language (though it's still a fatal error).
+2001/05/26	import-db was reading in channel access levels incorrectly.
+		    Reported by Serdar Kalacyi <serdar@locomotif.com>
+2001/05/23 .17	The ChanServ FORBID command no longer accepts invalid
+		    channel names.
+2001/05/23	Backup database files are no longer overwritten by import-db
+		    when saving converted data.
+2001/05/23	Source directory for import-db can now be specified as a
+		    relative path.
+2001/05/23	Added support for PTlink databases to import-db.
+2001/05/23	Added notices to warn of imminent nick expiration and
+		    NSExpireWarning configuration directive.
+2001/05/22	Fixed crash caused by expiring in-use nicknames.
+2001/05/21 .16	Added updated Spanish language file, courtesy of
+		    <RealCFC@chatfirst.com>
+2001/05/20	Fixed memory leak when deleting nicknames.
+2001/05/15	Disallow +q/+a for AUTODEOP users on Unreal.  Reported by
+		    codemastr <codemstr@ptd.net>
+2001/05/14	Fixed bug allowing +I users into empty, +H-locked channels
+		    (Unreal only).  Reported by codemastr <codemstr.ptd.net>
+2001/05/14	Made mode-bounce checking more robust for Unreal.  Reported
+		    by codemastr <codemstr@ptd.net>
+2001/05/12 .15	Fixed bug in Unreal support causing ban/exception desyncs.
+		    Reported by codemastr <codemstr@ptd.net>
+2001/05/11	Fixed a bug allowing autokill masks with no username or
+		    hostname.  Reported by James <daemus@evilcode.com>
+2001/05/10	Fixed cosmetic bugs in MemoServ INFO.  Reported by
+		    <RealCFC@chatfirst.com>
+2001/05/06	Fixed potential bug when a user identifies for a channel
+		    and then drops their nick.
+2001/05/06	When a suspended channel's founder loses his nick (DROP or
+		    expire), forbid the channel instead of deleting it.
+2001/04/26	Clear users out of channel on SUSPEND, like FORBID does.
+		    Reported by Michael Haisley <eternal@unrealircd.org>
+2001/04/24	Fixed bug preventing automatically-added autokills from
+		    being deleted.  Reported by <kevc978@btinternet.com>
+2001/04/23	Fixed harmless bug causing unneeded MODE +a's on Unreal.
+2001/04/23	Fixed cosmetic bug giving wrong number of autokicks in
+		    AKICK COUNT response.
+2001/04/23 .14	Fixed bugs in the Turkish language file.
+2001/04/19 .13	Fixed bug in removing server chanops.  Reported by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/04/19 .12	Non-opers/admins are no longer allowed to lock channel
+		    modes +O/+A/+H (latter two on Unreal only).  Reported
+		    by codemastr <codemstr@ptd.net>
+2001/04/16	Fixed incorrect command names in some log messages.
+2001/04/16	Fixed a really stupid bug in which dropping a channel would
+		    result in bogus entries on a user's owned-channel list.
+		    Reported by Mauritz Antunes <mauritz@americasnet.com.br>
+2001/04/14	Fixed bug allowing auto-voice users to keep +o when joining
+		    an empty channel.  Reported by Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2001/04/09 .11	Eliminated bogus srealloc() warnings.  Reported by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/04/09	Added SJ3 support for Unreal to fix problems reported with
+		    registering channels on remote servers.
+2001/04/08	Fixed NickServ LINK help message to remove incorrect
+		    comment about linking nicks.  Reported by Andrew Vestal
+		    <andrewv@stanford.edu>
+2001/03/28 .10	Added German language file, courtesy of Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2001/03/28	Fixed inability to compile for ircu.  Reported by Rodrick J.
+		    Palmer <audasee@dreaming.org>
+2001/03/26	Fixed failure to free exception data when deleting channels.
+		    Reported by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/03/22 .9	Fixed bug allowing users to drop channels despite FORBID.
+		    Reported by Imran Ali Rashid <u970042@giki.edu.pk>
+2001/03/20	Fixed cosmetic bug with error message for bouncy channel
+		    modes.  Reported by Partizanu <silvius@expres.ro>
+2001/03/19	Added BadPassWarning and BadPassSuspend configuration
+		    options for per-nick/channel bad password checks.
+2001/03/19	Log E-mail address given to NickServ REGISTER and
+		    changes with [UN]SET EMAIL.
+2001/03/17	Don't allow autokills to be added if they already exist
+		    on the autokill list.  Suggested by Curtis D
+		    <curtis@nucleus.com>
+2001/03/11 .8	Fixed bug in import-db Epona support.  Reported by
+		    <Kevc979@aol.com>
+2001/03/10	Avoid referencing undefined channel modes in import-db.
+		    Reported by <Kevc979@aol.com>
+2001/03/10	Improved support for Unreal fake hosts.
+2001/03/10	Added support for Unreal SETIDENT/SETHOST/SETNAME.
+2001/03/10	Don't write passwords for OperServ SU / SET SUPASS into
+		    logfile.  Suggested by <matt@snip.net>
+2001/03/10	Don't write log messages on PONG.  Reported by
+		    <matt@snip.net>
+2001/03/07	Reverse remote Services stamp changes if they ever occur.
+2001/03/07	Fixed bug in displaying help for ChanServ SOP.
+2001/03/07	Fixed bug preventing AUTODEOP from removing -h on Unreal.
+2001/03/07	Suspension info in ChanServ INFO was being sent from
+		    NickServ.  Reported by Andrew Kempe.
+2001/03/06 .7	Forgot to actually make PROTECT/DEPROTECT commands
+		    available (dumb, dumb...).  Reported by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/03/05 .6	Hopefully fixed bug causing incorrect error messages when
+		    errors occur during database writing.  Reported by
+		    <RealCFC@chatfirst.com>
+2001/03/05	Fixed bug causing nick collisions to not work.  Reported
+		    by <RealCFC@chatfirst.com>
+2001/03/05	Added -numeric command-line option for Unreal.
+2001/03/05	Don't write error messages for Unreal NETINFO.
+2001/03/03	Re-added NickServ SIDENTIFY command due to popular demand.
+2001/03/03	Added PROTECT/UNPROTECT commands and AUTOPROTECT/PROTECT
+		    access levels to ChanServ.  Suggested by codemastr
+		    <codemstr@ptd.net>
+2001/03/03	Renamed VOICEDEVOICE and HALFOPDEHALFOP channel access
+		    levels to VOICE and HALFOP, respectively.
+2001/03/02	Added support for Epona databases to import-db.
+2001/02/28 .5	Added workaround for ircds that misinterpret certain
+		    channel mode commands.
+2001/02/28	Fixed stupid bug causing mode lock -... to not work.
+2001/02/26 .4	Fixed bug with channel modes getting set wrong.
+2001/02/25 .3	Fixed modelock +l crash.
+2001/02/24	Added HOP command for servers which support halfops (+h).
+2001/02/24	Make sure access entry level matches list level for *OP
+		    DEL (avoid level 10 deleting level 20, for instance).
+		    Reported by Mauritz Antunes <mauritz@americasnet.com.br>
+2001/02/23	Added EXCEPTIONS and HALFOPS options to ChanServ CLEAR
+		    command for servers that support them.  Suggested by
+		    Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/02/23	Added ChanServ ENFORCE option.
+2001/02/23	Improved Unreal support and added ServerNumeric config
+		    directive.  Code supplied by Carsten V. Munk
+		    <stskeeps@tspre.org>
+2001/02/22	Added ability to collect multiple channel modes into a
+		    single message.
+2001/02/22	Fixed bug in OperServ SU setting wrong nick's flags.
+2001/02/22	Added NickServ LISTCHANS command.  Suggested by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/02/22	Include nick/channel whose password was failed when killing
+		    a user for repeated password failures.  Suggested by
+		    Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/02/22 .2	Added support for Daylight databases to import-db.
+2001/02/22	Channel modes +c, +O weren't usable for Unreal.  Reported
+		    by Mark Hetherington <markh@eurodltd.co.uk>
+2001/02/21	Fixed detection of broken strtok() in GNU glibc 2.2.
+2001/02/20	Fixed race condition with SVSNICK and RECOVER/GHOST.
+2001/02/20	Use current user's nick rather than nick in nickname
+		    record when sending SVSNICK--preserves case in nick,
+		    and may avoid mysterious buglets.
+2001/02/20 .1	Made import-db actually work again, and added support for
+		    Sirv 1.4.0 and 2.7.0 databases.
+2001/02/20	Don't remove +o from IRCops/Services admins even for
+		    SECUREOPS or AUTODEOP.  Suggested by
+		    <RealCFC@chatfirst.com>
+2001/02/20	Fixed brainfart in do_quit() and do_kill() setting quit
+		    message even if not identified/recognzied.  Reported by
+		    Mauritz Antunes <mauritz@americasnet.com.br>
+2001/02/19	Cleaned up SHOWALLOCS code and .old files in .0 release.
+2001/02/18 .0	Fixed memory leak in OperServ MODE.
+2001/02/17	Fixed dangling pointer bug on nick delete.
+2001/02/16	Added code to check validity of E-mail addresses and URLs.
+2001/02/16 pre7	Fixed bug in timeout code probably causing a lot of weird
+		    crashes plus memory leakage (not setting prev pointer
+		    on linked list add).  Found by the author of Epona, who
+		    will be properly credited as soon as he stops his
+		    sarcastic comments about my coding ability.
+2001/02/16	ChanServ LEAVEOPS no longer overrides AUTODEOP.  Suggested
+		    by Mauritz Antunes <mauritz@americasnet.com.br>
+2001/02/16	ChanServ no longer prevents people from deopping other
+		    people in channels regardless of access level.
+2001/02/15	Fixed StatServ infinite loop on SQUIT.
+2001/02/15	Don't update last seen time if user isn't recognized.
+		    Found by <fabulous@brasnet.org>
+2001/02/15	Clarified ChanServ SET SECURE, MemoServ SET NOTIFY help.
+2001/02/15	Fixed logon memo notices not working.
+2001/02/13	Fixed bug in banning users using autokick.  Reported by
+		    Mauritz Antunes <mauritz@americasnet.com.br>
+2001/02/12	Forgot to make ChanServ actually do auto-halfops (Unreal).
+		    Reported by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/02/12 pre6	Updated Portuguese language file.
+2001/02/12	Fixed bug causing channel topics to get strange dates.
+2001/02/12	Fixed StatServ bugs with deleting servers.
+2001/02/12	Fixed bug causing OPER ADD to add Services admins instead.
+		    Reported by Josh <greenday288@geocities.com>
+2001/02/11	Added missing *OP COUNT command.  Reported by Mauritz
+		    Antunes <mauritz@americasnet.com.br>
+2001/02/10	Fixed ChanServ INVITE and UNBAN help messages (access level
+		    "greater than zero" -> "at least 5").  Reported by
+		    Jazba Junoon (jazba@awww.jeah.net)
+2001/02/10	Make sure all autokick bans have a "!" in them to avoid
+		    inaccurate ban lists and join/kick loops.
+2001/02/10	Delete suspension information when dropping channel.
+		    Reported by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/02/10	Fixed various problems in the help file, reported by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de> and Andrew Kempe.
+2001/02/10	Updated Turkish language file.
+2001/02/10	ACCESS/*OP/AKICK LIST now match entries case-insensitively.
+		    Reported by Mauritz Antunes <mauritz@americasnet.com.br>
+2001/02/09 pre5	Compensated for ircds (most newer ones) that violate
+		    RFC 1459 rules on character case.  Reported by Mauritz
+		    Antunes <mauritz@americasnet.com.br>
+2001/02/09	Fixed failure to free user->fakehost on client disconnect.
+		    Reported by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/02/08	Fixed bug allocating 0 bytes when clearing bans/exceptions.
+		    Reported by Mauritz Antunes <mauritz@americasnet.com.br>
+2001/02/08	Fixed failure to check CA_ACCESS_{LIST,CHANGE} for *OP
+		    commands.  Reported by Mauritz Antunes
+		    <mauritz@americasnet.com.br>
+2001/02/08	Fixed bug causing Services to write infinite log messages
+		    when its uplink server connection is broken.
+2001/02/07 pre4	Fixed delink() decrementing wrong link counter (could cause
+		    crashes after deleting parent nick).
+2001/02/07	Fixed off-by-one bug in AKILL ADD with ImmediatelySendAkill.
+		    Reported by Mauritz Antunes <mauritz@americasnet.com.br>
+2001/02/06 pre3	Added extra warning to OperServ RAW help text.
+2001/02/06	Don't set +o/+q/etc. for +I users on Unreal.  Suggested by
+		    Guy Antony Halse <guy@rucus.ru.ac.za>
+2001/02/06	Fixed permission checks for OperServ commands.  Reported by
+		    <lonewolf@lagnet.org.za>
+2001/02/05	Optimized various sections of code.
+2001/02/05	Fixed minor bug with AKill code which only gets the first
+		    word of the reason for the AKill. -- Kelmar
+2001/02/05	Don't write log messages on 401 (no such nick/channel)
+		    messages from the remote server.
+2001/02/05	Fixed OperServ SU not sending out WALLOPS.  Reported by
+		    <RealCFC@chatfirst.com>
+2001/02/04	Fixed off-by-one bug in *OP LIST/DEL.
+2001/02/04 pre2	Changed ChanServ to not alter channel +o/v modes done
+		    through OP/DEOP etc. or by a user on him/herself.
+		    Suggested by <countersync@hotmail.com>
+2001/02/04	Match NickServ LIST patterns against actual output, not
+		    user@host masks, to avoid giving hints about hidden
+		    information.
+2001/02/03	Reset nick language to DEF_LANGUAGE on load if the nick's
+		    selected language is not available.
+2001/02/03	AUTODEOP now disallows halfop status on Unreal servers.
+2001/02/03	ChanServ now checks autoop status for DEOP command, etc.
+2001/02/03	Added support for sending PING messages when there is no
+		    network activity.  Suggested by <fabulous@brasnet.org>
+2001/02/02	Prevent setting NSExpire/CSExpire less than 1 day (mostly
+		    to avoid help message complexity).
+2001/02/02	Added OperServ STATS RESET command.
+2001/02/02	Moved ACCESS command back into ChanServ primary help.
+2001/02/02	Added auto-halfop mode and HALFOP/DEHALFOP commands for
+		    Unreal servers.  Suggested by David Blanchard
+		    <dblanch@home.com>
+2001/02/02	Set umode +Sq for Services clients on Unreal.
+2001/02/02	Nickname of sender is now included with reason for
+		    OperServ JUPE.  Suggested by <dnar@concentric.net>
+2001/02/02	Added ChanServ VOICE/DEVOICE commands.  Suggested by
+		    <CoolAgony@aol.com>  Also added VOICE-DEVOICE access
+		    level, and changed OPDEOP to OP-DEOP.
+2001/02/01	Improved channel-clearing code.
+2001/02/01	Added support for channel exceptions (mode +e) for
+		    servers which support them.
+2001/02/01	Fixed bug leaving invalid channel successor when nick
+		    expires or is dropped.  Reported by James
+		    <daemus@evilcode.com>
+2001/02/01 pre1	Add NoBouncyModes configuration directive to work around
+		    bad mode bounce checking.
+2001/02/01	Changed OperServ *NEWS (ADD/DEL), KILLCLONES, SESSION,
+		    EXCEPTION to require Services operator (not admin)
+		    status.
+2001/02/01	Added CLEARCHAN to OperServ HELP command list.  Reported
+		    by <RealCFC@chatfirst.com>
+2001/02/01	Fixed ChanServ's failure to apply MLOCK -l.  Reported by
+		    Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/02/01	Fixed problem with setting Services stamp on DAL4_4_15.
+2001/01/31	Don't show "use ALL for more info" with NS/CS INFO if
+		    there isn't actually any more information to show.
+2001/01/31	Fixed NickServ not setting +r on REGISTER.
+2001/01/31	Fixed potential desyncs with usermode +r.
+2001/01/31	Added responses for ChanServ OP/DEOP commands.  Suggested
+		    by <RealCFC@chatfirst.com>
+2001/01/31	Fixed bug causing SET SUPASS (and possibly other
+		    passwords) to not work when encryption is disabled.
+		    Reported by <RealCFC@chatfirst.com>
+2001/01/31	ChanServ now remembers topics set with SET TOPIC.
+		    Pointed out by <RealCFC@chatfirst.com>
+2001/01/31	Fixed NickServ SET HIDE not working.
+2001/01/31	Fixed bug causing crashes on *OP ADD/DEL with no nick.
+2001/01/30	Set mode +q for channel founder on Unreal servers.
+2001/01/30	Fixed bug allowing unrecognized users to find out about
+		    new memos when sent.  Reported by Yusuf Iskenderoglu
+		    <uhc0@stud.uni-karlsruhe.de>
+2001/01/30	Fixed bug preventing MSNotifyAll from working.
+2001/01/30	Setting FORBID for a nick/channel now affects current
+		    users of the nick/channel.  Reported by Michael Smith
+		    <mike@chat.za.net>
+2001/01/29	Fixed OperServ CLEARCHAN not doing anything.  Reported by
+		    Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/01/26 pre0	NickServ and ChanServ now store data more efficiently,
+		    resulting in significantly faster processing.
+2001/01/25	Added OperServ SU command and WallSU config option.
+2001/01/22	Fixed bug with topic lock on channels with no topic.
+2001/01/22	Fixed cosmetic bug in ChanServ SET MLOCK when setting
+		    +k/+l only.
+2001/01/22	Added experimental Unreal ircd support.
+2001/01/22	Added OperServ CLEARCHAN command.  Suggested by Yusuf
+		    Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/01/22	Rewrote mode handling code.
+2001/01/22	Added support for +a (Services admin) user mode in
+		    DAL4.4.15+ compatible servers (Dreamforge, Bahamut).
+2001/01/21	Fixed bug in encryption routine.  Reported by Mauritz
+		    Antunes <mauritz@americasnet.com.br>
+2001/01/21	Added NickServ/ChanServ UNSET command to clear URLs and
+		    E-mail addresses (as opposed to SET with no
+		    parameter).
+2001/01/20	Disallow memos to suspended nicks/channels.
+2001/01/20	Made ChanServ UNBAN compatible with Bahamut (IP-based
+		    bans match hostnames too).
+2001/01/18	Added NSRequireEmail option.  Suggested by many people.
+2001/01/18	Added support for mixed time specifications (1h30m etc).
+2001/01/18	Fixed bug with huge number ranges (1-9999999999) causing
+		    crashes/lockups.  Reported by Nick Krassas
+		    <dreamer@darkness.gr>
+2001/01/16	Fixed bug allowing nick takeover on LINK.
+2001/01/16	Effective nicks are now set correctly upon delink for
+		    nested links.
+2001/01/16	Fixed bug in wildcard matching.  Reported by Stefan Funke
+		    <bundy@germany.net>
+2001/01/15	Removed NickServ SIDENTIFY command.
+2001/01/15	Removed ListOpersOnly configuration file directive.
+2001/01/15	Added support for DAL 4.4.15+ Services stamps (usermode +d).
+2001/01/14	Added NickServ LISTNICK debug command.
+2001/01/13	Added checks for memory leaks and define to enable checks.
+2001/01/11	Added NSMaxLinkDepth configuration option.
+2001/01/11	Fixed duplicate adding of bans when auto-kicking a user
+		    from a channel.  Reported by James <daemus@evilcode.com>
+2001/01/11	Fixed inconsistency in server online/offline reporting in
+		    StatServ SERVERS LIST/VIEW.
+2001/01/11	Made LimitSessions (not CheckClones) the default in
+		    example.conf.
+2001/01/11	MemoServ DEL now shows only the number of memos deleted
+		    when more than one memo is deleted at once.
+2001/01/11	Added message for attempts to MLOCK +/-r (DALnet 4.4.15 /
+		    Bahamut).
+2001/01/11	Added sanity checks to and removed extra debugging from
+		    channel code.
+2001/01/11	Store last server quit message with server statistics.
+2001/01/10	Don't renumber the exception list on deletion.
+2001/01/10	Default expiration times and session limits may now be left
+		    undefined in the configuration file.
+2001/01/10	Recognition of too-general AKILL masks improved.
+2001/01/10	Services now correctly recognizes [ \ ] { | } in nicknames
+		    and channel names.
+2001/01/10	Added -noakill command-line option.
+2001/01/10	Error messages now returned when ChanServ OP/DEOP is
+		    used for a user not on the given channel.
+2001/01/10	ChanServ now bans *@* when a user enters a forbidden or
+		    suspended channel.  Suggested by Mauritz Antunes
+		    <mauritz@americasnet.com.br>
+2001/01/10	Added support for Bahamut +O (opers only) channel mode.
+2001/01/09	Added ChanServ SUSPEND/UNSUSPEND commands.
+2001/01/09	Fixed "Currently online" being shown in NickServ INFO even
+		    when the user isn't online.
+2001/01/09	Fixed bug allowing improper privileges with linked nicks.
+		    Reported by <r1ch@r1ch.net>
+2001/01/08	Check channel count on linking against limit.
+2001/01/08	Fixed bug causing invalid effective-nick pointers when a
+		    link-parent is deleted.
+2001/01/08	Fixed potential problems when install directories or group
+		    name contain shell metacharacters.
+2001/01/08	Fixed memory leak in misc.c/process_numlist().
+2001/01/08	Removed NS COMMANDS debug command.
+2001/01/08	Reduce maximum nick link depth (getlink()) from 512 to 42
+		    (512 would be a major pain to clean up after).
+2001/01/08	More accurate error messages on reading zero-length DBs.
+2001/01/07	Simplified guest-nick generation algorithm.
+2001/01/06	Fixed bug when successor sets himself as founder.  Reported
+		    by Yusuf Iskenderoglu <uhc0@stud.uni-karlsruhe.de>
+2001/01/05	Fixed access list corruption when founder is in access list,
+		    drops nick and successor gets channel.  Reported by
+		    Joao Luis Marques Pinto <lamego@ptlink.net>
+2001/01/05	Temporarily removed Japanese (JIS code) language support
+		    due to potential problems with %'s in wide characters.
+2001/01/05	Fixed potential missing null terminator in
+		    expires_in_lang().
+2001/01/05	Fixed malloc(0) on empty exception database.
+2001/01/05	Fixed error reporting for gethostbyname().
+2001/01/04	Added -help command-line option.
+2001/01/04	ChanServ CLEAR MODES now clears mode R on DALnet 4.4.15+
+		    and Bahamut servers.  Reported by Andy Smith
+		    <andy@strugglers.net>
+2001/01/02	Fixed problem with SIGHUP only working once.  Fix pointed
+		    out by Andy Smith <andy@strugglers.net>
+2000/12/26	Fixed potential bug when an invalid key is set on a
+		    +k-locked channel.
+2000/12/19	SIGUSR2 now causes log file to be closed and reopened
+		    (suggested by Ian Justman <ianj@esper.net>).  Also
+		    removed OperServ ROTATELOG command.
+2000/12/19	Added workaround for buggy strtok() in RedHat Linux 7.0.
+		    Reported by Andy Smith <andy@strugglers.net> and others.
+2000/08/13	Split NickServ and MemoServ memory usage statistics.
+		OperServ can now be set to AKILL hosts that exceed their
+		    session limit X times within X seconds.  See the
+		    SessionLimitAkill configuration option.  Suggested by
+		    Samuel Graenacher <sam@breakfree.com>
+2000/06/26	Added SOP, AOP and VOP commands, a la DALnet.
+2000/06/24	Reworked the numbered list and range handling code.
+
+
+Version 4.4
+-----------
+2000/12/12 .9	Fixed crashing bug using MemoServ with forbidden channels.
+		    Reported by Alex Segre <alex@ds9.bcps.iit.edu>
+2000/09/10 .8	Fixed some memory allocation and Bahamut related bugs.
+		Fixed a serious memory bug with the CS DEOP command.
+		    Above two reported by Uziel <uziel@ingsoc.com>
+		0 (zero) is now a valid DefSessionLimit config value.
+		    (backported by request of Uziel <uziel@ingsoc.com>)
+2000/08/27 .7	Fixed a bug in CS OP where users could be added to channel's
+		    op list without being in the channel. This should fix
+		    many of the bugs pertaining to channel user lists -
+		    notably the AKICK ENFORCE bug. Many thanks go to Toshi
+		    Morita <tm2@best.com> for finding and reporting this
+		    bug!
+2000/08/23 .6	Use of the (UN)LINK command is now logged.  Suggested by Ian
+		    R. Justman <ianj@esper.net>
+		Fixed a serious bug with the CS OP command causing Services
+		    to crash.  Reported by... *drum roll* ... many people. :)
+2000/08/16	Having a DefSessionLimit of 0 (zero) now works. Reported by
+		    Mauritz Antunes <mauritz@americasnet.com.br>
+		Fixed a memory allocation bug in do_sjoin() in users.c.
+		    Reported by Uziel <uziel@ingsoc.com>
+2000/08/13	Fixed a minor memory initialisation bug to do with password
+		    encryption.
+		Fixed a minor memory bug when loading an empty exception
+		    limit database. Patch supplied for the above two by
+		    Mircea Damian <dmircea@kappa.ro>
+2000/07/16 .5	Fixed a cosmetic bug in OperServ's help.  Reported by
+		    Paul R. Edelkamp, Jr. <pedelkamp@LoveShack.org>
+		Fixed a bug with nick suspension expiries.
+2000/06/17 .4	Fixed a cosmetic bug when viewing akicks.
+2000/05/01	Fixed a bug to do with enforcer nick introduction after a
+		    nick kill enforcement.
+2000/03/15 	Fixed problem with DAL4_4_15 servers not having the +r
+		    usermode removed from nicks that were not registered,
+		    after a user changed nicks.
+		Fixed a cosmetic bug in exception limit deletion replies.
+2000/03/11 .3	Bahamut no longer complains about nick enforcers' nicks.
+		    Reported by Paul R. Edelkamp, Jr. <pedelkamp@loveshack.org>
+		Re-organised how nicknames are introduced to the server.
+		Fixed the problem with Services crashing when it expired nick
+		    suspensions. Reported by Marc-Andre Aiquel-Fuentes
+		    <chile@visualcorp.com>
+		Added support for Bahamut v1.4(02)'s *working* SIDENTIFY.
+2000/02/07 .2	Fixed a bug in the snprintf/vsnprintf code used on OS'es
+		    lacking internal versions of these two functions.
+		    Reported by Lester Manry <bookworm@vnet.net>
+2000/01/09	A channel's founder can no longer be set as its successor.
+		    Reported by Nick Krassas <dreamer@darkness.gr>
+2000/01/05	Fixed a few cosmetic AKILL VIEW bugs.
+1999/12/26 .1	Added branch status info to the version info.  Possible
+		    values include CURRENT, RELEASE, STABLE and BETA.
+		Modified the version reply; replacing the compile time with
+		    the branchstatus.  The compile info is in the INFO reply.
+1999/12/25	StatServ's use can now be limited to opers only.
+1999/12/22	Channel mode +c can be MLOCK'ed on Bahamut servers.
+1999/12/20	NS SUSPEND now accepts an expiry time and a reason.
+		StatServ now shows up in a /whois.  Reported by Rafael
+		    Moraes <rcmoraes@rionet.com.br>
+1999/12/19 .0	StatServ's databases are now saved.
+1999/11/25 	Services now keeps track of the servers making up the
+		    network.
+1999/11/22	The ALL parameter for OS CLEARMODES is now case insensitive.
+		OperServ now confirms the execution of CLEARMODES.  Last two
+		    reported by Norbert Schneider <bit@bitnet.ch>
+1999/11/21	OperServ can now be configured to send AKILLs onto the
+		    network the moment they're added.
+1999/11/13	Forbidden nicknames can no longer become channel successors,
+		    founders or be added to a channel's ACCESS or AKICK list.
+		Memos can no longer be sent to forbidden channels or
+		    nicknames.  Reported by Nick Krassas <dreamer@darkness.gr>
+		Added support for the "/INFO services.network.com" command.
+		CS INFO no longer returns the channel's last/current topic
+		    if the channel is +p or +s or is MLOCK'ed that way.
+		    Reported by Simons <simons@ns1.foruto.com>
+1999/11/01	Added NS [UN]SUSPEND commands. A suspended nick may not be
+		    used or identified for. NS LIST and NS INFO have been
+		    updated accordingly.
+		Extended the NS LISTLINKS ALL replies to include the nick
+		    to which each nick is directly linked.
+1999/10/31	Updated AKILL addition code to support Bahamut's additional
+ 		    parameters.
+		The correct help for MS HELP SET LIMIT for sadmins is now
+		    shown. Reported by Norbert Schneider <bit@bitnet.ch>
+		Fixed MS INFO reply with regard to hard memo limits.
+		A nick's MS NOTIFY setting is now displayed in an MS INFO
+		    reply.
+1999/10/30	Added help for CS HELP SET PRIVATE. Reported by Norbert
+		    Schneider <bit@bitnet.ch>
+		The OPNOTICE flag is included in the "Options" line of a CS
+		    INFO reply.  Reported by Norbert Schneider <bit@bitnet.ch>
+1999/10/23	Added COUNT command to CS AKICK and CS ACCESS commands.
+		Made "Guest-nick" code more robust, ensuring a unique
+		    "Guest" ID within a 24 hour period.
+1999/10/18	Nicknames are once again set -r, after a nick change, if
+		    they are not registered or the user has not identified
+		    for it.  Reported by Norbert Schneider <bit@bitnet.ch>
+		Added FORBIDDEN and NOEXPIRE options back into CS LIST.
+		    Hopefully this is the last of the functionality that
+		    managed to get lost during Services' change of hands.
+		    Reported by Scott Drake <Services@sysopnet.org>
+1999/10/11	Completed initial Bahamut support. (NICK, SJOIN)
+1999/10/08	Changed default channel access level for ACC-CHANGE to 10.
+1999/10/02	SQLINE commands are now, and for the moment, silently ignored.
+		Completed initial support for the Bahamut TS3 protocol. (NICK)
+1999/09/27	Added -noexpire command line option to prevent all
+		    expirations.  From TODO, suggested by Martin Butler
+		    <ibm@qualitynet.org>
+		ChanServ now records who AKICKs are added by. From TODO,
+		    suggested by <andor@terrax.net>
+		Added the LISTLINKS command to the SADMIN command list
+		    returned by NS HELP.
+		AKILLs masks that contain a "!" are no longer accepted or
+		    added to the AKILL list.
+		AKILL masks are now converted to lowercase upon addition.
+		AKILL masks may not be "*@*".
+1999/09/25	Services can now send a wallops when an EXCEPTION is added.
+1999/09/24	Fixed cosmetic bug in the WallOSAkill message. Reported by
+		    Jozenobio de Melo Brasil <jozeph@globalmedia.com.br>
+1999/09/18	Added NOEXPIRE option to the AKILL and EXCEPTION LIST and
+		    VIEW commands. When supplied, only AKILLs/Exceptions
+		    that will not expire are shown.
+1999/09/13	Added "Linked to:" reply to the NickServ INFO ALL reply.
+		Fixed NS "Will not expire" reply to only show in an INFO ALL.
+
+Version 4.3
+-----------
+2000/12/12 .4	Fixed MemoServ crashing bug with forbidden channels (backport
+		    from 4.4.9).
+1999/10/11 .3	Fixed AKICK ENFORCE bug for empty channels. Reported by
+		    Michael Raff <raff@ElectroCity.com>
+1999/09/24 .2	Added support for "JOIN 0". Reported by <BeenJaminG@aol.com>
+		Fixed and updated the listnicks and listchans commands.
+		    Reported by Lim Cheng Siong <IRC@pagans.org>
+1999/09/18 .1	Corrected default channel options for new channels.
+1999/09/11	Updated Portuguese and Italian language files.
+1999/08/18 pre4	Services checks incoming +r user MODEs and sets -r if they're
+		    not for an identified nick.
+1999/08/16	Added missing "This channel does not expire" reply to INFO ALL.
+		    Reported by John Lamb <john@olympus.org>
+		Fixed a bug where some new config options, which are required,
+		    were not checked for. Reported by Joe Dabrowski
+		    <shadow@surferdude.com>
+		Users are now set -r when they change nicks. Reported by
+		    Joe Dabrowsk <shadow@surferdude.com>
+1999/08/15	Fixed "make import-db" compile bug. Reported by John Lamb
+		    <john@olympus.org>
+		To be considered an SAdmin, SOper or the Services Root, you
+		    must now be oper'ed. Suggested by mikado
+		    <mikado@holyfire.com>
+1999/08/05 pre3	A user's host is now hidden in an NICKSERV INFO reply,
+		    when they're online. This caters for ircds that mask
+		    a user's host in a /whois reply. Commented on and
+		    suggested by Kelmar Firesun <kfiresun@ix.netcom.com>
+		Changed the default access level for NOJOIN to -2.
+1999/08/04	Added some sanity checking to the +r channel mode code.
+1999/08/02	New channels now have SECURE enabled by default.
+1999/08/01	Added a reply to the AKICK ENFORCE command.
+		Required session limiting settings are checked for.
+		If LimitSessions and CheckClones are both enabled, a
+		    warning message is displayed and logged at startup.
+		Added support for DALnet's +r and +R channel modes.
+		Code provided by Michael Raff <raff@ElectroCity.com>
+1999/07/28	Fixed cosmetic bug in "AKICK already exists" reply.
+		    Reported by Michael Raff <raff@ElectroCity.com>
+1999/07/27 pre2 Fixed minor bug when setting +r for registered nicks.
+1999/07/10 pre1 Fixed NSSecureAdmins checks in NickServ code.
+		Updated example.conf with default settings that were not
+		    included in the pre0 release. (afaik, some new features
+		    in pre0 would not run without these settings -TheShadow).
+		OperServ's STATS ALL now includes the number of kilobytes
+		    Services has read from and written to it's hub.
+		The session-list stats are now separate from the OperServ
+		    stats. The exception stats are still combined with
+		    akills' and other OperServ related data.
+		Added AKICK ENFORCE command.
+		    From TODO, suggested by <uziel@ingsoc.com>
+1999/07/03 pre0	Incorporated numerous changes from Andrew Kempe:
+		    - Session limiting
+		    - Extended INFO for nick/chan owners, Services admins
+		    - +r nick mode for DALnet 4.4.15+
+		    - Forced nick changing for DALnet 4.4.15+
+1999/06/09	Fixed missing range checking for numeric lists.  Reported
+		    by Joao Pinto <joao_pinto@hotmail.com>
+1999/05/17	Fixed minor bug in TIME response.  Reported by Stefan Funke
+		    <bundy@germany.net>
+1999/05/10	configure script now uses sed instead of tr to avoid
+		    problems with broken tr on some systems (Solaris).
+1999/05/05	Added NSSecureAdmins configuration option.  Suggested by
+		    Andrew Kempe.
+1999/05/05	Disabled LISTIGNORE command (it's broken).  Reported by
+		    Chris Knipe <savage@pyro.za.net>
+
+Version 4.2
+-----------
+1999/04/29 .4	Fixed bug with UNLINK not doing parameter checking.
+1999/04/11 .3	Fixed bug causing ChanServ SET SUCCESSOR to crash.
+1999/04/04	Added Italian language file, courtesy of <d.duca@eurcom.net>
+1999/04/04	Changed KillClones behavior to kill only new users on clone
+		    detection (rather than all users).  Suggested by
+		    <uziel@ingsoc.com>
+1999/04/04	Added STREAMLINED option in Makefile to remove "fancy"
+		    options in order to increase processing speed.
+1999/04/02	Fixed another cosmetic bug with AKILL ADD.  Reported by
+		    <uziel@ingsoc.com>
+1999/03/31	Fixed compilation error on base irc2 servers.  Reported by
+		    <corax@sopron.hu>
+1999/03/31 .2	Fixed cosmetic bug on OperServ AKILL ADD announcements.
+		    Reported by <uziel@ingsoc.com>
+1999/03/31	Added reminder about README and FAQ to configure output.
+1999/03/30	Fixed bug with channel entry messages and OperServ RAW
+		    command.  Reported by <phantom@mail.uunet.com>
+1999/03/30	Fixed bug in NickServ LISTLINKS output.
+1999/03/13	NSEnforcerUser is now actually used by NickServ.  Bug
+		    reported by Stefan Funke <bundy@germany.net>
+1999/03/11 .1	Added NoSplitRecovery configuration option to disable
+		    recognition of users dropped by netsplits and force
+		    them to identify again.
+1999/03/11	Fixed cosmetic bug in ChanServ HELP SET SUCCESSOR.
+1999/03/11	Fixed crash bug in OperServ STATS ALL.
+1999/03/11	Fixed missing snprintf() parameter in NickServ LIST.
+1999/03/11 .0	Added CSRestrictDelay configuration option.
+1999/03/11	Fixed bug causing crashes on autokicks on expired or
+		    otherwise no-longer-existent nicks.
+1999/03/11	Fixed small bug in Makefile `install' target.
+1999/03/11	Added Year 2000 Readiness Disclosure section to README.
+1999/03/11	Fixed bugs in import-db.
+1999/03/10	Unknown configuration options are now warnings, not errors.
+1999/03/10	Fixed bug in NSEnforcerUser option handling.
+1999/03/10	OperServ AKILL LIST/VIEW now perform autokill expiration.
+1999/03/10	Added configuration option (WallAkillExpire) to send a
+		    WALLOPS/GLOBOPS when an autokill expires.  Suggested by
+		    Scott Seufert <scotts@qx.net>
+1999/03/10	Added expiration time to autokill wallops message.
+		    Suggested by Scott Seufert <scotts@qx.net>
+1999/03/10	Updated Portugese language file.
+1999/03/09	Fixed bug with /whois response.  Reported by
+		    <daemus@flash.net>
+1999/03/09	Modified messages in configure script and Makefile.
+1999/03/07	Added some robustness to user/channel code.
+1999/02/23	Fixed bug in ChanServ LIST w.r.t. forbidden channels.
+1999/02/21	Made default nickname options configurable in services.conf.
+1999/02/21	Added NickServ LISTLINKS command.
+1999/02/10	Fixed cosmetic error not counting some memory in STATS ALL
+		    output.
+1999/02/10	Services admins can now see PRIVATE channels in LIST.
+1999/02/10	Fixed crashes on modifying forbidden channels.
+1999/02/03	Added log message on bouncy mode detection.
+1999/02/03	Added workaround for AIX systems which define int{16,32}.
+		    Reported by <paddy@vt.edu>
+1999/02/03	Added NickServ UNLINK <nick> [pass] command format.
+1999/02/03	Added NSDisableLinkCommand directive to services.conf.
+1999/02/03	Fixed introduce_user() loop in readonly/skeleton mode.
+		    Reported by Bryce Newall <data@dreamhaven.net>
+1999/02/03	Added protection against infinite loops if a circular nick
+		    link is created.
+1999/02/01	Fixed crash when using a parameter with list{nicks,chans}.
+		    Reported by Guilherme Cox <cox@sinistro.net>
+1999/01/30	ChanServ SET SUCCESSOR with no parameter now unsets the
+		    successor.
+1999/01/30	Fixed off-by-one bug in ChanServ ACCESS and AKICK.
+1999/01/25	NickServ INFO will now inform the owner of a nick (or a
+		    Services admin) when a nick has NOEXPIRE set.
+		    Suggested by Michael Form <mikef@ot.com>
+1999/01/23	Added indication of no-expire (leading `!') in ChanServ
+		    LIST output.
+1999/01/23	Added configuration options for maximum length of
+		    NickServ/ChanServ LIST output.  Suggested by
+		    Scott Drake <ircadmin@sysopnet.org>
+1999/01/23	Split ListOpersOnly configuration option into
+		    NSListOpersOnly and CSListOpersOnly.
+1999/01/23	Fixed matching in NickServ LIST, and added FORBIDDEN and
+		    NOEXPIRE options.  Patch supplied by Andrew Kempe.
+1999/01/22	Fixed cosmetic bug in OperServ ADMIN/OPER commands.
+		    Reported by Evren Yurtesen <yurtesen@ispro.net.tr>
+1999/01/22	Fixed minor bug with -dir option.  Reported by Pete Ford
+		    <pford@ccinu.net>
+1999/01/21	Minor bug in NickServ SET NOEXPIRE fixed.  Reported by
+		    Andrew Kempe.
+1999/01/18	DEOP channel notice fixed.  Pointed out by Mauritz Antunes
+		    <mauritz@brasnet.org>
+1999/01/16	Services can now optionally log when a new maximum user
+		    count is reached.  Suggested by <lebleu@prefer.net>
+1999/01/16	Added TIME reply.
+1999/01/15	Made database load routines slightly more robust.
+1999/01/15	Fixed a potential problem allowing multiple identical
+		    autokicks to be added to a channel's autokick list.
+1999/01/15	NickServ SET HIDE USERMASK now also hides the usermask from
+		    LIST.  Suggested by Jason Kohles <jason@mediabang.com>
+1999/01/14	Added an option to kill on clone detection, against my
+		    better judgement.
+1999/01/12	Removed out-of-date messages from language files.
+1999/01/12	Incorporated skeleton mode into main code as a runtime (as
+		    opposed to compile-time) option.
+
+Version 4.1
+-----------
+1999/01/09	Fixed case where founding a channel with a slave nick would
+		    not allow founder access from the master nick.
+1999/01/07	Added support for PRIVMSG nick@server syntax as specified
+		    in RFC 1459.
+1999/01/04 .4	Fixed bug in ChanServ AKICK LIST.  Reported by
+		    Bob Sullivan <badz@pottsville.infi.net>
+1999/01/04	Auto-op and auto-voice are now permitted at levels <= 0.
+		    Reported by <dnar@concentric.net>
+1999/01/04	Minor code cleanup.
+1999/01/01	Fixed compilation in environments without [v]snprintf().
+		    Reported by <nick6@eskimo.com>
+1999/01/01 .3	Minor code cleanup.
+1999/01/01	MemoServ now responds to HELP SET LIMIT.
+1999/01/01	Services can now be set to WALLOPS/GLOBOPS when someone
+		    opers.  Suggested by Brent F. Daugherty.
+1998/12/31	Fixed a small bug in ChanServ INFO.  Reported by
+		    Michael Raff <raff@ElectroCity.com>
+1998/12/24	Nick access masks with capitalization in hostnames now work
+		    properly.  Reported by Michael Raff
+		    <raff@ElectroCity.com>
+1998/12/24 .2	Fixed cosmetic bugs in NickServ INFO.  Reported by Andrew
+		    Kempe.
+1998/12/24	NickServ SET URL/EMAIL now affects current nick instead of
+		    master nick for linked nicks.  Reported by Andrew Kempe.
+1998/12/23	ChanServ SET RESTRICTED now modifies NOJOIN level.
+1998/12/23	Fixed crash in listnicks/listchans.
+1998/12/23	Fixed crash on ChanServ ACCESS LIST with a nickname.
+		    Reported by Bob Sullivan <badz@pottsville.infi.net>
+1998/12/23	Eliminated warning on some Linux systems about a missing
+		    strsignal() prototype.  Fix provided by
+		    Jeremy T. Bouse <undergrid@undergrid.net>
+1998/12/22	Added check for <strings.h> in configure.
+1998/12/22	Fixed cosmetic bug in NickServ INFO display.
+1998/12/22 .1	Fixed bug in database file open() call.  Reported by
+		    Andrew Kempe.
+1998/12/22	Fixed bugs in the news system.
+1998/12/22	NickServ SET HIDE no longer affects information displayed
+		    to Services admins.
+1998/12/21	Fixed cosmetic bug in ChanServ SET PASSWORD log message.
+		    Reported by <joe@brasnet.org>
+1998/12/21	Changed initialization sequence to allow command-line
+		    parameters to override config file.
+1998/12/20 .0	Fixed cosmetic bug in NickServ/ChanServ main help.
+1998/12/20	Incorporated fix to Turkish language file for ChanServ
+		    ACCESS DEL problem.
+1998/12/19	Updated Portugese language file.
+1998/12/09	Language files no longer need to be complete to be used.
+		    Suggestion from Andrew Kempe.
+1998/12/09	Added configuration file support for most config.h options.
+1998/12/09	Automatic last-time updating now updates the correct nick
+		    for users of linked nicks.
+1998/12/08	Fixed some cases where defined service names/descriptions
+		    were not used when they should have been.
+1998/12/08	NickServ, ChanServ, MemoServ, and OperServ are now opered
+		    on ircd.dal networks as well as others.
+1998/12/08	Channel access list maximum length is now actually enforced.
+1998/12/07	Changing to the same nickname with a different case no
+		    longer disables kill protection.  Reported by
+		    <M.J.Ray@uea.ac.uk>
+1998/12/01	ChanServ log messages now use the channel's name as stored
+		    in the channel record (to preserve capitalization).
+1998/11/30	ChanServ auto-op and auto-voice are now correctly disabled
+		    when set that way.  Reported by Johnie Ingram
+		    <johnie@netgod.net>
+1998/11/23	NickServ SET PASSWORD now sets the password for the current
+		    nick even when the nick is linked to another.  Reported
+		    by <lebleu@prefer.net>
+1998/11/11	Fixed a typo in a contributor's E-mail address.
+1998/11/09	Database I/O routines now return sensible errno values.
+1998/11/06	Corrected ChanServ STATUS help text.
+1998/11/05	IRCIIHELP_NAME may now be undefined in config.h to remove
+		    the ircII pseudoclient.  Suggested by <admin@badnet.net>
+1998/11/04	NickServ RECOVER and GHOST now work correctly on linked
+		    nicks.  Reported by John Edrington <john@cosmicfire.net>
+1998/11/03	Added vsnprintf.c for systems lacking a real [v]snprintf().
+1998/11/02	Services now records the time a new user maximum is reached
+		    and saves both user count and time to disk.
+1998/11/01	Services admins can now bypass other users' memo limits
+		    when sending memos, and are no longer affected by the
+		    memo-send frequency limit.
+1998/11/01	Added options in config.h to cause Services to send a
+		    WALLOPS for more of the privileged commands.
+1998/11/01	Services admins can now use ChanServ AKICK ADD/DEL without
+		    identifying for the channel.
+1998/11/01	Moved all command syntax messages to language file.
+1998/11/01	Rewrote sgets() to use select() instead of alarm().
+1998/11/01	Added number list handling to MemoServ LIST.
+1998/11/01	Added number list handling and NEW option to MemoServ READ.
+1998/11/01	Added number list handling to ChanServ ACCESS and AKICK.
+		    Suggested by Andrew Kempe.
+1998/11/01	Moved compat.c routine declarations out of misc.c section
+		    in extern.h.
+1998/11/01	Added "reason" parameter to OperServ JUPE command.
+		    Suggested by <dnar@terrax.net>
+1998/11/01	Added error message for ChanServ AOP/SOP pointing to ACCESS
+		    command.  Suggested by <dnar@terrax.net>
+1998/10/31	Added channel successor field and ChanServ SET SUCCESSOR.
+		    Suggested by <dnar@terrax.net>
+1998/10/31	Added ChanServ SET OPNOTICE.  Suggested by Stefan Funke
+		    <bundy@germany.net>
+1998/10/31	Services admins can now use ChanServ ACCESS ADD/DEL without
+		    identifying for the channel.
+1998/10/31	Eliminated warnings from -Wparentheses with GCC.
+1998/10/31	Services now notifies all users of a set of linked nicks
+		    when a memo is sent to one of the set of nicks.
+1998/10/31	Added ChanServ SET LEAVEOPS command.  Suggested by
+		    Gary Greenlee <greenlee@lcs.net>
+1998/10/31	Improved database error recovery.  Services will no longer
+		    abort if it cannot save a database; added -forceload
+		    option to force loading of corrupt/truncated files.
+1998/10/29	Eliminated a potential security problem with file saving.
+1998/10/29	Clarified meaning of NICKMAX/CHANMAX in config.h.
+1998/10/29	Moved AKILL list functions to a separate file.
+1998/10/29	Added news system, based on code provided by Andrew Kempe.
+1998/10/29	AKILL list is now limited to 32767 entries to prevent
+		    load/save problems.  MAX_SERVOPERS and MAX_SERVADMINS
+		    are also limited to 32767 maximum.
+1998/10/29	Minor code changes/fixes.
+
+
+Version 4.0
+-----------
+1998/12/07 .9	Backported two security bug fixes from 4.1.0 source tree.
+1998/10/27 .8	ChanServ ACCESS LIST now obeys nicknames' SET HIDE USERMASK
+		    setting.  Reported by <dnar@terrax.net>
+1998/10/26	Fixed a stupid bug loading ChanServ/OperServ databases.
+1998/10/24	Added a new FAQ ("unable to load default language" error).
+1998/10/24 .7	Various fixes to the Turkish language file.
+1998/10/23	Bouncy mode checking is now done on a per-channel basis.
+1998/10/20	Minor optimizations in nickserv.c.
+1998/10/20	Minor changes to documentation.
+1998/10/20	Fixed bug in nickname registration failing to initialize
+		    channel count and maximum.  Reported by Jim Seamans
+		    <seamans@ida.net>
+1998/10/15 .6	Added kludge in sockutil.c to avoid spurious warnings.
+1998/10/15	Turkish support added, courtesy of <mikado@holyfire.com>
+1998/10/15	Minor fixes to language files.
+1998/10/15	Cosmetic bug fixed (finally) in error message from ChanServ
+		    REGISTER when not identified for nick.
+1998/10/14	lang/Makefile now sets file group correctly for installed
+		    language files.  Patch provided by <lebleu@prefer.net>
+1998/10/10	Moved ircu 2.10 to the "unsupported" section after reports
+		    of incompatibilities using Services with that daemon.
+1998/10/08	Minor change to services.h to eliminate a compile warning.
+		    Reported by Joe Dabrowski <shadow@surferdude.com>
+1998/10/08	German text snippet in FAQ corrected, thanks to Stefan
+		    Funke <bundy@germany.net>
+1998/10/06 .5	Spanish support added, courtesy of Jose R. Holzmann
+		    <joselito@sandnet.org> and Raul S. Villarreal
+		    <cheman@sandnet.org>
+1998/10/06	Cleaned up formatting in language files.
+1998/10/05	Removed local stuff from distribution Makefiles.
+1998/10/05	Added note in FAQ about why Services and ircd user counts
+		    may differ.
+1998/10/04	Fixed a stupid bug in memoserv()/operserv() nonexistent
+		    user handling.  Reported by Mauritz Antunes
+		    <mauritz@brasnet.org>
+1998/10/03	Fixed a minor bug in the Japanese EUC->JIS converter.
+1998/10/03 .4	Portuguese support added, courtesy of Mauritz Antunes
+		    <mauritz@brasnet.org>
+1998/10/02	When password is truncated for NickServ REGISTER, the
+		    truncated password is now displayed (instead of the
+		    original longer one).
+1998/09/29 .3	Added ircd 2.9.4 to the list of incompatible ircds.
+1998/09/28	/msg NickServ SET from a Services admin no longer crashes.
+		    Reported by Andrew Kempe.
+1998/09/28	Newly registered nicks no longer have a memo max of 0.
+		    Reported by Andrew Kempe.
+1998/09/27	Added response for /whois queries.  Suggested by
+		    Daniel Sterling <eqhmcow@rabbit.gvox.com>
+1998/09/27	Fixed cosmetic bug in main MemoServ help.  Reported by
+		    John Edrington <john@cosmicfire.net>
+1998/09/22	A warning is now sent when a password (for REGISTER or
+		    SET PASSWORD) is truncated.
+1998/09/22	NickServ now returns a syntax error message on
+		    REGISTER <nickname> <password>.
+1998/09/22	Minor changes to Japanese language file.
+1998/09/22	Added documentation to English language file about the
+		    difference between "Access denied" and "Permission
+		    denied".
+1998/09/22	Tweaked help messages for NickServ SET NOEXPIRE.
+1998/09/22	Access entry count and memo count for nicks now set to zero
+		    on NickServ LINK, to prevent possible crashes.
+		    Reported by <lebleu@prefer.net>
+1998/09/22	Added the ability for Services admins to use masks with
+		    NickServ LIST <nick>.  Also corrected failure to use
+		    linked nick data for that form of the command.
+1998/09/21 .2	Fixed a crashing bug on dropping forbidden channels.
+1998/09/20	Fixed a missing parameter for a NickServ notice.
+1998/09/17	Fixed crashes on nonexistent user record for messages to
+		    pseudoclients.  Reported by <joe@brasnet.org>
+		    Also fixed log messages for such cases.
+1998/09/16	Changed "make -C dir" syntax to "(cd dir ; make)" in
+		    Makefile to avoid compatibility problems.
+1998/09/16 .1	Minor code cleanup.
+1998/09/16	Removed bogus returns in operserv.c privilege checks.
+1998/09/15	Fixed several security/accounting problems with linked
+		    nicks.
+1998/09/15	Modified notice_help() to avoid problems with hungry
+		    sprintf()'s.  Reported by <badz@pottsville.infi.net>
+1998/09/15	Fixed cosmetic bugs in NickServ SET NOEXPIRE.  Reported by
+		    <badz@pottsville.infi.net>
+1998/09/15	Fixed minor bug in channel deletion routine which could
+		    crash on deleting a channel with memos.
+1998/09/15 .0	Release of version 4.0.0; see "WhatsNew" file for a summary
+		    of the change log below.
+1998/09/13	Compilation problems fixed for ircu 2.10.
+1998/09/13	Empty initial databases removed from distribution (they
+		    will be automatically created anyway).
+1998/09/08	Minor typo in MemoServ HELP SEND fixed.
+1998/09/08	MemoServ no longer denies help to unregistered nicks.
+1998/09/04	Fixed problem with memos to linked nicks going to the wrong
+		    memo list.
+1998/09/04	Fixed missing sprintf() parameter in NickServ error message.
+1998/09/02	Fixed spurious "No help available" messages when requesting
+		    help on certain topics.
+1998/08/31	Added more logging for channel deletions and founder
+		    changes.
+1998/08/29	New memo notices are once again sent to non-SECURE nicks on
+		    signon without requiring IDENTIFY.
+1998/08/28	New nicknames now default to having the SECURE option set
+		    (again).
+1998/08/27	Fixed misleading SQUIT message on OperServ RESTART command.
+1998/08/26	Fixed bad message when a Services admin sets their own memo
+		    limit to zero.
+1998/08/23	Fixed incorrect display of password when using NickServ
+		    SET PASSWORD without encryption.  Reported by
+		    Bryce Newall <data@dreamhaven.org>
+1998/08/21	SIGTERM now causes databases to be saved before exiting.
+		    Suggested by Johnie Ingram <johnie@netgod.net>
+1998/08/17	Fixed minor problems with channel entry messages.
+1998/08/13	Fixed bug preventing logging from working after a RESTART.
+		    Also removed small file descriptor leak.
+1998/08/13	Added infinite loop check in introduce_user().
+1998/08/13	Removed an extra call to fopen() in load_cs_dbase().
+1998/08/13	Corrected some problems with channel Secure Ops handling.
+1998/08/13	Fixed bugs in NickServ INFO display for linked nicks.
+1998/08/12	Fixed small bugs in autokick processing code.
+1998/07/15	Made default server information network-neutral.
+1998/07/15	Added debugging functions to code (define DEBUG_COMMANDS in
+		    config.h under OperServ section to enable).
+1998/07/15	If a nick is deleted or expires and is linked to another
+		    nick, then that link (not the actual nick data) is
+		    propogated to any children of the deleted nick.  Also
+		    fixed bugs in counting nick links.
+1998/07/14	Moved real-name (/whois) information for pseudo-clients
+		    into config.h.
+1998/07/10	Fixed configuration/compilation under AIX and FreeBSD.
+1998/07/09	Made Services recognize users by timestamp fields and
+		    carry over IDENTIFY if the user's timestamp, username,
+		    and hostname match those of last IDENTIFY
+1998/07/09	Enabled Services admins to use NickServ/ChanServ SET
+		    commands for any nick or channel.
+1998/07/09	Added warning when using ! in autokill masks.
+1998/07/09	Added detection of "mode bouncing" from misconfigured
+		    servers (e.g. missing U:lines).
+1998/07/07	Added debugging message to help track failure to recognize
+		    new users.
+1998/07/07	MemoServ INFO and SET LIMIT on another nick now follow
+		    links.
+1998/07/07	Changed MemoServ LIST/READ headers to be more accurate when
+		    dealing with channels.
+1998/07/07	Added missing nulls at the end of language-specific strings.
+1998/07/07	Corrected a number of missing/incorrect parameters in
+		    output function calls.
+1998/07/06	Added memos to channels.
+1998/07/06	Changed default memo wait time from 5 to 3 seconds.
+1998/07/06	Added __attribute__((format)) when compiling under GCC to
+		    functions taking printf()-like format strings.
+1998/07/02	Added SET NOEXPIRE command to NickServ and ChanServ.
+1998/06/30	Moved libraries after objects in link command line, as
+		    suggested by <tech@smartt.com> to fix compilation on
+		    OS/2.  Also added -os2 switch to configure, causing
+		    compiled program to be called "services.exe".
+1998/06/25	Made the error message for SET TOPIC on a nonexistent
+		    channel more sensible.
+1998/06/25	Added test for gethostbyname() and -lresolv in configure.
+1998/06/23	Fixed compilation error when CHECK_CLONES is not defined.
+		    Pointed out by <mikef@quadnet.net>
+1998/06/23	Fixed bug in configure script not setting int16/32 types.
+1998/06/23	Made ChanServ autokick code nick-link-aware.
+1998/06/23	Fixed stupid bug in strftime_lang().
+1998/06/22	Added NickServ SET KILL QUICK/IMMED options, as suggested
+		    by a number of people.  Disabled SET KILL IMMED by
+		    default in config.h.
+1998/06/19	Added tests for fork() and umask() in configure, and made
+		    other modifications suggested (by someone whose address
+		    got lost) to allow Services to compile under OS/2.
+1998/06/19	Made configure a little smarter about snprintf() return
+		    values.
+1998/06/19	Added support for interface address selection on multihomed
+		    hosts.  Suggested (ages ago) by Jim Gifford
+		    <jim@mail.RATH.PeachNet.EDU>
+1998/06/19	Services no longer tries to sent a WALLOPS when it gets
+		    rejected by its uplink server.
+1998/06/19	Finally got rid of that pesky TIMEZONE define.
+1998/06/19	Added MemoServ INFO command.
+1998/06/19	Made SET LIMIT available to normal users (only for
+		    themselves), and allowed 0 as a limit.
+1998/06/18	Made panic messages on expire / database save more readable.
+1998/06/18	Made MemoServ DEL understand ranges and commas.
+1998/06/18	More problems with ChanServ owned-channel counting fixed.
+1998/06/18	Nick link depth no longer limited, on the grounds that
+		    keeping track of it is a pain and time-consuming, and
+		    by the time someone causes trouble with long link lists,
+		    you'll have a gigantic database anyway and far more
+		    problems.  (Circular links are still checked for.)
+1998/06/17	Channel founder is now stored as a NickInfo *, not a string.
+1998/06/17	Fixed bugs in ChanServ owned-channel counting.
+1998/06/17	OperServ can now be set to wallops on use of MODE,
+		    CLEARMODES, and/or KICK commands.
+1998/06/17	Added OperServ CLEARMODES command.  Suggested by
+		    <kram@foonet.net>
+1998/06/16	Centralized pseudoclient command-handling code.
+1998/06/16	NickServ LINK now checks for circular links.
+1998/06/16	Memo notification is now only sent out after identification.
+1998/06/16	Nick status is now kept across nick changes for nicks that
+		    are linked to the same master nick.
+1998/06/16	Last quit message for nicks now recorded and displayed.
+1998/06/16	configure will now recognize -h, -help, and --help as
+		    options for displaying the script's help text.
+1998/06/16	Added option for message sent to users upon entering a
+		    channel.  Suggested by Joe Dabrowski
+		    <shadow@surferdude.com>
+1998/06/16	Separated language files from executable.
+1998/06/16	Trying to use a command without privileges now generates an
+		    "access denied" error instead of "unknown command".
+1998/06/15	Added NickServ LINK and UNLINK commands.
+1998/06/15	Finished a preliminary Japanese language module as
+		    proof-of-concept for multi-language support.
+1998/06/12	Moved initialization functions to init.c.
+1998/06/11	Killed a potential crash in ChanServ AKICK LIST.
+1998/06/11	Logging functions moved to new source file, log.c.
+1998/06/11	Services now warns on startup if opening the logfile fails.
+1998/06/10	Added initial support for linked nicks.
+1998/06/09	Added protocol ID string to initial log message.
+1998/06/09	Moved VERSION reply back to messages.c.
+1998/06/09	Fixed bugs in database load/save routines.
+1998/06/08	Added SET HIDE and SET LANGUAGE commands to NickServ.
+1998/06/08	Nicknames now default to having the SECURE flag set.
+		    Suggested by Mauritz Antunes <mauritz@brasnet.net>
+1998/06/08	Fixed an erroneous s_NickServ in chanserv.c.
+1998/06/08	ChanServ CLEAR command now respects mode locks, in a way.
+1998/06/08	ChanServ OP and DEOP commands now check for the existence
+		    of the channel before sending the MODE command.
+1998/06/05	Corrected cosmetic bug in ChanServ SET FOUNDER error
+		    message.
+1998/06/05	Help texts can now reference Services pseudo-client names.
+1998/06/05	Help texts updated and moved into language file.
+1998/06/05	(Useless) system error messages no longer logged on read
+		    errors.
+1998/06/04	Converted OperServ routines to use User * and
+		    multi-language support.
+1998/06/04	Fixed invalid memory access on OperServ GLOBAL syntax error.
+1998/06/04	Added new OperServ privilege level: Services operator,
+		    which can use MODE, KICK, and AKILL commands (these are
+		    now off-limits to other IRC operators).
+1998/06/04	Converted MemoServ routines to use User * and
+		    multi-language support.
+1998/06/04	MemoServ SEND now requires NickServ identification.
+1998/06/04	MemoServ now shows memo limit when warning of reaching it.
+1998/06/04	MemoServ no longer suggests READ LAST if there is one new
+		    memo but it is not the last one in the list.
+1998/06/04	Lots of cleanup to get the code to compile.
+1998/06/04	Removed all references to MemoLists.
+1998/06/04	The MemoServ SEND timer no longer restarts if a send fails
+		    because the recipient has too many memos.
+1998/06/02	Services version number now written to log file on startup.
+1998/06/01	NickServ/ChanServ SET URL/EMAIL now unset the given string
+		    if no parameter is passed.
+1998/06/01	NickServ internal routines now take User structures instead
+		    of nicknames.
+1998/06/01	Added preliminary multi-language support.
+1998/05/29	Merged memos into NickServ database and NickInfo.
+1998/05/29	Rewrote database load/save routines to avoid dependence on
+		    endianness and short/int/long size and to avoid
+		    alpha_insert_***().  Added compatibility load routines.
+1998/05/29	New "last quit message" field in NickInfo.
+1998/05/28	COMPATIBILITY_V2 is now undefined by default.
+
+===========================================================================
+
+Version 3.3
+-----------
+1998/07/10 .6	Fixed missing parameters in log() calls for bad passwords
+		    with NickServ RECOVER/RELEASE/GHOST.
+1998/07/05 .5	Fixed crashes with ChanServ AKICK.  Reported by
+		    McClain Looney <mcclain@stomped.com>
+1998/07/05	Fixed encryption compilation error.  Reported by
+		    Mauritz Antunes <mauritz@brasnet.org>
+1998/06/05 .4	Corrected user +o check in oper-only LIST code.  Pointed
+		    out by Joe Dabrowski <shadow@surferdude.com>
+1998/06/04 .3	Replaced a couple of findnick() calls with user->ni.
+1998/06/04	Fixed dangling pointer problems with dropping/expiring
+		    channels.
+1998/06/02	Added support for IRC STATS command.
+1998/06/02	Removed a leftover extra debugging line.
+1998/06/01	Fixed invalid memory access in NickServ RECOVER error
+		    response.
+1998/06/01	Fixed a typo in NickServ INFO error response.
+1998/06/01	Fixed dangling pointer problem when dropping one's nick.
+1998/06/01	Fixed dangling pointer problem on leaving channels.
+1998/06/01 .2	Fixed invalid memory accesses caused by ChanServ AKICK ADD
+		    under obscure conditions.
+1998/05/31	Newly registered channels now have a default mode lock of
+		    +nt.  Suggested by Mauritz Antunes <mauritz@brasnet.org>
+1998/05/31	Added buffering to network writes.
+1998/05/31	log()/log_perror() now preserve errno.
+1998/05/31	Added option in config.h to limit ChanServ/NickServ LIST
+		    command to IRC operators only.  Suggested by Joe
+		    Dabrowski <shadow@surferdude.com>
+1998/05/29 .1	Fixed stupid bug in chanserv.c trying to access freed
+		    memory.
+1998/05/29 .0	Fixed bug causing premature NULL to be returned from
+		    user/channel iteration functions.
+1998/05/29	Fixed problems with handling the channel name "#".
+1998/05/29	Put back support for USER message (fixing IRC protocol
+		    compatibility).
+1998/05/29	Cleaned up a bunch of warnings.
+1998/05/29	Added int16 and int32 types.
+1998/05/29	Added configure check for gettimeofday().
+1998/05/29	Got Services to compile again with -DSKELETON.
+1998/05/29	Added support for extended debugging in OperServ SET DEBUG.
+1998/05/28	Added buffering to network reads.
+1998/05/28	Fixed stupid user handling bug causing hangs after a nick
+		    change.
+1998/05/28	Times in the log are now recorded with microseconds when
+		    debugging is enabled.
+1998/05/28	Added extended debugging.
+1998/05/28 pre0	Changed NickServ STATUS output to include the word "STATUS"
+		    at the beginning of each line.
+1998/05/28	Added help file for ChanServ STATUS command.
+1998/05/28	Fixed a cosmetic bug in some of ChanServ's error messages.
+1998/05/28	Fixed bug introduced yesterday in channel ban handling.
+1998/05/27	Added DEBUG option to OperServ SET.
+1998/05/27	Made UPTIME a synonym for STATS in OperServ.
+1998/05/27	Added hashing to user and channel handling code.
+1998/05/27	Removed NS_LAST_SEEN_DELAY define; last-seen times are now
+		    updated at every expiration check (linear in the number
+		    of users online).
+1998/05/27	Massive code cleanup and optimization.
+1998/05/27	Services will now reintroduce its pseudo-clients if they
+		    are killed.
+1998/05/27	Fixed off-by-one error in access level range check for
+		    LEVELS command.
+1998/05/27	Fixed off-by-one error in check for autokick count limit.
+1998/05/27	ChanServ SET MLOCK no longer changes the current setting on
+		    a syntax error, and no longer allows the same flag to
+		    be locked both + and -.
+1998/05/27	Fixed three potential problems (memory leaks / crashes) in
+		    ChanServ REGISTER command.
+1998/05/27	Took out a potential crash in chanserv.c/get_access()
+		    (though the crashing code might have been unreachable).
+
+
+Version 3.2
+-----------
+1998/05/18 .4	Join/autokick handling put back more or less the way it
+		    used to be, cleaning up code slightly and killing a
+		    minor memory leak in the process.
+1998/05/15	Stopped misleading messages when killing the Services
+		    process with SIGTERM, SIGINT, or SIGQUIT.
+1998/05/08	Corrected minor typo in operserv.c.
+1998/05/07	Fixed problem with ChanServ not staying in a channel the
+		    second time a user tried to enter a FORBIDden channel
+		    (also the source of a small memory leak).
+1998/05/07	Fixed minor problems with nickname and channel flags as
+		    set on registration.
+1998/05/07 .3	Changed the default global noticer pseudo-client name to
+		    "Global".
+1998/05/07	Fixed broken data directory in 3.2.2 distribution.
+1998/05/06	ChanServ CLEAR BANS now actually clears all the bans on the
+		    channel.  Reported by <joe@brasnet.org>
+1998/05/06	Made auto-voice have a default level of 3 for all newly
+		    created channels.
+1998/05/06	Split ACCESS level of ChanServ LEVELS command into ACC-LIST
+		    and ACC-CHANGE, giving the latter a default access
+		    level of 1 (to prevent normal users from adding people
+		    with negative levels, as reported by <joe@brasnet.org>).
+1998/05/04 .2	Deleted/expired nicks are now removed from Services admin
+		    list.
+1998/05/04	OperServ ADMIN ADD now checks that added nicks are
+		    registered.  Pointed out by Matthew West
+		    <lonewolf@apotheosis.ml.org>
+1998/05/03	Nickname last-seen times are now updated every hour and at
+		    client disconnect.
+1998/05/03	More fixes and suggestions from Matthew West
+		    <lonewolf@apotheosis.ml.org>:
+		    - Exempted Services admins from the channel
+		          registration limit.
+		    - Clone warnings are logged as well as walloped.
+		    - Routine to modify new NickServ PRIVATE flag added.
+		    - OperServ KICK command now updates internal tables.
+		    - More missing/incorrect help files added/fixed.
+1998/05/01	Fixed typo in ChanServ SET EMAIL response.
+1998/05/01	Made LIST help for Services admins accessible.
+1998/05/01 .1	Added code to correct memo notification flags as
+		    incorrectly set in previous versions of Services.
+1998/05/01	Added an old Changes entry that was missing from this file.
+1998/05/01	Changed OperServ to not send RAKILLs on non-DALnet
+		    networks.
+1998/05/01	Made install-help's rm a bit more selective to avoid
+		    wiping out location-specific help files.
+1998/05/01	Changed Makefile and configure to use absolute paths to
+		    well-known programs like rm and cp.
+1998/05/01	Added/corrected several missing/incomplete/incorrect help
+		    files and messages.
+1998/05/01	Fixes and suggestions from Matthew West
+		    <lonewolf@apotheosis.ml.org>:
+		    - Memos now have a "new" (i.e. unread) flag.
+		    - Added READ LAST and LIST NEW commands to MemoServ.
+		    - When reading a memo, the time the memo was sent is
+		          displayed.
+		    - "Private" flag added to NickServ; nicknames with
+		          "Private" set can only be listed (LIST command)
+		          by Services admins.
+		    - Fixed problem (again) with ChanServ not staying in
+		          channels when it is supposed to.
+		    - OperServ now sends RAKILL on DALnet-style networks
+		          when an autokill expires.
+		    - Newly registered nicknames now have memo notification
+		          flags set instead of cleared.
+		    - Typos in help source files fixed.
+		    - Fixed problem in do_match_wild where case-sensitivity
+		          parameter was ignored for matches on "*".
+		    - "rm -f" corrected to "rm -rf" for Makefile's
+		          install-help rule (oops).
+1998/04/28 .0	Changed OperServ ADMIN command to allow anyone to list
+		    Services admins.
+1998/04/26	Added ADMIN command to OperServ for setting Services
+		    admins online, and added "root" privilege level
+		    (limited to one user defined in config.h).
+1998/04/26	Made server message processing more robust and modular.
+1998/04/06	Added name/URL fields to nickname and channel records.
+1998/04/05	~ at beginning of a username no longer ignored.
+1998/04/05	Fixes and suggestions from _Alex <root@alexnet.ml.org>:
+		    - Various encryption fixes.
+		    - OperServ now properly uses wallops() instead of
+		          send_cmd("GLOBOPS").
+		    - MOTD code optimized.
+		    - Option now available in config.h (WARN_BAD_OPERSERV)
+		          to send a wallops when a non-oper tries to use
+		          OperServ.
+1998/04/05	Added a debugging log line to HelpServ.
+
+
+Version 3.1
+-----------
+1998/04/02 .3	Added OperServ RESTART command to cause Services to restart
+		    itself (this behavior is also triggered by kill -HUP).
+1998/04/02	Added limit on frequency with which NickServ REGISTER
+		    command can be used.
+1998/04/01	Added secret option to make Services start spitting a
+		    stream of quarters from the floppy drive.
+1998/03/31	Added limit to number of channels a nickname can register.
+1998/03/27	Fixed crash from OperServ AKILL ADD with no parameters.
+		    Reported by _Alex <root@alexnet.ml.org>
+1998/03/20	Made snprintf() test in configure script stricter to catch
+		    snprintf()'s that don't actually check length, i.e. are
+		    sprintf() in disguise.
+1998/03/20	Fixed(?) problem with ChanServ not staying in channels when
+		    supposed to.
+1998/03/19	Fixed vsnprintf() replacement to be more consistent in its
+		    return values (i.e. always return the amount of data
+		    written to the string).
+1998/02/22	Miscellaneous fixes from Jeff Downs
+		    <downsja@polaris.clarkson.edu>
+1998/02/19 .2	Fixed a typo which caused nickname and channel data to
+		    not be saved.
+1998/02/18 .1	Moved compatibility routines from misc.c into new file
+		    compat.c.
+1998/02/18	Added workaround for broken include files that don't
+		    define needed constants (like NAME_MAX).
+1998/02/18 .0	Fixed various bugs in the new features.
+1998/02/16	Added "install-help" target to Makefile.
+1998/01/26	Added STATS AKILL command to OperServ; added default
+		    autokill expiry time.
+1998/01/23	Fixed diff-creating script to catch documentation files as
+		    well as source files.
+1998/01/22	Added memo notification control settings (MemoServ SET).
+1998/01/22	Added limit on number of memos a nick can have and how
+		    often a user can send out memos.
+1998/01/22	Centralized database opening code (moved out of
+		    load/save_*_db() into separate routines) and changed a
+		    few fatal error conditions to non-fatal.
+1998/01/22	Added expiry option to autokill entries; cleaned up other
+		    parts of operserv.c.
+
+
+Version 3.0
+-----------
+1998/01/15 .10	Minor help text clarifications.
+1998/01/14	Fixed excess auto-voicing.
+1998/01/13	Nickname SECURE setting now respected by NickServ RECOVER,
+		    GHOST, and RELEASE commands.
+1997/12/30 .9	Auto-voice is now checked upon entering a channel.
+		    Problem reported by <w0nder@mindless.com>
+1997/12/30	Fixed clone detection crashes.
+		    Patch from <azander@sweetwater.net>
+1997/12/09 .8	Setting read-only mode (either via command line or
+		    OperServ SET command) now closes the log file.
+1997/12/09	Various minor (mostly cosmetic) changes to main.c.
+1997/12/06	Crash in MOTD command fixed when MOTD file missing.
+		    Reported by Justyn Kemple <dragon@pacific.undertow.com>
+1997/12/02	Minor bug in NickServ GHOST command fixed.
+1997/11/24 .7	SKELETON compilation problems fixed.  Reported by
+		    Aaron Brady <insom@ircnet.ie>
+1997/11/24	Autokill code now correctly sends AKILL/GLINE.
+		    Reported by Aaron Brady <insom@ircnet.ie>
+1997/11/24	Extra conditional removed in version.[s]h.
+1997/11/18 .6	Fixed a security hole introduced by a half-written piece
+		    of code.  Reported by <jyoung@pionet.net>
+1997/11/18 .5	Corrected a typo in configure.
+1997/11/18	Replaced an erroneous +o by -o in do_deop().
+1997/11/18 .4	Fixed potential compatibility problems with classic IRC
+		    servers.
+1997/11/16	Several fixes from Jeff Downs <downsja@polaris.clarkson.edu>:
+		    - ChanServ CLEAR VOICES used mode -o instead of -v.
+		    - ChanServ OP/DEOP commands now update internal data
+		          structures.
+		    - WALLOPS/GLOBOPS from pseudo-clients now actually come
+		          from the pseudo-clients, not Services itself.
+		    - Default access level on SECUREOPS channels is now -1
+		          rather than 0.
+		    - DevNull MODE setting now uses name from config.h.
+		    - Excess code in check_akill() removed.
+		    - AKILLs are now sent to the network based on the mask
+		          from the AKILL list rather than the killed user's
+		          mask.
+1997/11/16	More USE_ENCRYPTION errors fixed.
+1997/11/14	Fixed syntax errors with USE_ENCRYPTION defined.
+		    Reported by <twolf@kc.net>
+1997/11/12	setpgrp() replaced with setpgid(0,0) for portability.
+1997/11/11	OperServ AKILL VIEW now displays the time an autokill was
+		    set rather than the current time.
+1997/11/10	Fixed another typo in strsignal().
+1997/11/10 .3	Experimental support for GLINE command added for those
+		    non-DALnet servers which support it.
+1997/11/10	OperServ MODE command now properly updates internal data
+		    structures.
+		    Reported by <guybug@microtec.bbs.net>
+1997/11/10	Fixed minor whitespace glitches in source.
+1997/11/10	Added missing semicolon that killed compiles on systems
+		    without strsignal().
+1997/11/08 .2	Took out stupid piece of debugging that prevented channel
+		    LEVELS settings from being retained on database load.
+1997/11/06 .1	Cosmetic fix for MemoServ error message.
+1997/11/06	NickServ ACCESS LIST <nick> now works.
+1997/11/06	Memos for a user are now deleted when the nick is dropped.
+1997/11/06	Fixed ChanServ STATUS command calling the wrong routine.
+1997/11/01 .0	Moved CP_ALL from Makefile to configure.
+1997/11/01	Modified configure to work with more Bourne-ish shells.
+1997/11/01	Fixed linked list loss in timeout.c.
+1997/10/30	Cured a consistent memory leak in process().
+1997/10/30	Allowed Services admins to view nickname access lists.
+1997/10/29	Added OperServ SET READONLY command.
+1997/10/29	Made OperServ SHUTDOWN command work properly.
+1997/10/29	Cleaned up main().
+1997/10/29	Removed excess "unknown message" loggage for numeric
+		    server replies.
+1997/10/20	A number of potential buffer overflows fixed.
+1997/10/20	READONLY implemented as a command-line option.
+1997/10/20	Services will now kill a user after a configurable number
+		    of bad password attempts (default 5).
+1997/10/20	It is no longer a fatal error for the database files to not
+		    exist (and thus be unable be renamed to backup names).
+1997/10/05	Finished implementing ChanServ LEVELS command, and cleaned
+		    up access level-related code.
+1997/10/04	Due to what appears to be a long-hidden bug, all non-nick
+		    entries on channel access lists from pre-v3 databases
+		    are now removed on startup.
+1997/10/02	Caused dropped/expired nicknames to be removed from channel
+		    access lists.
+1997/10/02	Fixed a minor memory leak related to dropping nicknames and
+		    channels.
+1997/09/30	Allowed Services admins to view channel access and autokick
+		    lists.
+1997/09/29	Disallowed registration of channels if a user is not
+		    recognized as and has not identified as the owner of
+		    the nickname s/he is using.
+1997/09/29	Changed wildcard matching for autokills to be
+		    case-insensitive.
+1997/09/29	Fixed a nasty bug in the wildcard matching routine which
+		    could cause many false matches.
+1997/09/25	Updated various help files.
+1997/09/25	Added STATUS command to NickServ.
+1997/09/20	Added (untested) encryption support.
+1997/09/20	Made configure script more robust; will now exit upon
+		    receiving EOF.
+1997/09/20	Fixed problems with using pre-v3.0 channel databases.
+1997/09/19	Made ChanServ/NickServ LIST command case-insensitive; exact
+		    nickname/channel name matches are now allowed as well.
+1997/09/19	Added strsignal() for those systems which do not have it.
+1997/09/19	Fixed preprocessor conditionals in extern.h.
+1997/09/12	Added code to make ChanServ stay in a channel for a short
+		    period of time after kicking a disallowed user from an
+		    empty channel.
+1997/09/12	Fixed a typo in ChanServ HELP SET MLOCK, and added warning
+		    about using MLOCK +k without RESTRICTED option.
+1997/09/12	Changed default READ_TIMEOUT to 10 seconds from 15.
+1997/09/12	Generalized timeout code and moved it out of nickserv.c.
+1997/09/08	Moved Services pseudo-client names to config.h.
+1997/09/08	Implemented ChanServ access level customization.
+1997/09/08	Limited ChanServ access list additions to registered
+		    nicknames for all channels (previously this applied
+		    only to SECURE channels).
+1997/09/08	Fixed a minor ChanServ bug which could cause access list
+		    additions to fail under obscure circumstances.
+1997/08/28	Replaced some hardcoded Services pseudo-client names with
+		    s_* strings.
+1997/08/27	Limited channel access levels to the inclusive range
+		    -9999..9999.
+
+===========================================================================
+
+Version 2.2
+-----------
+1997/08/23 .26	Fixed a minor bug in the configure script which caused
+		    compilation errors on systems without strerror().
+1997/08/21 .25	Fixed a stupid bug in introduce_user() w.r.t. classic ircd.
+1997/08/08 .24	Kludged around duplicate QUIT syndrome of Undernet ircd.
+1997/08/06	Added multi-server support to introduce_user().
+1997/07/24 .23	Fixed user leak caused by autokills.
+1997/07/20 .22	Fixed crashes in ChanServ CLEAR {OPS|VOICES}.
+1997/07/19	Added ALL option to OperServ STATS command to display
+		    Services memory usage.
+1997/07/??	Added initial support for different IRC servers.
+1997/07/15	Removed remaining occurrences of #define'd parameters
+		    (SERVER_NAME, etc.) and replaced them with runtime
+		    variables.
+1997/07/15	Added "Topic set by" field to ChanServ INFO command.
+1997/07/07 .21	Fixed bug in ChanServ CLEAR USERS command causing crashes.
+1997/07/02 .20	Removed last vestiges of domain dependence (global notice
+		    and MOTD).
+1997/07/02	Made IRC operators and Services ops immune from ChanServ
+		    channel restrictions (auto-deop, AKICK, and FORBID).
+1997/07/02	Made ChanServ SECURE mode actually work.
+1997/06/09 .19	Added ChanServ CLEAR command.
+1997/06/09	Fixed up UNBAN command (hopefully).
+1997/06/05 .18	Fixed a compilation error in process.c.
+1997/06/02 .17	Added workaround for servers that send a prefix with a
+		    NICK command for a new user.
+1997/05/30	Fixed the missing-character problem again (hopefully for
+		    good this time).
+1997/05/18 .16	Removed bug causing crashes when deleting AKILLs.
+1997/05/18	Made "<unknown>" work right this time.
+1997/05/04	Replaced empty string for AKILL setter with "<unknown>".
+1997/05/02	Touched up OperServ AKILL VIEW output (now includes the
+		    time each AKILL was set as well as who set it).
+1997/05/01 .15	Fixed security hole in MemoServ allowing anyone to read or
+		    delete another user's memos or send memos as another
+		    user.  (Reported by Arnold Hendriks)
+1997/04/30 .14	Fixed a nasty little problem which could cause the first
+		    character of an input line to be discarded.
+1997/04/30	Added OperServ AKILL VIEW command to list the creator
+		    of an autokill as well as the mask and reason.
+1997/04/30	Fixed up configure, which had been broken on machines
+		    where sh != bash.
+1997/04/25	Cosmetic fixes to KILL messages.
+1997/04/21	Changed AKILL to show who added an autokill in the list.
+1997/04/16 .13	Minor cosmetic fix in ChanServ ACCESS LIST.
+1997/04/16	Fixed security hole allowing users to add entries to
+		    channel access lists at levels higher than their own.
+		    (Reported by Jonathan Bobin)
+1997/04/06	Fixed bug causing crashes when trying to delete an AKILL
+		    which did not contain an "@" character.  Also
+		    disallowed adding any AKILLs without an "@" character.
+1997/04/05 .12	Fixed potential file descriptor leak in sockutil.c/conn().
+1997/04/05	RUNGROUP is now (correctly) no longer defined in sysconf.h
+		    if it is empty.
+1997/04/05	Fixed bug in install-script (source and destination
+		    reversed).
+1997/04/05	Cosmetic fixes in configure.
+1997/04/01	Added "Secure" option to ChanServ channel information
+		    display.
+1997/04/01 .11	Separated data installation routine from "make install"; it
+		    must now be called separately as "make install-data".
+1997/04/01	Fixed a bug which caused Services to crash randomly when
+		    the ChanServ ACCESS DEL command was used with an entry
+		    number instead of literal mask or nickname.
+1997/04/01	Fixed a cosmetic bug which could imply that certain entries
+		    existed on a channel access list when they in fact did
+		    not.
+1997/04/01	Plugged a security hole allowing users to effectively delete
+		    higher-level users from channel access lists.
+1997/04/01 .10	Corrected error in memo number when reporting a new memo to
+		    a user.
+1997/03/18	Fixed problem with ChanServ SET SECURE actually setting the
+		    Secure Ops flag.
+1997/03/16	Clarified help messages for oper forms of DROP command in
+		    NickServ and ChanServ.
+1997/03/08 .9	Fixed large security hole in ChanServ allowing users to
+		    delete other users with higher or equal access levels
+		    from channel access lists.
+1997/03/06	Nick and channel expiration is now logged.
+1997/03/06	Minor beautification work in OperServ STATS output.
+1997/03/04 .8	Services now sends KILL command before new NICK command
+		    when kill-enforcing a nick.
+1997/03/04	Changed default channel-expire period from 21 days to 14.
+1997/03/04	Implemented "suicide protection"; users can no longer
+		    ghost/recover themselves.
+1997/03/01	Fixed failure to remove autokilled users from user list.
+1997/03/01	Added note to FORBID help text that DROP command will
+		    reverse effect of FORBID.
+1997/02/09 .7	Added more debugging output for -debug.
+1997/02/04	Fixed bug causing crash on channel MODE +/-v.
+1997/02/02 .6	Fixed bug in MemoServ READ command.
+1997/02/02	Modified version.sh to recreate instead of modify version.h.
+1997/01/19	Fixed cosmetic bug in "listnicks" invocation of Services.
+1997/01/18 .5	Fixed big in ChanServ/NickServ LIST introduced by FORBID.
+1997/01/18	Fixed minor typo in ChanServ FORBID help text.
+1997/01/18	Made nick-kill timeouts a bit smarter about checking for
+		    changed/new nicks.
+1997/01/18 .4	FORBID command added to disallow certain channels and
+		    nicknames.
+1997/01/18	Use of log file increased: use of REGISTER, IDENTIFY, and
+		    DROP commands for NickServ and ChanServ is now logged.
+1997/01/18	Services ops can now drop channels and nicks in READONLY
+		    mode.
+1997/01/17 .3	Fixed potentially serious bug in ignore code.
+1997/01/15	Fixed compilation problem under SKELETON mode (last_check
+		    undeclared).
+1997/01/15	Fixed crash on OperServ RAW command with no parameters.
+1997/01/14 .2	Services now saves databases and quits upon receipt of
+		    SIGHUP.
+1997/01/14	Fixed Services op recognition.
+1997/01/14	Added DEOP command to ChanServ.
+1997/01/13 .1	Moved some configuration options from Makefile to
+		    configure.
+1997/01/12	Moved Services ops definition from operserv.c to config.h.
+1997/01/12 .0	Added patch-level version number.
+1997/01/12	Added SET IGNORE command to OperServ to enable/disable
+		    ignore code.
+1997/01/10	Created "configure" script.
+
+
+Version 2.1
+-----------
+1997/01/10	Added OP command to ChanServ.
+1996/12/30	Added "clean quit" which saves the databases (shutdown).
+1996/12/30	Added MOTD command to Services, changed DevNull/EsperNet
+		    default modes to +i.
+1996/12/22	Added JUPE command to OperServ.
+1996/12/14	Fixed MemoServ "READ <num>" behavior.
+1996/12/14	Added strspn() to misc.c for systems with a buggy
+		    implementation.
+1996/12/14	Fixed crash on server PING.
+1996/11/24	Added ignore code to protect against denial of service.
+
+
+Version 2.0
+-----------
+1996/11/23	Corrected PING/PONG behavior.
+1996/11/23	Corrected bug in AutoKick list size limit.
+		Fixed null-pointer bug in operserv.c/do_akill().
+		Set up main Services to recover from nick collisions (such
+		    as when a net-join brings backup Services online at the
+		    same time as regular Services).
+		Moved NickServ/ChanServ/MemoServ help messages into
+		    HelpServ database.
+		Added SECURE options to NickServ and ChanServ.
+		Added GLOBAL (send global notice) and STATS
+		    (network/Services statistics) commands to OperServ.
+		Added limit to size of AutoKick list for a registered
+		    channel.
+		Implemented "read-only" mode for backup copies of Services.
+		Fixed channel mode-locking of keys.
+		Fixed restoration of blank topics.
+		Kludged to get ChanServ SET TOPIC working.
+		Fixed ChanServ's failure to record topic changes for
+		    registered channels with topic retention set.
+		Created HelpServ.
+
+===========================================================================
+
+Version 1.1
+-----------
+1996/08/29	Added VERSION reply.
+1996/08/29	Created this file.

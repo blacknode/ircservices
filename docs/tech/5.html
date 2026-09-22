@@ -1,0 +1,1540 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 5. IRC server interface</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">5. IRC server interface</h2>
+
+<p class="section-toc">
+     5-1. <a href="#s1">Protocol modules: the IRC protocol bridge</a>
+<br/>5-2. <a href="#s2">Specifying protocol features</a>
+<br/>5-3. <a href="#s3">Sending messages to the network</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-3-1. <a href="#s3-1">Required functionality</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-3-2. <a href="#s3-2">Optional functionality</a>
+<br/>5-4. <a href="#s4">Receiving messages from the network</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-4-1. <a href="#s4-1">Required functionality</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-4-2. <a href="#s4-2">Optional functionality</a>
+<br/>5-5. <a href="#s5">Other functions of protocol modules</a>
+<br/>5-6. <a href="#s6">Specific protocol module details</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-1. <a href="#s6-1"><tt>protocol/rfc1459</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-2. <a href="#s6-2"><tt>protocol/ts8</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-3. <a href="#s6-3"><tt>protocol/dalnet</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-4. <a href="#s6-4"><tt>protocol/dreamforge</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-5. <a href="#s6-5"><tt>protocol/bahamut</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-6. <a href="#s6-6"><tt>protocol/hybrid</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-7. <a href="#s6-7"><tt>protocol/inspircd</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-8. <a href="#s6-8"><tt>protocol/monkey</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-9. <a href="#s6-9"><tt>protocol/ptlink</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-10. <a href="#s6-10"><tt>protocol/ratbox</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-11. <a href="#s6-11"><tt>protocol/solidircd</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-12. <a href="#s6-12"><tt>protocol/trircd</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-13. <a href="#s6-13"><tt>protocol/undernet-p9</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-6-14. <a href="#s6-14"><tt>protocol/unreal</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5-6-14-1. <a href="#s6-14-1">Module prologue</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5-6-14-2. <a href="#s6-14-2">Message receiving</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5-6-14-3. <a href="#s6-14-3">Message sending</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5-6-14-4. <a href="#s6-14-4">Module initialization and cleanup</a>
+<br/>5-7. <a href="#s7">Auxiliary source file details</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-7-1. <a href="#s7-1"><tt>banexcept.c</tt>, <tt>banexcept.h</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-7-2. <a href="#s7-2"><tt>chanprot.c</tt>, <tt>chanprot.h</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-7-3. <a href="#s7-3"><tt>halfop.c</tt>, <tt>halfop.h</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-7-4. <a href="#s7-4"><tt>invitemask.c</tt>, <tt>invitemask.h</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-7-5. <a href="#s7-5"><tt>sjoin.c</tt>, <tt>sjoin.h</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-7-6. <a href="#s7-6"><tt>svsnick.c</tt>, <tt>svsnick.h</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;5-7-7. <a href="#s7-7"><tt>token.c</tt>, <tt>token.h</tt></a>
+</p>
+
+<p class="backlink"><a href="4.html">Previous section: The module system</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="6.html">Next section: Database handling</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">5-1. Protocol modules: the IRC protocol bridge</h3>
+
+<p>While the "official" IRC protocol is defined in the document
+<a href="http://www.ietf.org/rfc/rfc1459.txt">RFC 1459</a>
+<span class="remotehost">[www.ietf.org]</span>, modern IRC servers have
+added many extensions to this base protocol over the years, and the current
+state of IRC software is such that it is rare to find an IRC server
+implementation that can communicate with a different implementation.  This
+makes the job of Services considerably more difficult, as it must
+communicate with servers in order to perform its job, and there is no
+telling what implementation a particular network administrator will choose.</p>
+
+<p>In order to overcome these differences in protocol, Services makes use
+of <i>protocol modules</i>, a class of modules which interface between the
+generic IRC server implemented by the Services core and the specific
+protocols used by different IRC server implementations.  While there are
+some basic assumptions made by the core code about the protocol&mdash;for
+example, that the protocol uses lines of text terminated by a CR/LF
+pair&mdash;most differences seen in current IRC servers can be handled by
+protocol modules.</p>
+
+<p>The standard protocol modules distributed in Services are located in the
+<tt>modules/protocol</tt> directory, along with auxiliary source and header
+files that implement functionality common to multiple protocols.  This
+location is not a requirement, however; third-party modules can be located
+in different directories, provided that they implement the required
+functionality described in this section.</p>
+
+<p>Note that, in order to simplify the module initialization process,
+Services requires that a protocol module be loaded before any other
+modules; this requirement is enforced by the <tt>load_module()</tt>
+routine, as discussed in <a href="4.html#s3-1">section 4-3-1</a>.  A number
+of pseudoclient modules alter their behavior depending on features of the
+IRC protocol in use, such as maximum nickname length or support of certain
+nonstandard IRC messages, and this requirement allows such modules to
+simply check the protocol information without having to ensure that a
+protocol module has been loaded (and subsequently watch for protocol module
+loads and unloads).  <i>Implementation note: Although <tt>load_module()</tt>
+ensures that a protocol module is loaded first, <tt>unload_module()</tt>
+does <b>not</b> prevent protocol modules from being unloaded!  Protocol
+modules should therefore use an <tt>exit_module()</tt> routine that returns
+zero on any unload attempt, except during shutdown.  The modules included
+with Services all exhibit this behavior.</i></p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">5-2. Specifying protocol features</h3>
+
+<p>In addition to providing the functionality listed in subsequent
+sections, protocol modules must inform Services of certain information
+about the protocol in use.  This is done by setting the following global
+variables (defined in <tt>send.c</tt>) in the module's <tt>module_init()</tt>
+routine:</p>
+
+<dl>
+<dt><tt>const char *protocol_name</tt></dt>
+    <dd>Specifies the name of the protocol supported by the module.  This
+	variable is provided for informational purposes only.  (The current
+	core code does not make any use of the variable.)</dd>
+
+<dt><tt>const char *protocol_version</tt></dt>
+    <dd>Specifies the version(s) of the protocol supported by the module,
+	if applicable (the variable may be left unset if there is only one
+	version of the protocol).  This variable is provided for
+	informational purposes only.</dd>
+
+<dt><tt>int32 protocol_features</tt></dt>
+    <dd>Specifies particular features supported by the protocol.  The value
+	should be a combination (bitwise OR) of zero or more of the
+	following flags:
+	<ul>
+	    <li><b><tt>PF_HALFOP</tt>:</b> Supports a "half-op" channel
+		user mode (such as <tt>+h</tt> as used with the Unreal
+		protocol).</li>
+	    <li><b><tt>PF_CHANPROT</tt>:</b> Supports a "protected" channel
+		user mode (such as <tt>+a</tt> as used with the Unreal
+		protocol).</li>
+	    <li><b><tt>PF_BANEXCEPT</tt>:</b> Supports channel ban
+		exceptions.</li>
+	    <li><b><tt>PF_SZLINE</tt>:</b> Supports an <tt>SZLINE</tt> or
+		similar server-to-server command to ban an IP address from
+		connecting to any server on the network.</li>
+	    <li><b><tt>PF_NOQUIT</tt>:</b> Uses "NOQUIT" mode, in which
+		servers do not send <tt>QUIT</tt> messages for affected
+		clients when a netsplit occurs (see, for example,
+		<a href="#s6-5">section 5-6-5</a>).</li>
+	    <li><b><tt>PF_SVSJOIN</tt>:</b> Supports an <tt>SVSJOIN</tt> or
+		similar server-to-server command to force a client to join a
+		channel.</li>
+	    <li><b><tt>PF_CHANGENICK</tt>:</b> Supports a method through
+		which a server can forcibly change a client's nickname.</li>
+	    <li><b><tt>PF_AKILL_EXCL</tt>:</b> Supports autokill exclusions
+		(exceptions to network-wide bans as set by the OperServ
+		<tt>AKILL</tt> command).</li>
+	    <li><b><tt>PF_MODETS_FIRST</tt>:</b> Sends the timestamp in a
+		channel <tt>MODE</tt> message immediately after the channel
+		name, rather than at the end of the message.</li>
+	    <li><b><tt>PF_INVITEMASK</tt>:</b> Supports channel invite
+		masks (masks allowing users who match to join an
+		invite-only channel without being invited, such as the
+		<tt>+i</tt> channel mode as used with the Unreal
+		protocol).</li>
+	</ul>
+	Note that <tt>protocol_features</tt> is initialized to a value of
+	<tt>PF_UNSET</tt> to detect whether its value has been changed, so
+	the protocol module should use a direct assignment (rather than an
+	OR-assignment) to set the value.</dd>
+
+<dt><tt>int protocol_nickmax</tt></dt>
+    <dd>Specifies the maximum number of characters (bytes) allowed in a
+	nickname.</dd>
+</dl>
+
+<p><tt>send.c</tt> hooks into the "<tt>load module</tt>" callback to check
+that these variables, as well as the functions listed in
+<a href="#s3-1">section 5-3-1</a>, are appropriately set when a protocol
+module is loaded, generating a fatal error if not.  <i>Implementation note:
+As mentioned in <a href="2.html#s5-1">section 2-5-1</a>, there is nothing
+to mark a protocol module as being such, so the callback function simply
+assumes that the first module loaded is a protocol module.</i></p>
+
+<p>There are also three variables which can be optionally set as needed:</p>
+
+<dl>
+<dt><tt>const char *pseudoclient_modes</tt></dt>
+    <dd>Specifies the user modes, if any, that should be set on any newly
+	introduced pseudoclient; a leading "<tt>+</tt>" should <i>not</i>
+	be added.  For example, if a protocol includes a user mode
+	specifically for pseudoclients, that mode should be set here.
+	Defaults to the empty string (no modes).  Note that mode
+	<tt>o</tt> (operator privilege) should <i>not</i> be specified even
+	if some pseudoclients need operator privileges to perform their
+	functions; use <tt>pseudoclient_oper</tt> for that instead (see
+	below).</dd>
+
+<dt><tt>const char *enforcer_modes</tt></dt>
+    <dd>Specifies the user modes, if any, that should be set on
+	pseudoclients used as nickname enforcers.  Defaults to the empty
+	string (no modes).</dd>
+
+<dt><tt>int pseudoclient_oper</tt></dt>
+    <dd>Indicates whether pseudoclients which perform actions restricted to
+	IRC operators need the IRC operator user mode (<tt>+o</tt>) set.
+	Defaults to 1, causing this mode to be set (0 disables
+	<tt>+o</tt>).</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">5-3. Sending messages to the network</h3>
+
+<p>The bulk of a protocol module consists of routines to send messages to
+and process messages from the network, handling any peculiarites of the
+particular protocol in use.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-1">5-3-1. Required functionality</h4>
+
+<p>A number of the common message sending operations defined in
+<tt>send.c</tt> are defined as function pointers, which the protocol
+module must set to point to appropriate functions (by default, they point
+to a placeholder function which generates a fatal error).  These function
+pointers (see <a href="2.html#s5-1">section 2-5-1</a> for descriptions of
+the functions) are:</p>
+
+<ul>
+<li><tt>void (*<b>send_nick</b>)(const char *<i>nick</i>,
+	const char *<i>user</i>, const char *<i>host</i>,
+	const char *<i>server</i>, const cahr *<i>name</i>,
+	const char *<i>modes</i>)</tt></li>
+<li><tt>void (*<b>send_nickchange</b>)(const char *<i>nick</i>, const char *<i>newnick</i>)</tt></li>
+<li><tt>void (*<b>send_namechange</b>)(const char *<i>name</i>, const char *<i>newname</i>)</tt></li>
+<li><tt>void (*<b>send_server</b>)()</tt></li>
+<li><tt>void (*<b>send_server_remote</b>)(const char *<i>server</i>, const char *<i>desc</i>)</tt></li>
+<li><tt>void (*<b>wallops</b>)(const char *<i>source</i>, const char *<i>fmt</i>, ...)</tt></li>
+<li><tt>void (*<b>notice_all</b>)(const char *<i>source</i>, const char *<i>fmt</i>, ...)</tt></li>
+<li><tt>void (*<b>send_channel_cmd</b>)(const char *<i>source</i>, const char *<i>fmt</i>, ...)</tt></li>
+</ul>
+
+<p>Protocol modules must also provide a handler for the "<tt>set
+topic</tt>" callback.  The callback function should have the following
+signature:</p>
+
+<div class="code">int set_topic_handler(const char *<i>source</i>,
+                      Channel *<i>c</i>,
+                      const char *<i>topic</i>,
+                      const char *<i>setter</i>,
+                      time_t <i>t</i>)</div>
+
+<p>This callback is called twice for each time the topic is set.  The first
+call is made before the <tt>Channel</tt> structure is changed, and
+<tt><i>topic</i></tt>, <tt><i>setter</i></tt>, and <tt><i>t</i></tt> are
+filled in with the new topic text, the nickname to be used as the topic
+setter, and the timestamp for the topic.  The second call is made after
+the <tt>topic</tt> and <tt>topic_setter</tt> fields of the <tt>Channel</tt>
+structure have been set to the new values, and the corresponding parameters
+to the callback (<tt><i>topic</i></tt> and <tt><i>setter</i></tt>) are
+<tt>NULL</tt> for this call.  Note that the <tt>topic_time</tt> field is
+<i>not</i> set by the core, and must be set appropriately by the callback
+function; this is because some protocols require that the timestamp of a
+channel topic must be newer or older than the current topic's timestamp for
+the new topic to be accepted.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-2">5-3-2. Optional functionality</h4>
+
+<p>In addition to the functions listed above, the OperServ modules
+implementing the autokill and S-line functionality (see sections
+<a href="7.html#s2-2-2">7-2-2-2</a> and <a href="7.html#s2-2-3">7-2-2-3</a>)
+register message-sending callbacks which they expect the protocol module to
+hook into if it supports the relevant messages.  These callbacks (see
+<a href="c.html#s3">Appendix C</a> for details) are:</p>
+
+<ul>
+<li><tt><b>send_akill</b></tt>: Sends an autokill to the network.</li>
+<li><tt><b>cancel_akill</b></tt>: Clears an autokill from the network.</li>
+<li><tt><b>send_exclude</b></tt>: Sends an autokill exclusion to the network.</li>
+<li><tt><b>cancel_exclude</b></tt>: Clears an autokill exclusion from the network.</li>
+<li><tt><b>send_sgline</b></tt>: Sends an SGline to the network.</li>
+<li><tt><b>cancel_sgline</b></tt>: Clears an SGline from the network.</li>
+<li><tt><b>send_sqline</b></tt>: Sends an SQline to the network.</li>
+<li><tt><b>cancel_sqline</b></tt>: Clears an SQline from the network.</li>
+<li><tt><b>send_szline</b></tt>: Sends an SZline to the network.</li>
+<li><tt><b>cancel_szline</b></tt>: Clears an SZline from the network.</li>
+</ul>
+
+<p>If any of the callbacks are left unsupported, Services will simply send
+a <tt>KILL</tt> or other appropriate message each time the autokill or
+S-line is triggered.  (However, hooking into a "send" callback but not the
+corresponding "cancel" callback can have undesirable consequences!)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s4">5-4. Receiving messages from the network</h3>
+
+<p>While basic message parsing and processing is handled by the Services
+core, it is up to protocol modules to handle details of the particular
+protocol as well as additional messages used by the protocol.</p>
+
+<p>In Services, processing of received messages is handled using tables of
+message names and corresponding processing routines, as described in
+<a href="2.html#s5-3">section 2-5-3</a>.  Protocol modules will typically
+define a message table for messages handled by the module, and call
+<tt>register_messages()</tt> to register the message table during module
+initialization.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-1">5-4-1. Required functionality</h4>
+
+<p>The only functionality required in protocol modules is the ability to
+recognize new clients connecting to the network and clients changing
+nicknames.  As described in <a href="2.html#s5-3">section 2-5-3</a>, the
+<tt>NICK</tt> and <tt>USER</tt> messages are not supported by the Services
+core because of the differences between protocols in handling them; thus,
+the protocol module must supply its own handler routines for these
+messages, or whatever other messages may be used in their place.</p>
+
+<p>However, in many protocols there are other messages which must be
+handled properly to maintain the network state.  These, of course, must be
+processed accordingly as well.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-2">5-4-2. Optional functionality</h4>
+
+<p>As described above, modules can add support for additional messages
+through a message table; the default processing for core-handled messages
+can be changed the same way, if (for example) a message takes a different
+set of parameters than the "standard" server assumed by the core code.</p>
+
+<p>There are some types of functionality shared among several servers, such
+as the <tt>SJOIN</tt> message used in protocols such as Bahamut and Unreal
+to update a channel's state with one message, or the "token" systems used
+by some protocols to reduce the bandwidth and processing required for
+inter-server messages.  These are implemented by separate source files,
+which can be included in the module's source to implement the particular
+functionality.  These are described in <a href="#s7">section 5-7</a>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s5">5-5. Other functions of protocol modules</h3>
+
+<p>Aside from handling the sending and receiving of messages particular to
+the protocol, protocol modules must handle any other aspect of
+server-to-server communication that is not done in the core.  Chief among
+these is the handling of protocol-specific modes.</p>
+
+<p>Many IRC server implementations add new modes to the basic set; the
+module must be able to recognize and process these modes appropriately.
+This can be done using the core mode-handling facility (see
+<a href="2.html#s6-4">section 2-6-4</a>), or by hooking into the
+<tt>MODE</tt> message callbacks "<tt>user MODE</tt>" and
+"<tt>channel MODE</tt>" (in the case of modes that take parameters, it is
+usually necessary to use the latter method in order to store the parameter
+values in the channel structure).  The module may also need to hook into
+various pseudoclient callbacks; see the relevant parts of
+<a href="7.html">section 7</a>, or see the description of the Unreal
+protocol module, which uses most of these callbacks, in
+<a href="#s6-14">section 5-6-14</a> below.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s6">5-6. Specific protocol module details</h3>
+<p>This section describes each of the protocol modules supplied with
+Services.  In addition to the source file for the module itself, some
+protocol modules make use of auxiliary source files in the same directory;
+these files are described in detail in <a href="#s7">section 5-7</a>.  For
+the most part, each subsection only covers details unique to that
+particular module, but the <tt>protocol/unreal</tt> module
+(<a href="#s6-14">section 5-6-14</a>), which makes use of almost all
+protocol-related functionality, is discussed in more detail.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-1">5-6-1. <tt>protocol/rfc1459</tt></h4>
+
+<p>The <tt>protocol/rfc1459</tt> module provides an interface for servers
+which strictly follow the standard IRC protocol, as defined in RFC 1459.
+While few if any such servers still remain in operation, this module serves
+as a reference implementation for Services.</p>
+
+<p>Since the generic IRC server implemented by Services is very similar to
+the RFC 1459 standard, this module is rather straightforward.  In a format
+shared by the other standard protocol modules as well, the module is
+divided into four major parts: routines to process received IRC messages,
+routines to send IRC messages, callback functions, and module-related
+functions and variables.</p>
+
+<p>The only received messages which need special processing are the
+<tt>NICK</tt> and <tt>USER</tt> messages used for introducing clients.
+The module ignores the <tt>NICK</tt> message, assuming that the remote
+server will take care of checking for collisions with the nicknames of any
+pseudoclients introduced by Services, and uses the parameters to the
+<tt>USER</tt> message to initialize the client's data record.  Before
+calling <tt>do_nick()</tt> to perform this action, the handler for the
+<tt>USER</tt> message, <tt>m_user()</tt>, sets up a new parameter list
+with the parameters in the order <tt>do_nick()</tt> expects them, filling
+in default values for parameters unavailable in the RFC 1459 protocol.
+(Technically, the hop count parameter is available from the <tt>NICK</tt>
+message, but since it would take considerable extra effort to save this
+value until the <tt>USER</tt> message arrived, and since the hop count is
+not used by Services anyway, this field is simply discarded and a default
+value of 0 used.)</p>
+
+<p>The message-sending routines are likewise simple, for the most part.
+The only routine that deserves special mention is the
+<tt>do_notice_all()</tt> routine, which implements the <tt>notice_all()</tt>
+function of <tt>send.c</tt>.  Since the RFC 1459 protocol does not permit a
+wildcard target of a <tt>NOTICE</tt> (or <tt>PRIVMSG</tt>) to be a simple
+"<tt>*</tt>", which would target all clients on the network, the module
+uses the <tt>NetworkDomain</tt> configuration setting, if available, to
+create a more-specific server wildcard mask which will still target all
+clients on the network.  If this setting is not available, the routine
+iterates through some common top-level domains (<tt>.com</tt>,
+<tt>.net</tt>, <tt>.org</tt>, and <tt>.edu</tt>) in an attempt to reach as
+many clients as possible.</p>
+
+<p>There is only one callback function defined by the module; it hooks into
+the "<tt>set&nbsp;topic</tt>" callback, used for setting channel topics
+(see <a href="2.html#s6-5">section 2-6-5</a>).  Since RFC 1459 places no
+restrictions on topic-changing messages from servers, the callback simply
+sends out a <tt>TOPIC</tt> message on the first call, ignoring the second.</p>
+
+<p>The module initialization routine sets the protocol-specific variables
+(<tt>protocol_name</tt>, <tt>protocol_version</tt>, and so on&mdash;since
+there are no "versions" associated with RFC 1459, the version string is
+left empty), installs the handlers for the <tt>NICK</tt> and <tt>USER</tt>
+messages, adds the topic-setting routine to the "<tt>set&nbsp;topic</tt>"
+callback, and installs the function pointers for the various message
+sending operations.  Of these, the module cleanup routine removes the
+callback function and message handlers, but it leaves the protocol
+variables and message sending function pointers alone; this is a shortcut
+based on the assumption that the module will never be unloaded at runtime
+(this assumption is enforced by returning zero to refuse unloading if the
+<tt><i>shutdown</i></tt> parameter to the cleanup function is false).</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-2">5-6-2. <tt>protocol/ts8</tt></h4>
+
+<p>TS8 was one of the earliest additions made to the IRC protocol, and
+includes timestamp (often called TS) values with many messages to indicate
+the time at which certain actions took place.  The addition of timestamps
+allowed, among other things, less disruption of the network during
+netjoins; in the case of a nickname collision, for example, timestamps made
+it possible to determine which user was the first claimant on a nickname
+and kill only the second user, rather than killing both of them as the
+original protocol called for.</p>
+
+<p>Other than the addition of timestamps into some IRC messages, the
+<tt>protocol/ts8</tt> module, which supports TS8 as used in the
+<tt>ircd-2.8</tt> series of IRC servers (specifically tested with
+<tt>ircd-2.8.21+TS8</tt>), is very similar to the <tt>protocol/rfc1459</tt>
+module.  The one difference worth noting is in the operation of the
+"<tt>set&nbsp;topic</tt>" callback.  Under TS8, a server receiving a
+<tt>TOPIC</tt> message from another server will give preference to the
+topic with the older timestamp, ignoring the <tt>TOPIC</tt> message if it
+specifies a timestamp newer than that of the topic currently set on the
+channel; thus, in order to ensure that the topic gets set correctly, the
+callback function modifies the caller's topic timestamp to be one second
+earlier than the timestamp of the channel's current topic if a topic is
+set.  This same approach is used in other protocol modules as well to
+ensure that changes made by Services are given priority over the current
+network state regardless of timestamps.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-3">5-6-3. <tt>protocol/dalnet</tt></h4>
+
+<p>The <tt>protocol/dalnet</tt> module supports the IRC server released by
+(and used on) the DALnet IRC network, <tt>ircd.dal</tt>, through version
+4.4.13.  This server is, incidentally, the server for which Services was
+originally designed, and as such, the module is nearly as concise as those
+for the simpler RFC 1459 and TS8 protocols.</p>
+
+<p>The DALnet IRC server introduced several additions to the standard IRC
+protocol.  Most notable, from the point of view of the protocol module, is
+the addition of the <tt>AKILL</tt> and <tt>RAKILL</tt> messages for adding
+and removing network-wide client bans, and the OperServ <tt>AKILL</tt>
+command derives its name from these messages.  The module includes callback
+functions for OperServ's "<tt>send_akill</tt>" and "<tt>cancel_akill</tt>"
+callbacks; it also includes entries in the message table for these
+messages, but since there is no need to process <tt>AKILL</tt> messages
+from the network, the handlers for these are <tt>NULL</tt>, along with
+several other messages not recognized by the core message processing code.
+(These messages are included simply to avoid warnings in the log file when
+such messages are received.)</p>
+
+<p>Other changes made to the server-to-server protocol in the DALnet server
+are the unification of the <tt>NICK</tt> and <tt>USER</tt> messages into a
+single <tt>NICK</tt> message, and the addition of the <tt>GLOBOPS</tt>
+message, a <tt>WALLOPS</tt>-like message that cannot be seen by
+non-operators (and which is used for the implementation of the
+<tt>wallops()</tt> routine in preference to <tt>WALLOPS</tt>).</p>
+
+<p>In order to ensure that the <tt>AKILL</tt>-related callbacks mentioned
+above are added when the appropriate OperServ module
+(<tt>operserv/akill</tt>) is loaded, this module also hooks into the
+<tt>"load&nbsp;module"</tt> callback.  An "<tt>unload&nbsp;module</tt>"
+callback is also included for completeness, though it does nothing in this
+module.</p>
+
+<p>A close look at the module initialization routine,
+<tt>module_init()</tt>, will show another difference in the DALnet
+protocol.  The RFC 1459 standard specifies that the three characters
+<tt>[&nbsp;\&nbsp;]</tt> are to be interepreted as equivalent to
+<tt>{&nbsp;|&nbsp;}</tt> in nicknames and channel names; this is a holdover
+from the Scandinavian character set which was used by the creators of the
+IRC protocol.  DALnet does away with this holdover, and treats
+<tt>[&nbsp;\&nbsp;]</tt> as distinct from <tt>{&nbsp;|&nbsp;}</tt> when
+doing such string comparisons.  By default, however, Services uses the RFC
+1459 rules for comparing nicknames and channel names, so in order to change
+this behavior, the <tt>module_init()</tt> routine modifies the global
+<tt>irc_lowertable[]</tt> array.  There are also two changes made to the
+<tt>valid_chan_table[]</tt> array, to accommodate the fact that the DALnet
+protocol allows channel names to begin with "<tt>+</tt>" and does not allow
+colons in channel names.</p>
+
+<p>There is also a <tt>mapstring()</tt> call in the initialization routine
+to change the <tt>OPER_BOUNCY_MODES</tt> message to
+<tt>OPER_BOUNCY_MODES_U_LINE</tt>; this latter message includes a specific
+reference to "U: lines", a type of entry in the DALnet server configuration
+file that indicates servers (like Services) that are allowed to change
+channel modes arbitrarily.  Failure to set this correctly on all servers
+can result in the "bouncy modes" phenomenon, where a server reverses mode
+changes made by Services, causing Services to resubmit those changes in an
+infinite loop (see <a href="2.html#s6-3">section 2-6-3</a> for details).</p>
+
+<p>One other piece of code not present in the <tt>rfc1459</tt> or
+<tt>ts8</tt> modules is the mode initialization code.  The DALnet protocol
+adds two user modes to the standard mode set: <tt>+g</tt>, indicating
+whether the client wants to receive <tt>GLOBOPS</tt> messages, and
+<tt>+h</tt>, indicating whether the user is identified as a "help-op".
+Neither of these have any effect on the operation of Services, but for
+completeness, they are added to the global mode tables as described in
+<a href="2.html#s6-4">section 2-6-4</a>.  The method used for adding the
+modes (the three arrays <tt>new_usermodes[]</tt>, <tt>new_chanmodes[]</tt>,
+and <tt>new_chanusermodes[]</tt>, and the local initialization function
+<tt>init_modes()</tt>, called from <tt>init_module()</tt>) is shared by
+other protocol modules are well.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-4">5-6-4. <tt>protocol/dreamforge</tt></h4>
+
+<p>The <tt>protocol/dreamforge</tt> module supports the Dreamforge server
+protocol.  Dreamforge is the name given to versions 4.4.15 and later of the
+DALnet IRC server, and as such, this protocol is a direct successor to the
+<tt>dalnet</tt> protocol.</p>
+
+<p>The major difference between the classic DALnet protocol and the
+Dreamforge protocol is the addition of features designed to improve the
+integration of Services-like programs with the network.  Chief among these
+is the "Services timestamp" or "servicestamp", a timestamp-like value
+associated with each client which is set by Services and retained by all
+servers as long as the client is connected.  This value, or 0 if it has not
+been set, is sent as part of the <tt>NICK</tt> message when announcing a
+new client to the network.  Services can set the servicestamp to a unique
+value, and use that value to distinguish clients with certainty, avoiding
+problems arising from servers with out-of-sync clocks or clients that
+connect to the network at the same time.  There are also new user and
+channel modes added to identify registered nicknames and channels, and to
+prevent clients with unregistered nicknames from joining a channel.</p>
+
+<p>Most of these changes are handled in the <tt>NICK</tt> message handler,
+<tt>m_nick()</tt>, and the callback functions
+<tt>do_user_servicestamp_change()</tt>, <tt>do_user_mode()</tt>, and
+<tt>do_nick_identified()</tt>.  The <tt>do_user_mode()</tt> callback
+function ensures that no other server on the network attempts to change a
+user's servicestamp (note that this can cause mode floods if two copies of
+Services are run on the same network!) or registered-nickname status.  The
+function also sets the "Services administrator" (<tt>+a</tt>) user mode if
+the user is known to be a Services administrator, and clears the mode
+otherwise.</p>
+
+<p>In order to check whether a user is a Services administrator, the module
+has to call the <tt>is_services_admin()</tt> function in the
+<tt>operserv/main</tt> module; however, this module may not be loaded.  To
+avoid having to check for the module and symbol at every location in the
+code where the function is called, a local helper function,
+<tt>local_is_services_admin()</tt>, is defined at the top of the source
+file, and <tt>is_services_admin()</tt> is redefined (via <tt>#define</tt>)
+to point to this local function.  The function itself only checks a cache
+variable to determine whether <tt>is_services_admin()</tt> is available;
+this cache variable is set by the "<tt>load&nbsp;module</tt>" callback
+function when the <tt>operserv/main</tt> module is loaded (and cleared
+again by the "<tt>unload&nbsp;module</tt>" if <tt>operserv/main</tt> is
+unloaded).</p>
+
+<p>The final new aspect to this module's source code is the use of the
+<tt>svsnick.c</tt> auxiliary source file (see <a href="#s7-6">section
+5-7-6</a> for details on this particular file), to support the
+<tt>SVSNICK</tt> message used to forcibly change a client's nickname.  In
+order to avoid complexities resulting from compiling the source file
+separately and linking it into the module (in particular, identifier
+collisions during static linking), the <tt>svsnick.c</tt> source file is
+included directly into the module's main source file, <tt>dreamforge.c</tt>.
+<tt>svsnick.c</tt> includes its own initialization and cleanup routines,
+<tt>init_svsnick()</tt> and <tt>exit_svsnick()</tt>, which are called by
+<tt>init_module()</tt> and <tt>exit_module()</tt> respectively.</p>
+
+<p>With respect to server registration, Dreamforge includes a new
+<tt>PROTOCTL</tt> message type, used to inform the remote server about the
+sending server's capabilities; this allows changes and additions to be made
+to the protocol that can be enabled or disabled depending on whether the
+remote server supports them.  Services does not make use of any such
+optional features in Dreamforge, however, so the <tt>PROTOCOL</tt> message
+is given a <tt>NULL</tt> handler.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-5">5-6-5. <tt>protocol/bahamut</tt></h4>
+
+<p>Bahamut is the successor to the Dreamforge IRC server, and is the server
+currently (2006/8) used on the DALnet IRC network.  The
+<tt>protocol/bahamut</tt> module handles versions of Bahamut from 1.8.0
+onward.</p>
+
+<p>In addition to the <tt>SVSNICK</tt> feature introduced in Dreamforge,
+Bahamut includes <i>ban exceptions</i> for channels (clients matching a ban
+exception mask can join the channel even if they also match a ban mask),
+supported by the auxiliary source file <tt>banexcept.c</tt>; <i>invite
+masks</i> for channels (clients matching an invite mask can join an
+invite-only channel without having to be explicitly invited), supported by
+<tt>invitemask.c</tt>; and a channel-join message for server-to-server
+communications, <tt>SJOIN</tt> (which reduces bandwidth use by allowing
+multiple users and channel modes to be sent in a single message), supported
+by <tt>sjoin.c</tt>.  With respect to the latter file, <tt>bahamut.c</tt>
+defines the <tt>BAHAMUT_HACK</tt> symbol before including the file; this is
+to select the Bahamut mode of operation for <tt>SJOIN</tt>, as described in
+<a href="#s7-5">section 5-7-5</a>.</p>
+
+<p>Bahamut includes a <tt>CAPAB</tt> message that functions like
+Dreamforge's <tt>PROTOCTL</tt> to inform the remote server about supported
+protocol features.  Services checks for one token in the <tt>CAPAB</tt>
+message: "<tt>NOQUIT</tt>", an extension suppressing (on server-to-server
+links) the client <tt>QUIT</tt> messages generated when a netsplit occurs.
+Services always advertises the <tt>NOQUIT</tt> capability, and sets the
+<tt>PF_NOQUIT</tt> protocol flag if the remote server also supports
+<tt>NOQUIT</tt>.</p>
+
+<p>One difficulty that can arise when using the Bahamut server is that the
+server to which Services connects is configured as a "Services hub" (the
+configuration option "<tt>servtype&nbsp;serviceshub</tt>").  While this
+seems logical from the name, this option is intended only for the custom
+Services program that DALnet uses, and is not compatible with this program,
+Services for IRC Networks.  The DALnet Services program is customized to
+work specifically with the Bahamut server and the DALnet network, and as
+such takes certain shortcuts; the "Services hub" option causes the Bahamut
+server to take advantage of these shortcuts, reducing network bandwidth.
+In particular, activating this option causes messages to pseudoclients such
+as NickServ to be sent in an abbreviated form (the <tt>NS</tt>, <tt>CS</tt>
+and similar commands defined under the dummy
+<tt>#ifdef&nbsp;ALLOW_BAHAMUT_SERVICESHUB</tt>, referring to a macro not
+defined anywhere).  As Services for IRC Networks cannot assume that these
+clients have particular nicknames, or even that they exist, the
+<tt>protocol/bahamut</tt> module reports an error and aborts the program if
+any of these abbreviated messages are seen.  <i>Implementation note: It
+might be feasible to support these if the module exported a
+<tt>register_pseudoclient()</tt> routine, which took a constant indicating
+the pseudoclient, like <tt>BAHAMUT_NS</tt>, and the pseudoclient's nickname
+and stored the nickname locally for processing the given message.</i>  The
+"Services hub" option also prevents channel topics and client <tt>AWAY</tt>
+messages from reaching Services, causing channel topic retention and
+MemoServ unaway checking to break.</p>
+
+<p>The Bahamut-specific channel mode <tt>+j</tt> is used to limit the rate
+at which clients can join a channel.  It takes the form
+<tt>+j&nbsp;<i>num1</i>:<i>num2</i></tt>, where <tt><i>num1</i></tt> and
+<tt><i>num2</i></tt> are positive integers that set the exact limits on
+joining.  Internally, these are stored in the <tt><i>joinrate1</i></tt> and
+<tt><i>joinrate2</i></tt> fields of the <tt>Channel</tt> structure as well
+as the locked-mode set of a registered channel (see
+<a href="7.html#s4-1-1">section 7-4-1-1</a>), and values of 0 in these
+fields indicate that the mode is not set; values of -1 in the locked-mode
+structure indicate that the mode is locked off.</p>
+
+<p>Unlike RFC 1459, Bahamut does not allow control characters in a channel
+name.  It also does not allow ASCII 160 (0xA0), presumably because this
+corresponds to an "unbreakable space" in the ISO 8859-1 character set and
+could be confused with an ordinary space by users.  The initialization
+routine adjusts the <tt>valid_chan_table[]</tt> array to account for this.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-6">5-6-6. <tt>protocol/hybrid</tt></h4>
+
+<p>The <tt>protocol/hybrid</tt> module supports versions 7.0 and later of
+the ircd-hybrid IRC server.  Hybrid has a fairly simple design compared to
+other servers, and only supports a few features above the standard set.</p>
+
+<p>The Hybrid server does not ordinarily send channel topics during the
+initial net burst when a server connects, and only allows the channel topic
+to be set by a <tt>TOPIC</tt> message from a client currently in the
+channel.  This prevents the ChanServ topic-related functions from working,
+since ChanServ does not join the channel when setting a topic.  There is,
+however, a module available for Hybrid which restores the synchronization
+of channel topics on a server link as well as the ability of a server to
+set topics arbitrarily: the "topic burst" module, <tt>m_tburst.so</tt>.  To
+simplify processing, the <tt>protocol/hybrid</tt> module requires that its
+uplink server support this topic bursting, and will abort the program if
+that support is missing (as determined by the <tt>CAPAB</tt> message
+received on connection).</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-7">5-6-7. <tt>protocol/inspircd</tt></h4>
+
+<p>The <tt>protocol/inspircd</tt> supports the InspIRCd IRC server.  This
+server shares a number of features with the Unreal server (see
+<a href="#s6-14">section 5-6-14</a>, but was created from scratch, rather
+than by modifying the source code of an existing IRC server as in the case
+of most other servers.</p>
+
+<p>The <tt>inspircd</tt> module uses the <tt>banexcept.c</tt>,
+<tt>invitemask.c</tt>, and <tt>svsnick.c</tt> auxiliary source files
+mentioned above, as well as the <tt>chanprot.c</tt> and <tt>halfop.c</tt>
+files, which are used to implement two additional channel user modes
+supported by InspIRCd: <tt>+a</tt> (protection) and <tt>+h</tt> (half-op).
+A user with <tt>+a</tt> set cannot be kicked by a channel operator unless
+that operator also has <tt>+a</tt> set.  Half-op privilege is an extra
+privilege level between <tt>+v</tt> (voiced) and <tt>+o</tt> (channel
+operator); half-ops can set the channel topic and give <tt>+v</tt> to other
+users, but cannot change channel modes or perform other actions that
+ordinary channel operators can do.  InspIRCd also has a condensed channel
+join message (<tt>FJOIN</tt>) similar to Bahamut's <tt>SJOIN</tt>, but its
+syntax is different enough that a message handler is included in the module
+itself rather than using the handler in <tt>sjoin.c</tt>.</p>
+
+<p>In addition to autokills and S-lines, InspIRCd supports autokill
+exclusions, similar to channels' ban exceptions but applying to
+network-wide autokill masks.  As described in detail in
+<a href="7.html#s2-2-2">section 7-2-2-2</a>, the <tt>operserv/akill</tt>
+module can take advantage of this to implement autokill exclusions without
+having to send <tt>KILL</tt> messages for all autokilled users manually.</p>
+
+<p>Another feature of the InspIRCd protocol is the removal of the
+restriction on sending network-wide messages; as such, the
+<tt>protocol/inspircd</tt> module does not require a <tt>NetworkDomain</tt>
+configuration setting for global messages to be correctly sent.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-8">5-6-8. <tt>protocol/monkey</tt></h4>
+
+<p>The <tt>protocol/monkey</tt> module supports the Chunky Monkey IRCD
+server.  This server is based on an earlier version of Bahamut; the primary
+Services-visible change is the addition of the half-op (<tt>+h</tt>)
+channel user mode.  Features like ban exceptions and invite masks, added to
+Bahamut in later versions, are not present.  Other than these differences,
+this module is essentially the same as the <tt>bahamut</tt> module.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-9">5-6-9. <tt>protocol/ptlink</tt></h4>
+
+<p>The <tt>protocol/ptlink</tt> module supports the PTlink IRCd server,
+version 6.10.0 and later.  This server is based on ircd-hybrid-6, and was
+originally developed for the PTlink IRC network, from which it takes its
+name.</p>
+
+<p>In PTlink, autokills are set and removed using the <tt>GLINE</tt>
+message.  Since this can also be used by IRC operators to set and remove
+autokills, Services uses a constant string (defined as <tt>GLINE_WHO</tt>
+at the top of the source file) as the "nickname" associated with the entry.
+Services can then check this value when receiving a <tt>GLINE</tt> message
+from the network, in order to avoid removing entries set by IRC operators.
+(However, nicknames are not stored with <tt>SGLINE</tt> and <tt>SQLINE</tt>
+entries, so operator-set entries will be deleted if they do not match a
+record in Services' databases.)  See under the <tt>TKL</tt> message
+handler in <a href="#s6-14">section 5-6-14</a>, which discusses the Unreal
+server, for an explanation of why these entries need to be cleared when
+received from the network.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-10">5-6-10. <tt>protocol/ratbox</tt></h4>
+
+<p>The <tt>protocol/ratbox</tt> module supports the ircd-ratbox server.
+This server is derived from ircd-hybrid, and the <tt>ratbox</tt> module is
+likewise very similar to the <tt>hybrid</tt> module.</p>
+
+<p>Like Hybrid, ircd-ratbox does not normally allow servers like Services
+to arbitrarily change channel topics, but this behavior can be changed with
+a similar "topic burst" function.  In the case of ircd-ratbox, this
+functionality is built into the server (rather than being a separate
+module), and need only be enabled through the appropriate flag
+("<tt>topicburst</tt>" in the connect block for Services).  If this flag is
+not enabled, Services will abort at connection time, as for Hybrid.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-11">5-6-11. <tt>protocol/solidircd</tt></h4>
+
+<p>The <tt>protocol/solidircd</tt> module supports the solid-ircd server.
+This server is based on an earlier version of the Bahamut server, with
+several additions and changes.</p>
+
+<p>One new feature supported by solid-ircd is encrypted connections.  If a
+client connects to the server via SSL, the client is given user mode
+<tt>+z</tt>; a new channel mode, <tt>+S</tt>, is also available to prevent
+clients without <tt>+z</tt> from entering the channel.  This presents a
+problem when <tt>+S</tt> is mode-locked on: since the channel does not
+exist when it is empty, the IRC server will not know to stop a <tt>-z</tt>
+user from entering the channel, and even if Services then sets <tt>+S</tt>
+on the channel, the non-secure user will already be in the channel.  In
+order to work around this, Services hooks into the ChanServ
+"<tt>check_kick</tt>" callback, and if a non-secure user tries to join an
+empty channel that is registered and mode-locked <tt>+S</tt>, the user is
+kicked out just as if on the autokick list.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-12">5-6-12. <tt>protocol/trircd</tt></h4>
+
+<p>The <tt>protocol/trircd</tt> module supports the tr-ircd server,
+version 5.5 and later.  tr-ircd was originally based on the Bahamut server,
+but has been rewritten from scratch since version 5.0.</p>
+
+<p>One feature unique to tr-ircd is the availability of a user mode
+(<tt>+L</tt>)bindicating the language in which the client desires to
+receive server messages.  For users with registered nicknames, Services
+sets this to the language selected by the user for their nickname (if
+that language is also supported by tr-ircd) when the user identifies.
+<i>Implementation node: It would also be theoretically possible to use the
+mode's value as a default for sending messages unregistered nicknames, as
+well as the initial language setting of a newly-registered nickname, but
+this is difficult to accomplish without adding the concept of a language
+mode for clients to the Services core.</i>  The list of languages supported
+by tr-ircd, taken from the tr-ircd source code, can be found at the top of
+the <tt>trircd.c</tt> module source file (<tt>langhash_init[]</tt>); the
+actual values used in the user mode are hashes created from the language
+name strings, and these hashes are computed and stored in the
+<tt>langhash[]</tt> array by the <tt>init_langhash()</tt> function, called
+at module initialization time.</p>
+
+<p>tr-ircd also supports "channel linking"; this is the ability to make one
+channel into an "alias" for another.  When this mode (coincidentally also
+<tt>+L</tt>) is set for a channel <tt>#A</tt> with a parameter of
+<tt>#B</tt>, for example, a user who attempts to join channel <tt>#A</tt>
+will be sent to channel <tt>#B</tt> instead.  As a side effect of this, the
+IRC server keeps track of channels which have <tt>+L</tt> set, and does not
+delete them even after the last client leaves.  Since Services treats a
+channel with no users as nonexistent, the <tt>trircd</tt> module must hook
+into the low-level "<tt>receive&nbsp;message</tt>" callback to watch for
+<tt>+L</tt> or <tt>-L</tt> messages for empty channels and process them
+accordingly.</p>
+
+<p>At the server-to-server communication level, tr-ircd has the ability to
+send message names as one- or two-character tokens rather than the full
+message names; for example, "<tt>PRIVMSG</tt>" becomes simply "<tt>P</tt>",
+both reducing bandwidth (albeit minimally) and enabling faster lookup of
+commands.  These tokens are defined in the <tt>trircd_tokens[]</tt> array,
+and processing is handled by the <tt>token.c</tt> auxiliary source file,
+discussed in <a href="#s7-7">section 5-7-7</a>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-13">5-6-13. <tt>protocol/undernet-p9</tt></h4>
+
+<p>The <tt>protocol/undernet-p9</tt> supports version 2.9 of the Undernet
+IRC server (ircu).  This is a fairly old server, derived from the original
+ircd-2.8 server with TS8 additions; the only additional features it
+includes are autokills (set using the <tt>GLINE</tt> message, and not
+propogated in the connection burst) and the merging of the <tt>USER</tt>
+and <tt>NICK</tt> messages into a single <tt>NICK</tt> message.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s6-14">5-6-14. <tt>protocol/unreal</tt></h4>
+
+<p>The <tt>protocol/unreal</tt> module supports version 3.1.1 and later of
+the UnrealIRCd server.  Unreal is originally derived from Dreamforge,
+but has made numerous additions, and is one of the most feature-rich IRC
+servers currently in use.  This of course means that the protocol module
+is similarly complex; Unreal makes use of nearly all protocol-related
+routines, as well as all seven auxiliary source files. For this reason, the
+<tt>unreal</tt> module's source code is the most heavily commented of the
+protocol modules, and can be seen as a model for how the various parts of
+protocol modules work.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h5 class="subsubsubsection-title" id="s6-14-1">5-6-14-1. Module prologue</h5>
+
+<p>After including appropriate header files and the auxiliary source files
+that implement certain protocol-related functions, the module defines a
+number of local variables:</p>
+<ul>
+<li class="spaced"><tt>module_chanserv</tt>, <tt>module_operserv</tt>:
+	Module handles used for accessing external symbols (see below).</li>
+<li class="spaced"><tt>ServerNumeric</tt>, <tt>SetServerTimes</tt>,
+	<tt>SVSTIMEFrequency</tt>: Variables to hold values set in the
+	configuration file.</li>
+<li class="spaced"><tt>to_svstime</tt>: The timeout (see
+	<a href="2.html#s7">section 2-7</a>) used to send <tt>SVSTIME</tt>
+	messages at periodic intervals.</li>
+<li class="spaced"><tt>usermode_admin</tt>, <tt>usermode_secure</tt>,
+	<tt>usermode_hiding</tt>, <tt>chanmode_admins_only</tt>,
+	<tt>chanmode_secure_only</tt>, <tt>chanmode_no_hiding</tt>:
+	Bitmasks corresponding to certain sets of modes, used to determine
+	whether a client is allowed to enter a particular empty
+	channel.</li>
+<li class="spaced"><tt>unreal_version</tt>: Set to the protocol version
+	number sent by the remote server at connection registration time,
+	and used to determine whether certain protocol features are
+	available.</li>
+<li class="spaced"><tt>has_nickip</tt>: Set to nonzero if the remote server
+	supports the <tt>NICKIP</tt> feature, used to implement
+	SZlines.</li>
+</ul>
+
+<p>These are followed by <tt>#define</tt>s and local variables used to
+access the <tt>s_ChanServ</tt> variable in the ChanServ module, containing
+the nickname of the ChanServ pseudoclient, and the
+<tt>is_services_admin()</tt> function in the OperServ module, returning
+whether the given user is a Services administrator.  As described in the
+comments, <tt>#define</tt> macros are used to substitute an access to the
+symbol pointer every time the symbol is used, in order to simplify the
+code.</p>
+
+<p>The next section of the file contains a list of user, channel, and
+channel user modes supported by the Unreal server.  In order to register
+these with the core mode processing facility (see
+<a href="2.html#s6-4">section 2-6-4</a>), <tt>unreal.c</tt> defines three
+arrays, one for each mode type, containing the mode characters to be added
+and the corresponding <tt>ModeInfo</tt> structure for each mode.  The
+module also defines six local mode flags, corresponding to the mode bitmask
+variables listed above; these flags are ignored by the mode processing
+facility, but the mode setup code uses them to set the bitmask
+variables.</p>
+
+<p>The setup code itself is located in the <tt>init_modes()</tt> routine,
+called during module initialization.  This routine iterates through each of
+the arrays, storing the mode data in the arrays exported by the mode
+processing facility.  For the user and channel modes, it also checks for
+the locally-defined <tt>ModeInfo</tt> flags, and if a given mode has a flag
+set, the mode's bitmask is added to the appropriate bitmask variable.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h5 class="subsubsubsection-title" id="s6-14-2">5-6-14-2. Message receiving</h5>
+
+<p>After this comes the first major portion of the actual processing code,
+the message handlers.  Aside from the mandatory client registration
+handler (the <tt>NICK</tt> message in Unreal), Unreal includes several
+additional messages not supported by the core processing code.  The
+messages handled are as follows (each message is handled by a routine
+named <tt>m_<i>message-name</i></tt>, for example the <tt>NICK</tt>
+message is handled by <tt>m_nick()</tt>):</p>
+
+<dl>
+<dt><b><tt>NICK</tt></b></dt>
+    <dd>This is the standard client registration message (Unreal merges
+	the dual <tt>NICK</tt> and <tt>USER</tt> of RFC 1459 into a single
+	<tt>NICK</tt> message at the server level, as most other server
+	protocols do).  The message is also used for existing clients
+	changing nicknames; in that case (where the message has a prefix
+	indicating that it came from an existing client), control is
+	simply handed off to the <tt>do_nick()</tt> routine from the
+	core's client handling code.  In the case of a new client,
+	however, <tt>do_nick()</tt> expects the parameters in a slightly
+	different order than Unreal sends them in, so this rearrangement is
+	performed before calling <tt>do_nick()</tt>.  Additionally, on
+	servers supporting <tt>NICKIP</tt> (the sending of IP addresses in
+	the <tt>NICK</tt> message), the message will include an extra
+	parameter containing the binary representation of the client's IP
+	address, encoded using base64 encoding; this is decoded, checked
+	for consistency, and passed to <tt>do_nick()</tt> as well.  (If
+	<tt>NICKIP</tt> is not supported, a <tt>NULL</tt> parameter is
+	passed, indicating that the IP address is not available.)</dd>
+
+<dt><b><tt>PROTOCTL</tt></b></dt>
+    <dd>Unreal uses this message to send information about features
+	supported by the server.  Services checks the list of parameters
+	for recognized keywords, and sets appropriate variables to reflect
+	their presence or absence.  The recognized feature tokens are:
+	<ul>
+	<li><b><tt>NICKv2</tt>:</b> A new format for the <tt>NICK</tt>
+		message, compared to earlier versions of Unreal.  The local
+		variable <tt>got_nickv2</tt> is set when this token is
+		found; if the variable is not set at the end of the
+		function, a fatal error is generated.  <i>Implementation
+		note: The variable is declared <tt>static</tt> because
+		Unreal can send more than one <tt>PROTOCTL</tt> message
+		when registering (such as when the parameter list is too
+		long).  It would be more robust to use a file-global
+		variable that is checked at the first <tt>NICK</tt>
+		message, but current versions of Unreal always send
+		<tt>NICKv2</tt> in the first message, so this is not
+		currently a problem.</i></li>
+	<li><b><tt>NOQUIT</tt>:</b> The <tt>NOQUIT</tt> feature found in
+		other servers such as Bahamut, in which servers generate
+		client <tt>QUIT</tt> messages for netsplits on their own
+		rather than relaying them through the network.</li>
+	<li><b><tt>NICKIP</tt>:</b> Indicates that IP addresses are sent
+		with client registration messages.</li>
+	<li><b><tt>NICKCHARS</tt>:</b> Specifies additional characters
+		allowed to be used in nicknames.  The specification is
+		done by language code; the current version of the module
+		uses the language codes and character sets defined in
+		Unreal 3.2.3.</li>
+	</ul></dd>
+
+<dt><b><tt>UMODE2</tt></b></dt>
+    <dd>This is equivalent to the <tt>MODE</tt> message for clients, but
+	omits the nickname parameter (so, for example, "<tt>:<i>nickname</i>
+	MODE <i>nickname</i> -o</tt>" becomes "<tt>:<i>nickname</i> UMODE2
+	-o</tt>").</dd>
+
+<dt><b><tt>SETHOST</tt>, <tt>CHGHOST</tt></b></dt>
+    <dd>These allow setting changing the "fake hostname", the hostname
+	seen in a <tt>WHO</tt> or <tt>WHOIS</tt> reply by non-operators,
+	for a client.  <tt>SETHOST</tt> is used by a client to change its
+	own hostname, while <tt>CHGHOST</tt> is used by operators (or
+	servers, such as Services, though Services does not use this at
+	present) to change another client's hostname.</dd>
+
+<dt><b><tt>SETIDENT</tt>, <tt>CHGIDENT</tt></b></dt>
+    <dd>These are like <tt>SETHOST</tt> and <tt>CHGHOST</tt> above, but
+	change the client's username (the part of the
+	<tt><i>user</i>@<i>host</i></tt> mask before the <tt>@</tt>).</dd>
+
+<dt><b><tt>SETNAME</tt>, <tt>CHGNAME</tt></b></dt>
+    <dd>These are like <tt>SETHOST</tt> and <tt>CHGHOST</tt> above, but
+	change the client's "real name" (also called "gecos").</dd>
+
+<dt><b><tt>SJOIN</tt></b></dt>
+    <dd>This is a server-to-server message used both to add a user to a
+	channel and to send a channel's state to the network.  The message
+	takes a channel name, timestamp, mode string, optional mode
+	parameters, and a space-separated list of nicknames of clients
+	joining the channel.  Nicknames in the nickname list are prefixed
+	with the prefix character(s) for the channel user mode of the
+	client, if any (for example, a channel operator would be listed
+	as <tt>@<i>nickname</i></tt>.  Recent versions of Unreal also add
+	channel bans and ban exceptions to the nickname list as well, with
+	prefix characters of <tt>&</tt> and <tt>"</tt> respectively.</dd>
+
+<dt><b><tt>SVSMODE</tt>, <tt>SVS2MODE</tt></b></dt>
+    <dd>These messages are used to remotely change a client's modes or
+	to remove all bans on a channel which match a client.  In the
+	former case, the messages operate identically to the <tt>MODE</tt>
+	message, except that the source and target client may be different.
+	In the latter case, each server checks the channel's ban list and
+	removes all bans corresponding to that user; Services does this by
+	calling <tt>clear_channel()</tt>, which sends out explicit
+	<tt>MODE</tt> messages to remove the bans, but this is mostly
+	harmless (other than taking up a small amount of bandwidth).  The
+	only difference between SVSMODE and SVS2MODE is that, when used to
+	set client modes, the latter sends a <tt>MODE</tt> message to the
+	target client, while the former does not.</dd>
+
+<dt><b><tt>SVSNLINE</tt></b></dt>
+    <dd>This message is used for managing what Services refers to as the
+	SGline list, and takes one of two formats:
+	<ul>
+	<li><tt>SVSNLINE + <i>reason</i> :<i>mask</i></tt></li>
+	<li><tt>SVSNLINE - :<i>mask</i></tt></li>
+	</ul>
+	Unlike other access control lists, which are handled by the
+	<tt>TKL</tt> message (discussed below), masks for <tt>SVSNLINE</tt>
+	messages may contain spaces, and thus must be the last parameter of
+	the message.  As a corollary, the <tt><i>reason</i></tt> parameter
+	cannot contain spaces.  In Services, any spaces in the reason are
+	converted to underscores when an <tt>SVSNLINE +</tt> message is
+	sent.</dd>
+
+<dt><b><tt>TKL</tt></b></dt>
+    <dd>This message is used for managing network-wide global connection
+	control lists (autokills and S-lines).  The message takes as
+	parameters:
+	<ul>
+	<li>A <tt>+</tt> or <tt>-</tt> indicating whether the mask is being
+		added or removed.</li>
+	<li>The type of the mask (a single character, such as <tt>Z</tt>
+		for SZlines).</li>
+	<li>The username part of the mask.</li>
+	<li>The hostname part of the mask.</li>
+	<li>The entity (client or server) responsible for the action.</li>
+	<li><i>(add only)</i> Timestamp (in Unix <tt>time()</tt> style)
+		for when the mask expires, or 0 if it should not expire.</li>
+	<li><i>(add only)</i> Timestamp at which the mask was added.</li>
+	<li><i>(add only)</i> Reason string associated with the mask.</li>
+	</ul>
+	When a new server connects to the network, all active <tt>TKL</tt>
+	masks are forwarded to the server.  This can cause problems if a
+	mask is removed while a server is split from the network; when the
+	split server reconnects, it will send the mask back to the network,
+	causing it to reappear.  While there is nothing that Services can
+	do about this in the general case, it does watch for new masks
+	added that give Services itself as the adder (Services uses its own
+	server name as the entity adding the mask, and this is preserved
+	when other servers forward the mask).  When it sees such a mask
+	sent from the network, it checks whether that mask actually exists
+	in the current databases, and if not, it sends a <tt>TKL&nbsp;-</tt>
+	message to remove the mask, assuming that a split server has
+	rejoined the network and reintroduced an old mask.</dd>
+</dl>
+
+<p>The extra messages in Unreal along with their handlers are listed in the
+<tt>unreal_messages[]</tt> table, which is registered at initialization
+time using <tt>register_messages()</tt> (see <a href="2.html#s5-3">section
+2-5-3</a>).  Some additional messages are also listed with <tt>NULL</tt>
+handlers in order to prevent warning messages from being written to the log
+when those messages are received.</p>
+
+<p>Unreal also supports the concept of <i>tokens</i>, short names for
+messages used in server-to-server communication.  These slightly reduce the
+bandwidth needed for messages, but more importantly speed up message
+lookups, since only one or two characters need to be checked rather than a
+longer text string.  The list of tokens used by Unreal is in the
+<tt>tokens[]</tt> array; this array is passed to <tt>init_tokens()</tt>,
+the initialization routine defined in the <tt>tokens.c</tt> auxiliary
+source file (see <a href="#s7-7">section 5-7-7</a>).</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h5 class="subsubsubsection-title" id="s6-14-3">5-6-14-3. Message sending</h5>
+
+<p>Most of the remainder of the source file consists of various routines
+which send messages to the network.  These include the required
+functionality listed in <a href="#s3-1">section 5-3-1</a>, as well as a
+number of callback functions which send messages to the network in response
+to certain events.  The routines are as follows:</p>
+
+<dl>
+<dt><tt><b>do_send_svstime()</b></tt></dt>
+    <dd>Sends a <tt>TSCTL SVSTIME</tt> message to the network to
+	synchronize servers' clocks.  Used for periodic time
+	synchronization when requested via the <tt>SetServerTimes</tt>
+	configuration directive.</dd>
+
+<dt><tt><b>do_send_nick()</b></tt>
+<br/><tt><b>do_send_nickchange()</b></tt>
+<br/><tt><b>do_send_namechange()</b></tt>
+<br/><tt><b>do_send_server()</b></tt>
+<br/><tt><b>do_send_server_remote()</b></tt>
+<br/><tt><b>do_wallops()</b></tt>
+<br/><tt><b>do_notice_all()</b></tt>
+<br/><tt><b>do_send_channel_cmd()</b></tt></dt>
+    <dd>Implement the corresponding required message routines.</dd>
+
+<dt><tt><b>do_receive_message()</b></tt></dt>
+    <dd>Performs special actions on received messages.  This callback
+	function has two purposes; one is to watch for and reverse
+	improper servicestamp changes, and the other is to parse the
+	protocol version embedded in the remote server's <tt>SERVER</tt>
+	message at connection registration time.  In both of these
+	cases, we do not want to override the standard behavior for the
+	messages, but the current message framework does not allow for
+	this, so we watch for the messages at this lowest level and
+	perform the necessary processing there.  With respect to the
+	former case specifically, it would in theory be possible to
+	handle servicestamp changes in <tt>do_user_mode()</tt>,
+	described below, but poor design in Unreal resulted in Services
+	stamps sharing a mode letter (<tt>+d</tt>) with "deaf" mode, so
+	"+d&nbsp;<i>stamp</i>" needs to be treated separately from other
+	mode changes.</dd>
+
+<dt><tt><b>do_user_create()</b></tt></dt>
+    <dd>Called when a new <tt>User</tt> structure is created in response
+	to a <tt>NICK</tt> message, this routine stores the "fake hostname"
+	parameter (not handled by <tt>do_nick()</tt>) in the corresponding
+	field in the <tt>User</tt> structure.</dd>
+
+<dt><tt><b>do_user_servicestamp_change()</b></tt></dt>
+    <dd>Called when a client is assigned a servicestamp to send the new
+	stamp out to the network.</dd>
+
+<dt><tt><b>do_user_mode()</b></tt></dt>
+    <dd>Called when a client's user modes are being changed.  Services
+	handles two user modes exclusively: <tt>+r</tt>, indicating that
+	the client's nickname is registered (and the client is in fact the
+	owner of the nickname), and <tt>+a</tt>, indicating that the client
+	is a Services administrator.  If another server tries to change
+	either of these modes, Services reverses the change.  This routine
+	also watches for users with Services administrator privilege who
+	newly gain IRC operator status, and sets <tt>+a</tt> on them.</dd>
+
+<dt><tt><b>do_channel_mode()</b></tt></dt>
+    <dd>Called when a channel's modes are being changed.  This routine
+	takes care of storing the <tt>+L</tt> (channel link), <tt>+f</tt>
+	(flood protection), and <tt>+j</tt> (join rate limiting) parameters
+	in the <tt>Channel</tt> structure.</dd>
+
+<dt><tt><b>do_clear_channel()</b></tt></dt>
+    <dd>Handles requests to clear bans and exceptions from a channel.
+	Ordinarily, <tt>clear_channel()</tt> will handle bans itself and
+	ban exceptions are handled by the <tt>banexcept.c</tt> auxiliary
+	source file, but Unreal has a feature called "extended ban types",
+	in which a prefix like <tt>~r:</tt> changes the meaning of the ban
+	or exception mask.  In order to process these bans correctly,
+	the <tt>protocol/unreal</tt> module has to intervene via the
+	"<tt>clear_channel</tt>" callback and process ban and exception
+	clear requests itself.  The actual work is done by
+	<tt>unreal_clear_bans_excepts()</tt>, which calls
+	<tt>unreal_match_ban()</tt> to determine whether a particular mask
+	matches a given client.</dd>
+
+<dt><tt><b>do_nick_identified()</b></tt></dt>
+    <dd>Called when a client identifies for its nickname, and sets the
+	<tt>+a</tt> user mode on the client if it has Services
+	administrator (and IRC operator) privileges.</dd>
+
+<dt><tt><b>do_set_topic()</b></tt></dt>
+    <dd>Called when setting a topic on a channel (see
+	<a href="#s3-1">section 5-3-1</a>).  Unreal ignores topic changes
+	if the topic timestamp is earlier than that of the channel's
+	current topic, so if necessary, the supplied timestamp is advanced
+	to force the topic to be changed.</dd>
+
+<dt><tt><b>do_check_modes()</b></tt></dt>
+    <dd>Called when checking the validity of a mode change on a registered
+	channel; ensures that the <tt>+L</tt>, <tt>+f</tt>, and <tt>+j</tt>
+	modes are set properly according to the mode lock data.  (The "off"
+	versions, <tt>-L</tt> and so on, do not require parameters and thus
+	can be handled by the standard ChanServ code.)</dd>
+
+<dt><tt><b>do_check_chan_user_modes()</b></tt></dt>
+    <dd>Called when checking whether to modify a client's channel user
+	modes.  This routine watches for and excludes from the check two
+	classes of clients: other service-type pseudoclients (with user
+	mode <tt>+S</tt> set), since they generally should not be subject
+	to the same restrictions as ordinary clients, and "hiding" users
+	(<tt>+I</tt>), whose presence would be revealed by a mode change.</dd>
+
+<dt><tt><b>do_check_kick()</b></tt></dt>
+    <dd>Called when checking whether to allow a user to join a channel.
+	This routine watches for users entering administrator-only,
+	secure-only, or no-hiding channels, and kicks them out if their
+	user modes are incompatible with the channel.  (Normally the IRC
+	server will take care of this and Services will never see the join
+	attempt, but when joining a registered channel which is empty, the
+	server will not know anything about the channel's locked modes, so
+	Services must perform the check.)</dd>
+
+<dt><tt><b>do_set_mlock()</b></tt></dt>
+    <dd>Called when setting a new mode lock on a registered channel.
+	This routine takes care of setting the aforementioned <tt>+L</tt>,
+	<tt>+f</tt>, and <tt>+j</tt> mode parameters in the mode lock
+	structure, and also ensures that the new mode lock is consistent
+	(<tt>+K</tt> requires <tt>+i</tt> to be set, and <tt>+L</tt>
+	requires <tt>+l</tt>).</dd>
+
+<dt><tt><b>do_send_svsjoin()</b></tt></dt>
+    <dd>Called to send a message which forces a user to join a channel.
+	In Unreal, the message is called <tt>SVSJOIN</tt>.</dd>
+
+<dt><tt><b>do_send_akill()</b></tt>
+<br/><tt><b>do_cancel_akill()</b></tt>
+<br/><tt><b>do_send_exclude()</b></tt>
+<br/><tt><b>do_cancel_exclude()</b></tt>
+<br/><tt><b>do_send_sgline()</b></tt>
+<br/><tt><b>do_send_sqline()</b></tt>
+<br/><tt><b>do_send_szline()</b></tt>
+<br/><tt><b>do_cancel_sgline()</b></tt>
+<br/><tt><b>do_cancel_sqline()</b></tt>
+<br/><tt><b>do_cancel_szline()</b></tt>
+</dt>
+    <dd>Called to add or remove autokill, autokill exclusion, or S-line
+	masks.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h5 class="subsubsubsection-title" id="s6-14-4">5-6-14-4. Module initialization and cleanup</h5>
+
+<p>The final part of the module source file is the module framework, used
+by the core module subsystem when loading and unloading the module, along
+with callback functions to monitor loading and unloading of relevant
+modules and set appropriate callbacks and local variables.</p>
+
+<p>The module's configuration data is stored in the exported array
+<tt>module_config[]</tt>.  The <tt>protocol/unreal</tt> module includes two
+Unreal-specific configuration options: <tt>ServerNumeric</tt>, to assign
+Services a "numeric" value to be used with Unreal servers, and
+<tt>SetServerTimes</tt>, which sets whether and how often Services should
+synchronize other servers' clocks.  The array also includes configuration
+data from the <tt>SJOIN</tt> handler (defined in <tt>sjoin.h</tt>).</p>
+
+<p>The <tt>do_load_module()</tt> and <tt>do_unload_module()</tt> routines
+watch for various pseudoclient-related modules to be loaded or unloaded.
+For modules that provide callbacks which the <tt>protocol/unreal</tt>
+module hooks into, the appropriate callback functions are added here.
+Additionally, the handles for the <tt>operserv/main</tt> and
+<tt>chanserv/main</tt> modules, as well as the values (addresses) of the
+symbols <tt>is_services_admin</tt> and <tt>s_ChanServ</tt>, are saved when
+the relevant module is loaded and cleared when it is unloaded (see
+<a href="#s6-14-1">section 5-6-14-1</a>).</p>
+
+<p>Finally, the initialization and cleanup functions call the appropriate
+subroutines in a fairly arbitrary order (except that cleanup is performed
+in the opposite order of initialization).  The initialization and cleanup
+for the auxiliary source files is also handled here.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s7">5-7. Auxiliary source file details</h3>
+
+<p>In addition to the main protocol files described in
+<a href="#s6">section 5-6</a>, there are several auxiliary source files
+which implement functions common to two or more protocols.  These are
+listed below.  The source files are all designed to be included directly
+into the modules which use them; this is to avoid symbol clashes caused by
+linking the same object file into two or more modules when compiling
+modules statically.  (Each source file also has a corresponding header
+file, but as this is included by the source file, modules do not need to
+include the header files separately.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s7-1">5-7-1. <tt>banexcept.c</tt>, <tt>banexcept.h</tt></h4>
+
+<p>The <tt>banexcept.c</tt> source file implements support for <i>ban
+exceptions</i>, masks specifying clients which are not subject to channel
+bans.  The channel mode for exceptions is assumed to be <tt>+e</tt>.</p>
+
+<p>In addition to handling the actual setting and clearing of ban
+exceptions (adding or removing masks on the channel's ban exception array),
+the file also implements a handler for clearing ban exceptions using the
+<tt>CLEAR_EXCEPTS</tt> flag to <tt>clear_channel()</tt>, as well as a
+callback function for the ChanServ <tt>CLEAR</tt> command allowing
+<tt>CLEAR EXCEPTIONS</tt> to be used.  Since the latter function is part
+of the <tt>chanserv/main</tt> module rather than the core, this
+necessitates the use of "<tt>load&nbsp;module</tt>" and
+"<tt>unload&nbsp;module</tt>" callbacks to watch for that module being
+loaded and unloaded.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s7-2">5-7-2. <tt>chanprot.c</tt>, <tt>chanprot.h</tt></h4>
+
+<p>The <tt>chanprot.c</tt> source file implements support for a "protected"
+channel user mode, preventing ordinary channel operators from kicking a
+user with that mode.  However, the only "support" required is the
+modification of one language string, which is modified by the
+initialization routine and restored to its original value by the cleanup
+routine.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s7-3">5-7-3. <tt>halfop.c</tt>, <tt>halfop.h</tt></h4>
+
+<p>The <tt>halfop.c</tt> source file implements support for a "half-op"
+channel user mode, assumed to be <tt>+h</tt>.  Half-ops occupy a privilege
+level between voiced users (<tt>+v</tt>) and channel operators
+(<tt>+o</tt>); typically, they can set <tt>+v</tt> on users and change the
+channel topic, but cannot change channel modes or kick channel operators.
+In addition to updating several language strings, the source file adds a
+callback function for the ChanServ <tt>CLEAR</tt> command allowing
+<tt>CLEAR HALFOPS</tt> to be used.  As with <tt>banexcept.c</tt>, this
+necessitates the use of load/unload-module callback functions to watch for
+the ChanServ module being loaded or unloaded.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s7-4">5-7-4. <tt>invitemask.c</tt>, <tt>invitemask.h</tt></h4>
+
+<p>The <tt>invitemask.c</tt> source file implements support for <i>invite
+masks</i>, masks specifying clients which are allowed to join a <tt>+i</tt>
+channel without being explicitly invited into the channel.  The channel
+mode for exceptions is assumed to be <tt>+I</tt>.  Except for the actual
+mode character used and structure fields modified, this source file is
+identical to <tt>banexcept.c</tt>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s7-5">5-7-5. <tt>sjoin.c</tt>, <tt>sjoin.h</tt></h4>
+
+<p>The <tt>sjoin.c</tt> source file implements support for the
+<tt>SJOIN</tt> message used in IRC servers such as Bahamut and Unreal.
+This is easily the most complex of the auxiliary source files.</p>
+
+<p>The basic idea of the <tt>SJOIN</tt> message is to condense several
+types of channel information&mdash;channel creation time, channel modes,
+and users on the channel&mdash;into a single message, reducing the
+bandwidth required to send channel state across the network and reducing
+the potential for race conditions.  There are a few slightly different
+message formats used, as noted in the source code comments, but in general
+the message takes the channel name, channel creation time, mode string,
+(optional) mode parameters, and finally (in a colon-prefixed parameter) the
+list of clients (nicknames) on the channel.  In this last parameter, each
+client's nickname is prefixed with characters indicating the client's
+channel user modes; for example, if <tt><i>Nickname</i></tt> is a channel
+operator on the channel, the client will be listed as
+<tt>@<i>NickName</i></tt> in the message.</p>
+
+<p>Processing of the <tt>SJOIN</tt> message is handled by the
+<tt>do_sjoin()</tt> routine; the module should call this routine when in
+receives an <tt>SJOIN</tt> message.  <tt>do_sjoin()</tt> looks at the
+parameters to determine the message's format, then walks through the list
+of nicknames (and possibly bans and exceptions), adding each one to the
+channel.  If any users actually joined the channel, then the channel modes
+and timestamp are set afterwards.</p>
+
+<p>The <tt>SJOIN</tt> message can also be used as a shortcut to remove all
+users from a channel with one command.  By sending an <tt>SJOIN</tt> with
+a channel timestamp older than the channel's current timestamp, the remote
+server will treat Services' <tt>SJOIN</tt> as authoritative.  If that
+message indicates that no users are in the channel (an empty last
+parameter), then the IRC server will automatically kick all the users
+currently on the channel, saving Services the trouble of having to send
+<tt>KICK</tt> messages for all users.</p>
+
+<p>Additionally, since <tt>SJOIN</tt> includes the channel's creation time
+as a parameter, it is possible to use a dummy <tt>SJOIN</tt> message to
+deliberately set the creation timestamp of a registered channel to the time
+the channel was registered, ensuring that the channel will always be
+considered the "canonical" one even if the same channel is created on a
+split server..  The configuration option <tt>CSSetChannelTime</tt>
+activates this behavior.  (This configuration option is defined in a macro,
+<tt>SJOIN_CONFIG</tt>, in <tt>sjoin.h</tt>; the module should include this
+macro as part of its <tt>module_config[]</tt> array.)  The actual setting
+of the channel creation time is done using the "<tt>channel&nbsp;create</tt>"
+callback; when a user first enters an empty channel, Services sends an
+<tt>SJOIN</tt> message to the network with the altered channel creation
+time, including the newly-joining user in the user list; this results in
+the channel creation time being updated without any other changes being
+made to the channel.</p>
+
+<p>Unfortunately, both of the major IRC servers using <tt>SJOIN</tt>,
+Bahamut and Unreal, have idiosyncrasies that prevent this behavior from
+working exactly as designed; Bahamut ignores any channel user modes set on
+clients who are not behind the sending server, causing the client to lose
+channel operator privileges, while Unreal interprets an empty mode string
+(a single "<tt>+</tt>") to mean "clear all channel modes".  To work around
+this, if the module defines the preprocessor symbol <tt>BAHAMUT_HACK</tt>
+before including this source file, this processing will be modified to set
+<tt>+o</tt> again on the newly-joining client if it was <tt>+o</tt> before
+the Services <tt>SJOIN</tt> was sent; this restores the original channel
+state, at the cost of having an unsightly <tt>MODE&nbsp;-o</tt> and
+<tt>MODE&nbsp;+o</tt> in quick succession when a user first enters a
+registered channel.  Likewise, defining <tt>UNREAL_HACK</tt> will work
+around the Unreal problem by using the channel mode parameter to set
+<tt>+o</tt> on the user rather than listing the user in the final
+parameter.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s7-6">5-7-6. <tt>svsnick.c</tt>, <tt>svsnick.h</tt></h4>
+
+<p>The <tt>svsnick.c</tt> source file implements support for forced
+changing of clients' nicknames; this is used, for example, by NickServ to
+change a client's nickname to a "guest" nickname rather than disconnecting
+the client outright.  The implementation itself simply consists of setting
+the <tt>PF_CHANGENICK</tt> protocol feature flag and assigning a function
+to the <tt>send_nickchange_remote()</tt> function pointer.  However, unlike
+most other auxiliary source files, the initialization function
+<tt>init_svsnick()</tt> takes a parameter; this is so that the protocol
+module can specify the name of the message used, in case it is not
+<tt>SVSNICK</tt>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s7-7">5-7-7. <tt>token.c</tt>, <tt>token.h</tt></h4>
+
+<p>The <tt>token.c</tt> source file implements the use of one- or
+two-character <i>tokens</i> to substitute for full message names in
+server-to-server communications.  The mapping of tokens to message names
+is given by a <tt>TokenInfo</tt> array passed to <tt>init_tokens()</tt>,
+terminated by an entry with the <tt>token</tt> field of the structure set
+to <tt>NULL</tt>.  The initialization routine uses this mapping array to
+generate a 65,536-entry lookup table, indexed by the two characters of the
+token taken as a 16-bit value with the first character in the high eight
+bits (a value of zero is used for the second character in the case of a
+one-character token).  The values in the lookup table point directly to
+the handler functions; this eliminates the necessity to search through
+the message table, but also means that any later changes to the message
+table will not be seen.</p>
+
+<p>The actual processing of the tokens is done by a callback function added
+to the "<tt>receive&nbsp;message</tt>" callback.  The function checks
+whether the message name is two characters long or less and whether there
+is a function in the table corresponding to the one- or two-character
+message name; if so, that function is called, and the ordinary message
+processing is skipped.</p>
+
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="4.html">Previous section: The module system</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="6.html">Next section: Database handling</a></p>
+
+</body>
+</html>

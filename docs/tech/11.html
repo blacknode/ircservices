@@ -1,0 +1,447 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 11. Future work</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">11. Future work</h2>
+
+<p class="section-toc">
+     11-1. <a href="#s1">Design issues</a>
+<br/>11-2. <a href="#s2">User interface issues</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;11-2-1. <a href="#s2-1">NickServ issues</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;11-2-2. <a href="#s2-2">ChanServ issues</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;11-2-3. <a href="#s2-3">MemoServ issues</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;11-2-4. <a href="#s2-4">OperServ issues</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;11-2-5. <a href="#s2-5">StatServ issues</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;11-2-6. <a href="#s2-6">Other issues</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;11-2-7. <a href="#s2-7">Rejected suggestions</a>
+</p>
+
+<p class="backlink"><a href="10.html">Previous section: Compilation</a> | 
+<a href="index.html">Table of Contents</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">11-1. Design issues</h3>
+
+<ul>
+
+<li class="spaced">Services currently operates under the assumption that
+enough memory will be available for its needs, and simply aborts the
+program in most cases if a memory allocation fails (the <tt>smalloc()</tt>
+function).  On modern systems this should be true most of the time anyway,
+but a better design would eliminate <tt>smalloc()</tt> and friends, and
+instead degrade gracefully when out of resources (for example, returning an
+"internal error" or "out of resources" message to a pseudoclient command).</li>
+
+<li class="spaced">Services ignores the possibility of truncation when
+using the <tt>snprintf()</tt> and <tt>vsnprintf()</tt> functions.  In most
+cases, such truncation would only result in the user seeing a truncated
+response string, and I have (at least in recent development) made an effort
+to check for overflow in security-related situations before calling
+<tt>snprintf()</tt>, but I cannot rule out the possibility that some
+security issues related to string truncation exist.  The code should be
+rewritten to (1) use an <tt>snprintf()</tt> that follows the POSIX
+standard of returning the number of bytes that would be written given an
+infinite buffer and (2) check the return value for overflow where
+pertinent.</li>
+
+<li class="spaced">As also mentioned in <a href="10.html#s5">section
+10-5</a>, the module callback implementation relies on the very flaky
+assumption that any type can be passed through a <tt>void&nbsp;*</tt> and
+come out unscathed on the other side, regardless of the parameter types
+used by the called function.  This happens to work on the Intel x86
+architecture because everything is 32 bits, and on the AMD x86-64
+architecture because the first five parameters (the maximum supported for
+callbacks in the current implementation) are passed in registers rather
+than on the stack, but there is no guarantee that this will also work on
+future (or other existing) architectures.  The implementation also assumes
+that a function can be passed more parameters than it actually accepts
+without any harm.  One possible alternative is to use variadic argument
+lists, but this would require changing all callback functions to take a
+<tt>va_list</tt> argument and retrieve the arguments manually; due to the
+amount of work this would take, the current implementation has been left
+alone for this release, and a redesign is left for future work.</li>
+
+<li class="spaced">Services defines its own types for integers of specific
+sizes: <tt>int8</tt>, <tt>uint32</tt>, and the like.  The standard header
+file <tt>stdint.h</tt> declares similar types, using names like
+<tt>int8_t</tt> and <tt>uint32_t</tt>; however, these are not used because
+this header file did not exist (or was not standardized, at least) during
+the early stages of Services' development, when the need for sized integer
+types arose.  Changing the code to use the standard types would remove the
+need to define those types in the <tt>configure</tt> script.</li>
+
+<li class="spaced">It has been suggested from time to time that Services
+use a full-fledged database management system such as MySQL for database
+storage, to allow easy access to the data by other programs such as CGI
+scripts on a web server.  In fact, the major services programs I am aware
+of which are currently (October 2007) under development seem to be taking
+this route.  However, Services has been designed from the start with the
+assumption that its data will never be modified by any outside process, and
+in fact, even the change from periodic expiration to expiration on access
+made during 5.0 alpha development caused several dangling-pointer bugs to
+surface.  Attempting to use external databases that could be modified by
+other programs within the current Services framework would at best cause
+such modified data to be overwritten when Services saved its databases, and
+at worst cause Services to crash when it tried to access data that had been
+modified without its knowledge.  That said, this design decision enforces a
+single-threaded execution model for the entire program, and for that reason
+alone is a good target for redesign.  (With respect to read-only access to
+Services data, XML-based data export was added in version 5.0.)</li>
+
+<li class="spaced">In relation to the above, XML has also been suggested as
+a native database format.  I have been reluctant to do this, both from the
+practical point of view that writing the databases in a textual format
+takes considerably longer than doing so in a binary format and would impair
+Services' responsiveness, and because I see XML as a data interchange
+format rather than a data storage format and believe that the two should be
+handled separately.  However, the former issue may well be moot for smaller
+networks, and the latter is a matter of taste; in addition, the current XML
+import and export modules lack the flexibility of the database system, as
+discussed at the top of <a href="8.html#s4-1">section 8-4-1</a>, so I leave
+this issue here for consideration.</li>
+
+<li class="spaced">Currently, Services records all log messages to a single
+log file, in a format intended for human perusal rather than machine
+processing.  This could be improved with an "event log" system and logging
+modules, whereby a common log function is called with some sort of event
+identifier and event data, and the log module(s) then perform appropriate
+actions; this would allow, for example, the creation of a log file with
+all nickname-related events stored in a format easily parsable by other
+programs, or the creation of an online "log channel" to which nickname and
+channel operations are sent.</li>
+
+<li class="spaced">ChanServ currently requires a password for founder-level
+access to registered channels.  However, since those privileges are also
+granted to the founder him/herself upon nickname identification, channel
+passwords could be considered optional; deliberately not setting a password
+on a channel would thus prevent the channel from being taken over by
+password theft.  However, the password also serves as an extra measure to
+prevent accidental dropping of channels (the <tt>DROP</tt> command requires
+password authentication), so an alternate method would have to be
+considered if channel passwords were made optional.</li>
+
+<li class="spaced">As mentioned in <a href="7.html#s4-1-4">section
+7-4-1-4</a>, it may be desirable to include "successor" channels in a
+user's owned-channel count.  This would alleviate the potential for a
+channel with a successor to nonetheless disappear on deletion of the
+founder's nickname (because the successor owned too many channels at that
+particular time).</li>
+
+<li class="spaced">Services has used a level-based access system since its
+inception, in which channel users are assigned a single numeric access
+level; this level then determines what privileges (if any) the user is
+allowed on the channel.  While more flexible than a simple system like the
+XOP command set, the use of numbers can prove confusing and difficult to
+understand, and there is no way to selectively grant higher-level
+privileges without also granting lower-level ones.  A system such as the
+"role" system used in PTlink Services 3.x, in which privileges are
+individually granted to users, could help solve these problems.</li>
+
+<li class="spaced">The use of binary bitfields to represent channel modes
+allows for efficient processing; however, it causes problems when changing
+from one protocol to another, because channels' mode lock data is stored
+using those same bitfields.  One way around this is to simply export and
+re-import the data using XML (which is probably a good idea in any case, to
+compensate for things like different processing of nicknames and channel
+names).  An alternative approach would be to store the modes as strings, at
+the cost of additional processing and storage requirements.  Still another
+approach might define a common set of mode bits among all protocols,
+allowing other protocols' modes to be interpreted properly; in essence, the
+set of modes defined in the core mode handling would be the union of all
+those defined in the standard protocol modules, rather than the
+intersection.  However, this would require wider data fields to handle the
+necessity of giving every mode its own unique bit, and would leave
+third-party protocol modules without a way to express their own custom
+modes.  The wisdom of including protocol-specific data in the Services core
+is also questionable.</li>
+
+<li class="spaced">The OperServ privilege system is currently very coarse.
+It essentially provides only three distinct classes: no privileges,
+Services operator, and Services administrator.  (The super-user class is
+identical to the administrator class except for the ability to modify the
+Services administrator list and to bypass the NSSecureAdmins security
+restrictions.)  Moreover, the privileges granted to Services operators are
+very limited, while those granted to Services administrators are extremely
+powerful, leaving no "middle ground".  At least one user of Services has
+noted that the inability to view user information, for example to resolve
+disputes between users, without also granting full administrator privileges
+is problematic.  Services would benefit from a review of these privilege
+classes; for example, it might be wise to require super-user privileges for
+dangerous commands such as <tt>JUPE</tt> and <tt>SHUTDOWN</tt>, which would
+then allow the administrator class to be used for tasks such as viewing
+user information.</li>
+
+<li class="spaced">Related to the above, it might be useful to allow
+OperServ privileges and related commands (such as NickServ and ChanServ
+<tt>FORBID</tt> or <tt>INFO ALL</tt>) to be assigned to different classes
+based on configuration settings.  For example, one network might decide to
+allow Services operators to use information retrieval commands (currently
+limited to Services administrators), while another might choose to let all
+IRC operators use the OperServ <tt>AKILL</tt> command.  Note that allowing
+this sort of configuration will require dynamically-generated help messages
+(since the required privilege class may change at runtime), in addition to
+new OperServ privilege-checking functions similar to
+<tt>is_services_oper()</tt> and <tt>is_services_admin()</tt>.</li>
+
+<li class="spaced">Configuration directives have been added somewhat
+haphazardly over the course of Services' development, and could probably
+use a review and overhaul.  In particular, there are several "negative
+options", including <tt>NoBouncyModes</tt>, <tt>NoSplitRecovery</tt>, and
+<tt>NoAdminPasswordCheck</tt>, which were added as negatives to avoid
+changing Services' behavior in the middle of a release series.  These have
+the unintuitive effect that <i>enabling</i> the option <i>disables</i> a
+particular behavior; ideally, such options should be written as positives
+(<i>e.g.,</i> <tt>BouncyModeCheck</tt> or <tt>SplitRecovery</tt>) and
+enabled in the default configuration file.</li>
+
+<li class="spaced" id="s1-gmake">As described in
+<a href="10.html#s3-2">section 10-3-2</a>, the module compilation process
+makes use of several time-consuming tricks to simplify the individual
+modules' Makefiles.  However, version 3.81 of GNU <tt>make</tt> introduced
+the special target <tt>.SECONDEXPANSION</tt>, which causes dependency lists
+in subsequent rules to be expanded twice; for example, a rule
+<div class="code">%.so: %.o $$(OBJECTS-$$@)</div>
+(note the escaped <tt>$</tt> characters, to prevent expansion on the first
+pass) would do what it looks like&mdash;supply a dependency list using a
+variable name derived from the target module name.  Use of this feature
+could substantially simplify the <tt>modules/Makerules</tt> file, at the
+expense of incompatibility with versions 3.79 and 3.80 of GNU
+<tt>make</tt>.</li>
+
+</ul>
+
+<p>There are also several issues listed in <a href="../d.html">Appendix
+D</a> of the user's manual.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">11-2. User interface issues</h3>
+
+<p>A number of possible functionality additions or changes have been
+considered by the author or suggested by users over the years.  These are
+summarized by subsystem below, in no particular order.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-1">11-2-1. NickServ issues</h4>
+
+<ul>
+<li class="spaced">Allow certain nicknames (specified by wildcard mask)
+	to be used but not registered.  <i>Suggested by Mark Hetherington
+	<tt>&lt;mark@ctcp.net&gt;</tt></i></li>
+<li class="spaced">Include successor channels in the output of the
+	<tt>LISTCHANS</tt> command.  <i>Suggested by Marc-Andre A. Fuentes
+	<tt>&lt;nothing@psychopat.org&gt;</tt></i></li>
+<li class="spaced">When using the <tt>nickserv/mail-auth</tt> module,
+	perform a DNS (MX) lookup on the domain in the E-mail address given
+	to the <tt>REGISTER</tt> or <tt>SET EMAIL</tt> address before
+	actually trying to send the authentication code message.
+	<i>Suggested by Brian <tt>&lt;n1uro@n1uro.com&gt;</tt></i></li>
+<li class="spaced">Include Services administrator or operator status in
+	the output from the <tt>INFO</tt> command.  <i>Suggested by Yusuf
+	Iskenderoglu <tt>&lt;uhc0@stud.uni-karlsruhe.de&gt;</tt></i></li>
+<li class="spaced">When the <tt>NSForceNickChange</tt> configuration option
+	is set, have the <tt>GHOST</tt> command change target users' nicks
+	rather than killing them outright.  <i>Suggested by Mark
+	Hetherington <tt>&lt;mark@ctcp.net&gt;</tt></i></li>
+<li class="spaced">An option to warn users via E-mail when a nickname is
+	about to expire.  <i>Suggested by Hans v Steenbergen
+	<tt>&lt;thebeast@xs4all.nl&gt;</tt></i></li>
+<li class="spaced">An option to allow users to change their "fake usermask"
+	(username and hostname shown in <tt>/whois</tt> output) to their
+	registered E-mail address, on servers supporting such a feature.</li>
+<li class="spaced">Allow Services administrators to modify other nicknames'
+	access lists.  <i>Suggested by Mauritz Antunes
+	<tt>&lt;mauritz@brasnet.org&gt;</tt></i></li>
+<li class="spaced">An option to limit the set of languages users are
+	allowed to select with <tt>SET LANGUAGE</tt>.  <i>Suggested by
+	Mauritz Antunes <tt>&lt;mauritz@brasnet.org&gt;</tt></i></li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-2">11-2-2. ChanServ issues</h4>
+
+<ul>
+<li class="spaced">Better integration of channel keys with ChanServ; for
+	example, authorized users should have a way to enter even if a
+	channel key is set, much like they can use the <tt>UNBAN</tt> or
+	<tt>INVITE</tt> commands to get around channel bans or mode
+	<tt>+i</tt>.</li>
+<li class="spaced">An option to autokill users entering a forbidden
+	channel (<i>e.g.,</i> to efficiently remove botnets from a
+	network).</li>
+<li class="spaced">Allow autokick exceptions.  <i>Suggested by Dionisios
+	K. <tt>&lt;admin@vonitsanet.gr&gt;</tt></i></li>
+<li class="spaced">A configuration option listing channel modes that uers
+	are not allowed to change, like a mode lock enforced on all
+	channels.  <i>Suggested by <tt>&lt;medice@gmx.at&gt;</tt></i></li>
+<li class="spaced">A ChanServ <tt>LINK</tt> command, like the NickServ
+	command of the same name but for channels.  <i>Suggested by Craig
+	McLure <tt>&lt;Craig@chatspike.net&gt;</tt></i></li>
+<li class="spaced">A <tt>VERBOSE</tt> option, causing ChanServ to send
+	notices (like for <tt>OPNOTICE</tt>) to the channel for all
+	ChanServ commands.  <i>Suggested by
+	<tt>&lt;martin@e-tech.us&gt;</tt></i></li>
+<li class="spaced">A command to look up channels by E-mail address.
+	<i>Suggested by Finny Merrill <tt>&lt;griever@t2n.org&gt;</tt></i></li>
+<li class="spaced">More intelligent handling of a missing "<tt>#</tt>" in
+	the channel name parameter for <tt>REGISTER</tt>.  <i>Suggested by
+	<tt>&lt;jollino@sogno.net&gt;</tt></i></li>
+<li class="spaced">A better method of determining a channel's "last-used"
+	time than the last time a user was auto-opped (but avoiding overly
+	sensitive schemes that update the last-used time even for
+	spambots).</li>
+<li class="spaced">An option to send an explanatory notice to a user who
+	tries to use a restricted ChanServ command on a channel with the
+	<tt>SECURE</tt> option set, without identifying for their
+	nickname.</li>
+<li class="spaced">Record the nickname of the user that added each access
+	entry and the last time the access entry was used.</li>
+<li class="spaced">Display access entries ordered by level.</li>
+<li class="spaced">Allow modification of (adding modes from or removing
+	modes to) channel mode locks, rather than wholesale replacement
+	only.</li>
+<li class="spaced">When switching IRC server types that do not share the
+	same set of channel modes, graceful degradation of locked modes not
+	available with the new protocol.  <i>Suggested by Yusuf
+	Iskenderoglu <tt>&lt;uhc0@stud.uni-karlsruhe.de&gt;</tt></i></li>
+<li class="spaced">Treat the <tt>/topic</tt> IRC command identically to the
+	ChanServ <tt>TOPIC</tt> command when determining whether to allow a
+	topic change on a channel with <tt>TOPICLOCK</tt> set.  <i>Suggested
+	by Casey <tt>&lt;caseyclaydon@fastmail.com.au&gt;</tt></i></li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-3">11-2-3. MemoServ issues</h4>
+
+<ul>
+<li class="spaced">A setting to reverse the meaning of the ignore list, so
+	that only users on the list are allowed to send memos.</li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-4">11-2-4. OperServ issues</h4>
+
+<ul>
+<li class="spaced">A command to kill nicknames matching a wildcard or
+	regular expression.  <i>Suggested by Guy Antony Halse
+	<tt>&lt;guy@rucus.ru.ac.za&gt;</tt></i></li>
+<li class="spaced">An option to send a notice to autokilled users of the
+	autokill expiration time before performing the actual kill.
+	<i>Suggested by <tt>&lt;saturn@jetirc.net&gt;</tt></i></li>
+<li class="spaced">The ability to use full regular expressions, not just
+	simple wildcards, in autokill and other wildcard masks.
+	<i>Suggested by Aragon Gouveia
+	<tt>&lt;aragon@phat.za.net&gt;</tt></i></li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-5">11-2-5. StatServ issues</h4>
+
+<ul>
+<li class="spaced">Keep track of the number of users per domain on each
+	server.  <i>Suggested by Ali Sor
+	<tt>&lt;alisor@softhome.net&gt;</tt></i></li>
+<li class="spaced">Keep track of statistics such as the number of joins
+	and kicks for each channel and the number of connections made by
+	each user or nickname.  <i>Suggested by
+	<tt>&lt;Georges@Berscheid.lu&gt;</tt></i></li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-6">11-2-6. Other issues</h4>
+
+<ul>
+<li class="spaced">An option or module to log all <tt>WALLOPS</tt> (and
+	<tt>GLOBOPS</tt>, etc.) messages.  <i>Suggested by Andrew
+	Kempe.</i></li>
+<li class="spaced">An in-program method to clear one or more databases
+	(currently, this can only be done by removing the corresponding
+	database files).  <i>Suggested by
+	<tt>&lt;RealCFC@chatfirst.com&gt;</tt></i></li>
+<li class="spaced">A network status page, possibly with graphs (see for example
+	<a href="http://irc.netsplit.de/"><tt>irc.netsplit.de</tt></a>).
+	<i>Suggested by <tt>&lt;jollino@sogno.net&gt;</tt></i></li>
+<li class="spaced">An option to autokill users who are killed repeatedly
+	for bad passwords.  <i>Suggested by Jonathan Morton
+	<tt>&lt;chromi@cyberspace.org&gt;</tt></i></li>
+<li class="spaced">The ability to reconnect to the uplink server if
+	disconnected.</li>
+<li class="spaced">A way to send commands to OperServ (or possibly other
+	pseudoclients) from another process.</li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-7">11-2-7. Rejected suggestions</h4>
+
+<p>In addition to the above, the author has explicitly rejected a few
+feature suggestions as unnecessary or inappropriate for inclusion in
+Services; however, they are recorded here for the consideration of future
+developers.</p>
+
+<ul>
+<li class="spaced"><b>Automatic opping/voicing/etc. of users on channel
+	access list changes.</b>  For example, automatically setting
+	<tt>+o</tt> on a user added to the access list with auto-op
+	privileges.  While this is certainly not a useless feature, access
+	list changes are typically one-time events, and do not warrant the
+	added complexity of including such a feature; the user can be
+	manually opped or voiced just as easily.</li>
+<li class="spaced"><b>Allow identification to multiple nicknames.</b>
+	This can result in ambiguities when handling channel access levels.
+	For example, suppose a user has identified to two nicknames,
+	GoodNick and BadNick.  If on a certain channel, GoodNick has an
+	access level of 50 but BadNick has an access level of -10, what
+	access level should the user be granted?  The answer varies with
+	the particular channel and user, and rather than attempting to
+	invent a system of options and rules to handle every possible
+	circumstance, Services simply disallows identification to multiple
+	nicknames entirely.  (Services will remember whether a user has
+	identified for a nickname if the user temporarily switches to
+	another nickname.)</li>
+<li class="spaced"><b>A channel option or configuration file setting to
+	make ChanServ join channels, or a BotServ pseudoclient to do the
+	same thing.</b>  This is one of the most common feature requests,
+	but it has consistently been rejected as incompatible with the
+	design of Services as a streamlined network tool rather than a
+	users' toy, and also because standard bots can provide equivalent
+	functionality much more flexibly than a single Services
+	pseudoclient could.</li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="10.html">Previous section: Compilation</a> | 
+<a href="index.html">Table of Contents</a></p>
+
+</body>
+</html>

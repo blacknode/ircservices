@@ -1,0 +1,146 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services Manual - Appendix D. Known issues</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>Appendix D. Known issues</h2>
+
+<p align=right><font size=-1><a href="index.html">Table of Contents</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<p>There are a few issues which have been reported as bugs in the past or
+discovered by the author, but which either are not consistently
+reproduceable or are a consequence of the way Services works and not easily
+avoidable.  These issues are listed below.</p>
+
+<h3>Nickname and NickServ issues</h3>
+
+<p><ul><li>When setting NickServ options for other users as a Services
+administrator, NickServ will incorrectly respond with "Your (option name)
+has been changed" or similar messages, as though the Services admin's
+nickname settings had been changed.  (The target nickname's settings are
+in fact correctly modified, while the admin's settings are left alone.)
+
+<p><li>If you disable one or more of the <tt>nickserv/access</tt>,
+<tt>nickserv/autojoin</tt>, <tt>memoserv/main</tt>, and
+<tt>memoserv/ignore modules</tt>, delete a nickgroup, create a new
+nickgroup that has the same ID, and re-enable the module(s), the new
+nickgroup will keep any data from those module(s) that belonged to the old
+nickgroup.  Since nickgroup IDs are assigned randomly, this should be a
+rare occurrence.
+
+</ul>
+
+<h3>Channel and ChanServ issues</h3>
+
+<p><ul><li>Services appears to incorrectly detect "mode bouncing" (<i>i.e.,</i>
+the IRC server reversing Services' mode changes) in some cases.  When this
+occurs, commands like <tt>KICK</tt> and <tt>TOPIC</tt> as well as auto-ops
+and mode locking will no longer work on that channel.  If this problem
+occurs, appropriate messages will be written to the log file; the problem
+can be worked around by either clearing the channel (removing all users
+from the channel) or restarting Services.  Adding the
+<a href="a.html#NoBouncyModes"><tt>NoBouncyModes</tt></a> directive in
+<tt>ircservices.conf</tt> will prevent this problem from occurring, but
+will cause mode floods if you have an incorrectly configured server on your
+network.
+
+<p><li>If a user without auto-op privileges enters a registered, empty
+channel and sends a MODE command to change the channel modes before
+Services removes the user's channel operator privileges, the changed modes
+will remain in effect on the channel.  On some IRC servers, such as
+InspIRCd and ircd-ratbox, this can be avoided by setting the
+<a href="a.html#protocol/(insert_protocol_name_here).CSSetChannelTime"><tt>CSSetChannelTime</tt></a>
+option in <tt>modules.conf</tt>.
+
+<p><li>When kicking users from forbidden channels (or in other cases when a
+user tries to join an empty channel and is kicked), Services will generate
+debug log messages about "<tt>MODE +b for unknown channel</tt>".  These are
+a side effect of the order in which Services processes the operations
+involved in the kickban; they are harmless and can be safely ignored.  The
+same or similar messages can also appear during a netburst when modes are
+sent for a channel after all the users in the channel have been kicked, or
+when joins and modes are sent for a user who gets autokilled.
+
+<p><li>If you try to enter an empty channel and get kicked and banned by
+ChanServ, you cannot get in with <tt>UNBAN</tt> or <tt>INVITE</tt> even if
+you would normally have privileges to do so because ChanServ reports that
+the channel does not exist.  This is because ChanServ does not keep track
+of channels that it is currently residing in after a kickban in the same
+way that it does for ordinary users.
+
+<p><li>When using protocols that support ban exceptions, users can get
+around the "ban" part of a kickban in an empty channel by sending a ban
+exception quickly enough that the server processes it before Services is
+able to kick the user, allowing the user to repeatedly rejoin the channel
+(and get immediately kicked again).  This is a side effect of Services not
+tracking empty channels in which ChanServ is residing, but if your IRC
+server's flood protection is set up properly, this will not be a problem in
+practice (there are many ways for users to generate more network traffic
+than a join/part loop).
+
+<p><li>There appear to be some cases in which channel modes (<tt>+k</tt>
+and <tt>+o</tt> have been reported) are set twice in succession for the
+same channel.  This naturally has no effect on the channel itself, but some
+users have reported it as annoying.  Services attempts to detect and
+correct this, but it may still occur in some cases.
+
+</ul>
+
+<h3>Administration and other issues</h3>
+
+<p><ul><li>If you are not using encrypted passwords, then all passwords will
+be truncated to be at most 32 characters (or <tt>PASSMAX</tt> characters,
+if you change the value of <tt>PASSMAX</tt> in the <tt>defs.h</tt> source
+file) long.  As a result, any password with the same initial sequence of
+characters will be treated as a match, even if it is not exactly the same
+password initially set.
+
+<p><li>When setting another nickname's password or a channel's password as
+a Services administrator, NickServ (or ChanServ) will send out the
+"<tt><i>ADMIN</i> used SET PASSWORD as Services admin for <i>TARGET</i></tt>"
+global message even if the password change is rejected due to length or
+similarity with the target nickname or channel name.  This is difficult to
+fix cleanly in the current code structure (which is one reason the message
+was written as "used SET PASSWORD" instead of "changed password").  Since
+this is expected to be a rare occurrence, clarity of code was given
+preference over adding special-case processing for this case.  Note that
+setting the
+<a href="a.html#NoAdminPasswordCheck"><tt>NoAdminPasswordCheck</tt></a>
+option in <tt>ircservices.conf</tt> will disable all password checks for
+Services administrators, thus avoiding this problem.
+
+<p><li>When using the Bahamut protocol, Services will log warnings about
+missing IP addresses each time an opermasked client connects to the network
+or rejoins after a netsplit.  This is unavoidable on Services' part, since
+the Bahamut protocol does not seem to provide a way to differentiate between
+opermasked clients and servers which do not send IP addresses at all.
+
+<p><li>It has been reported that using the OperServ <tt>JUPE</tt> command
+on a Bahamut-based network for a server two or more hops away from the
+Services uplink server can cause Services to be dropped from the network.
+
+<p><li>If you compile on a Macintosh (OSX) system using dynamic modules,
+the <tt>encryption/unix-crypt</tt> module may fail to load.  If this
+happens, compile using static modules instead (<tt>./configure
+-use-static-modules</tt>).
+
+</ul>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<p align=right><font size=-1><a href="index.html">Table of Contents</a></font>
+
+</body>
+</html>

@@ -1,0 +1,1044 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 4. Module system</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">4. The module system</h2>
+
+<p class="section-toc">
+     4-1. <a href="#s1">The module concept</a>
+<br/>4-2. <a href="#s2">Structure of a module</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-2-1. <a href="#s2-1">Required symbols</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-2-2. <a href="#s2-2">Utility macros and functions</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-2-3. <a href="#s2-3">Dynamic versus static modules</a>
+<br/>4-3. <a href="#s3">Module management</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-3-1. <a href="#s3-1">Module loading</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-3-2. <a href="#s3-2">Module configuration</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-3-3. <a href="#s3-3">Module unloading</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-3-4. <a href="#s3-4">Searching for a module</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-3-5. <a href="#s3-5">Locking a module in memory</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-3-6. <a href="#s3-6">Global initialization and cleanup</a>
+<br/>4-4. <a href="#s4">External symbols</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-4-1. <a href="#s4-1">Exporting symbols</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-4-2. <a href="#s4-2">Importing symbols</a>
+<br/>4-5. <a href="#s5">Callbacks</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-5-1. <a href="#s5-1">Registering callbacks</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-5-2. <a href="#s5-2">Hooking into callbacks</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;4-5-3. <a href="#s5-3">Calling callbacks</a>
+<br/>4-6. <a href="#s6">Adding a module to Services</a>
+</p>
+
+<p class="backlink"><a href="3.html">Previous section: Communication (socket) handling</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="5.html">Next section: IRC server interface</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">4-1. The module concept</h3>
+
+<p>The module system was introduced in Services 5.0, partly to allow
+greater flexibility in configuring Services, partly to simplify the process
+of extending Services, and partly to help clarify the boundaries between
+distinct sets of functionality.  Rather than merge every conceivable
+function into a single monolithic program, Services was divided into a
+comparatively small core and a number of modules which each implemented
+distinct sets of features.  These modules could then be developed
+separately from the core and from each other, without concern for the
+effects of changes in other parts of the program.</p>
+
+<p>Aside from providing a cleaner program structure, modules make it
+simpler to implement different variations on a particular feature.  A good
+example of this is the protocol modules (discussed in
+<a href="5.html">section 5</a>); rather than a complex set of <tt>#if</tt>
+and <tt>#else</tt> directives to handle differences between IRC server
+types, a separate protocol module can be written for each type of IRC
+server; this results in a certain amount of code duplication for similar
+protocols, but makes the code for each protocol much more maintainable, and
+allows the code for a single protocol to be changed easily without worrying
+that it will break processing for other protocols.</p>
+
+<p>Modules also make it easier to add new features to Services, whether as
+part of the Services package or as third-party additions.  By connecting to
+the Services core and standard modules through a set of well-defined
+callbacks, no changes need to be made to the main source code when the
+module is updated, and vice versa.  The compilation system (see
+<a href="10.html#s3-2">section 10-3-2</a>) also makes it easy for users to
+add modules on their own, by simply "dropping in" the source code for the
+new module; Services will automatically find the module and compile it.</p>
+
+<p>Below, <a href="#s2">section 4-2</a> discusses the basic structure of a
+module, along with other background issues; <a href="#s3">section 4-3</a>
+discusses how modules are managed, including the details of module loading,
+configuration, and unloading; <a href="#s4">section 4-4</a> discusses how
+to make symbols available to other modules and use symbols from other
+modules; and <a href="#s5">section 4-5</a> covers callbacks.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">4-2. Structure of a module</h3>
+
+<p>From the viewpoint of the Services core, a module is a single unit of
+functionality with a known interface.  The only direct accesses made to
+module data are to a limited number of functions and variables (as
+described in <a href="#s2-1">section 4-2-1</a> below); all other module
+interactions occur through callbacks, which it is the module's
+responsibility to install as necessary.</p>
+
+<p>A typical module, therefore, will use its initialization routine (one of
+the directly-accessed functions) to install callback functions, enabling it
+to respond to events such as messages from the IRC server or connections on
+a socket.  After performing any other necessary setup actions, the
+initialization routine returns control to the Services core, which will
+then call the module's callback functions as appropriate.  The bulk of a
+module is thus usually contained in these callback functions or their
+helper routines.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-1">4-2-1. Required and optional symbols</h4>
+
+<p>Modules are required to define two variables, used by the module loader:
+<b><tt>int32&nbsp;module_version</tt></b>, initialized to the value
+of the macro <tt>MODULE_VERSION_CODE</tt>, and
+<b><tt>Module&nbsp;**_this_module_ptr</tt></b>, a pointer to a variable
+which will receive the module's handle (see <a href="#s3">section 4-3</a>
+for information on module handles).  However, both of these variables are
+normally defined by <tt>modules.h</tt> when compiling the module's main
+file (the source file with the same base name as the module object file),
+so ordinarily there is no need to be concerned about these variables.</p>
+
+<p>Modules may optionally define two functions, which the module loader
+will call when the module is loaded and unloaded, respectively:</p>
+
+<dl>
+<dt><tt>int <b>init_module</b>()</tt></dt>
+    <dd>Performs any initialization operations necessary for the module,
+	returning nonzero on success, zero on failure.  This function is
+	called during the module loading process (see
+	<a href="#s3-1">section 4-3-1</a>); if it returns failure, the
+	module load is aborted.</dd>
+
+<dt><tt>int <b>exit_module</b>(int <i>shutdown</i>)</tt></dt>
+    <dd>Performs any cleanup operations necessary for the module.  If
+	<tt><i>shutdown</i></tt> is zero, then the function is being called
+	for an unload operation during normal program processing; if
+	<tt>exit_module()</tt> returns zero, then the unload is aborted (a
+	nonzero return value indicates permission to unload the module).
+	If <tt><i>shutdown</i></tt> is nonzero, then the function is being
+	called because the program is shutting down; in this case, the
+	function must perform all necessary shutdown operations (returning
+	zero to cancel the unload is not permitted).  <i>Implementation
+	note: The <tt><i>shutdown</i></tt> parameter was included primarily
+	for the protocol modules, due to some shortcuts taken on the
+	assumption that only one protocol module would be used during any
+	given execution.</i></dd>
+</dl>
+
+<p>Modules may also optionally define
+<b><tt>ConfigDirective&nbsp;module_config[]</tt></b> (this must be an
+array, not a pointer), containing configuration information for the module
+which will be processed by the module loader.  The use of this array is
+described in <a href="#s3-2">section 4-3-2</a>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-2">4-2-2. Utility macros and functions</h4>
+
+<p>The header file <tt>modules.h</tt>, which must be included by all module
+source files, includes a few macros for convenience in writing modules:</p>
+
+<dl>
+<dt><tt><b>THIS_MODULE</b></tt></dt>
+    <dd>Evaluates to the module handle for this module.  This can be used,
+	for example, if a module wants to pass its handle explicitly to
+	another module, but it is more commonly used by other macros in
+	<tt>modules.h</tt> to automatically pass the module's handle to
+	various module-related routines (see below).</dd>
+
+<dt><tt><b>MODULE_NAME</b></tt></dt>
+    <dd>Evaluates to a string containing the module's name; the value
+	should be treated as constant but not literal.  (Internally, it is
+	simply the result of <tt>get_module_name(THIS_MODULE)</tt>.)</dd>
+
+<dt><tt><b>MODULE_VERSION_CODE</b></tt></dt>
+    <dd>Evaluates to a numeric code indicating the Services version number.
+	The version number consists of four parts: major version number,
+	minor version number, release status (alpha, beta/prerelease, or
+	final), and release number.  These are passed to the macro to
+	produce a number indicating the version, where greater values
+	indicate later versions.  For example:
+	<div class="code">  MODULE_VERSION_CODE(5,0,MODULE_VERSION_FINAL,4)
+&lt; MODULE_VERSION_CODE(5,1,MODULE_VERSION_ALPHA,3)
+&lt; MODULE_VERSION_CODE(5,1,MODULE_VERSION_BETA,2)
+&lt; MODULE_VERSION_CODE(5,1,MODULE_VERSION_FINAL,1)</div>
+	because version 5.0 is earlier than version 5.1, alpha releases
+	are earlier than beta releases, and beta releases are earlier than
+	final releases.  (These values correspond to the versions 5.0.4,
+	5.1a3, 5.1pre2, and 5.1.1 respectively.)  While this value is
+	primarily used to set the <tt>module_version</tt> required
+	variable, as described above, it can also be used in conditional
+	compilation when compatibility with multiple versions of Services
+	is desired.</dd>
+</dl>
+
+<p>In addition, many of the routines described in this section take a
+<tt><i>module</i></tt> or <tt><i>caller</i></tt> parameter, so that the
+module subsystem knows which module is making the call; however, macros are
+used to hide this parameter from the module source code, both to improve
+readability of the code and to avoid potential errors from passing the
+wrong parameter.  These functions are:</p>
+<ul>
+<li><tt>add_callback()</tt> (and <tt>add_callback_pri()</tt>)</li>
+<li><tt>call_callback()</tt> (and variations)</li>
+<li><tt>module_log()</tt> (and variations; declared in <tt>log.h</tt>)</li>
+<li><tt>register_callback()</tt></li>
+<li><tt>remove_callback()</tt></li>
+<li><tt>unregister_callback()</tt></li>
+<li><tt>unuse_module()</tt></li>
+<li><tt>use_module()</tt></li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-3">4-2-3. Dynamic versus static modules</h4>
+
+<p>It is possible for modules to be compiled either <i>dynamically</i>, so
+that the module is loaded into memory only when used, or <i>statically</i>,
+building all modules into the main executable file.  The decision of which
+to use is made by the user via the <tt>configure</tt> script, and cannot be
+controlled by individual modules.  In general, modules will behave exactly
+the same whether compiled dynamically or statically; however, it is
+important to be aware of particular behaviors with each method, to avoid
+problems that cause the module to fail when using one method or the other.</p>
+
+<p><i>Dynamic linking</i> involves compiling each module into an
+independent loadable object file, which is then loaded into memory as
+needed using the system's <tt>dlopen()</tt> family of functions.  (If
+these functions are not available, dynamic modules cannot be used; the
+<tt>configure</tt> script will detect this and select static modules
+automatically.)  Any direct references to symbols not defined in the
+module, such as core Services routines, will be marked as unresolved
+references in the object file.  As a result, it is possible to compile a
+module that references a nonexistent symbol&mdash;for example, accidentally
+typing <tt>str<b>mc</b>p</tt> instead of <tt>str<b>cm</b>p</tt>&mdash;and
+the error will not be detected until an attempt is made to load the module.</p>
+
+<p><i>Static linking</i>, on the other hand, results in every module being
+linked together with the core code to produce a single executable file.
+This means that every symbol in the Services core&mdash;and in other
+modules&mdash;will be available for use.  Static linking can detect
+references to nonexistent symbols at compile time, unlike dynamic linking,
+but will not generate an error if one module references a symbol from
+another.  For example, if a protocol module erroneously references a symbol
+from one of the pseudoclients directly (rather than using the symbol lookup
+method described in <a href="#s4-2">section 4-4-2</a>), the protocol module
+will fail to load when using dynamic linking unless the appropriate
+pseudoclient module is loaded first.  (Since the current design of Services
+requires that a protocol module be loaded first, this would result in
+Services not being able to run at all.)</p>
+
+<p>When using modules composed of two or more source files that share
+internal-use symbols, static linking can cause spurious errors at link
+time.  This is because, even though the symbols are only used internally,
+they are still included in the final object file for the module; thus, if
+two separate modules happen to use the same name for a function or
+variable, the final link will report a "duplicate symbol" error.  This is
+an actual problem with the NickServ and ChanServ modules, both of which
+include various internal utility routines in a separate source file, and as
+a result some ChanServ routines have to be renamed (see
+<a href="7.html#s4-1-1-rename">the relevant part of section 7-4-1-1</a>).</p>
+
+<p>Additionally, when using static linking, module-global variables will
+always retain their values between a module unload and a subsequent module
+load; when using dynamic linking, it is system-dependent whether the values
+will be retained or reset to their initial values.  Thus it is important
+that a module's cleanup routine not only free all resources used by the
+module, but also reset all variables to appropriate values for the next
+call to the initialization routine.</p>
+
+<p>For these reasons, it is best to test modules using both dynamic and
+static linking, to ensure that unintended errors are not introduced.</p>
+
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">4-3. Module management</h3>
+
+<p>The module subsystem uses the routines described in this section to
+manage modules, performing loading, configuration and unloading as well as
+checking whether a module is loaded or locking modules into memory.</p>
+
+<p>Most module subsystem routines take or return a <i>module handle</i>, a
+value of type <tt>Module&nbsp;*</tt>, to identify a particular module.  The
+<tt>Module</tt> type is declared as simply <tt>struct Module_</tt> in
+<tt>modules.h</tt>, rendering the type opaque to callers.  Internally,
+<tt>struct Module_</tt> is used to hold information about each loaded
+module, and has the following fields:</p>
+
+<dl>
+<dt><tt>Module *<b>next</b>, *<b>prev</b></tt></dt>
+    <dd>Used to maintain the linked list of loaded modules.</dd>
+
+<dt><tt>char *<b>name</b></tt></dt>
+    <dd>The module's name, set to the pathname used to load the module (for
+	example, "<tt>nickserv/main</tt>").</dd>
+
+<dt><tt>ConfigDirective *<b>modconfig</b></tt></dt>
+    <dd>The value of the symbol <tt>module_config</tt> in this module, or
+	<tt>NULL</tt> if the <tt>module_config</tt> symbol does not exist.</dd>
+
+<dt><tt>Module ***<b>this_module_pptr</b></tt></dt>
+    <dd>The value of the symbol <tt>_this_module_ptr</tt> in this module.
+	(This is the <i>address</i> of the <tt>_this_module_ptr</tt>
+	variable, which itself is a pointer to a variable of type
+	<tt>Module&nbsp;*</tt>, so the type of this field is
+	<tt>Module&nbsp;***</tt>.)</dd>
+
+<dt><tt>const int32 *<b>module_version_ptr</b></tt></dt>
+    <dd>The value of the symbol <tt>module_version</tt> in this module
+	(again, the address of the variable, not its value).</dd>
+
+<dt><tt>void *<b>dllhandle</b></tt></dt>
+    <dd>The handle returned by the system <tt>dlopen()</tt> function.  For
+	static linking, this instead points to an internal structure with
+	the module data.</dd>
+
+<dt><tt>CallbackList *<b>callbacks</b></tt>
+<br/><tt>int <b>callbacks_count</b></tt></dt>
+    <dd>A variable-length array containing the callbacks registered by this
+	module.</dd>
+
+<dt><tt>const Module **<b>users</b></tt>
+<br/><tt>int <b>users_count</b></tt></dt>
+    <dd>A variable-length array containing handles of modules which have
+	called <tt>use_module()</tt> for this module.</dd>
+</dl>
+
+<p>Loaded modules are kept as a doubly-linked list, with the list head in
+the file-scope variable <tt>modulelist</tt>.  This list always contains at
+least one entry: a dummy entry for the Services core, defined in the
+variable <tt>coremodule</tt>.</p>
+
+<p>The module management routines are:</p>
+
+<dl>
+<dt><tt>Module *<b>load_module</b>(const char *<i>modulename</i>)</tt></dt>
+    <dd>Loads the given module and returns a pointer to its module handle,
+	or <tt>NULL</tt> on failure.  Described in <a href="#s3-1">section
+	4-3-1</a>.</dd>
+
+<dt><tt>int <b>unload_module</b>(Module *<i>module</i>)</tt></dt>
+    <dd>Unloads the given module.  Returns nonzero if the module was
+	successfully unloaded, zero if not.  Described in
+	<a href="#s3-3">section 4-3-3</a>.</dd>
+
+<dt><tt>Module *<b>find_module</b>(const char *<i>modulename</i>)</tt></dt>
+    <dd>Returns a handle for the module whose name is given by
+	<tt><i>modulename</i></tt>.  If no such module has been loaded,
+	returns <tt>NULL</tt>.  Described in <a href="#s3-4">section
+	4-3-4</a>.</dd>
+
+<dt><tt>void <b>use_module</b>(Module *<i>module</i>)</tt></dt>
+    <dd>Marks the given module as "in use", preventing it from being
+	unloaded.  Described in <a href="#s3-5">section 4-3-5</a>.</dd>
+
+<dt><tt>void <b>unuse_module</b>(Module *<i>module</i>)</tt></dt>
+    <dd>Releases the lock on a module set by <tt>use_module()</tt>.
+	Described in <a href="#s3-5">section 4-3-5</a>.</dd>
+
+<dt><tt>void <b>modules_init</b>()</tt></dt>
+    <dd>Initializes the module subsystem.  Described in
+	<a href="#s3-6">section 4-3-6</a>.</dd>
+
+<dt><tt>void <b>modules_cleanup</b>()</tt></dt>
+    <dd>Shuts down the module subsystem.  Described in
+	<a href="#s3-6">section 4-3-6</a>.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-1">4-3-1. Module loading</h4>
+
+<p>A module can be loaded by calling the <tt>load_module()</tt> routine.
+This routine takes a single parameter, a string giving the name of the
+module to load (such as "nickserv/main"), and returns the handle for the
+newly-loaded module or <tt>NULL</tt> on failure.  The routine:</p>
+
+<ul>
+<li class="spaced">Calls <tt>internal_load_module()</tt> to load the module
+	into memory.  This helper routine takes care of performing the
+	actual module load (or lookup, when modules are linked statically)
+	and filling in the <tt>Module</tt> structure; see below for
+	details.</li>
+
+<li class="spaced">Links the new <tt>Module</tt> structure into the loaded
+	module list.</li>
+
+<li class="spaced">Calls the core's <tt>configure()</tt> routine to
+	configure module settings; see <a href="#s3-2">section 4-3-2</a>
+	for details.</li>
+
+<li class="spaced">Calls <tt>internal_init_module()</tt> to perform module
+	initialization.  This returns nonzero (success) if the module's
+	initialization function, <tt>module_init()</tt>, returns success
+	(or does not exist).</li>
+
+<li class="spaced">Calls the "<tt>load module</tt>" callback, a module
+	callback (see <a href="#s5">section 4-5</a>) used to signal that a
+	new module has been loaded.</li>
+
+<li class="spaced">Finally, performs a check to ensure that a valid
+	protocol module is loaded.  This is a kludge to ensure that a
+	protocol module is loaded before any other modules, since some
+	modules alter their initialization behavior depending on the
+	protocol in use.  See also <a href="5.html#s1">section 5-1</a>.</li>
+</ul>
+
+<p>The actual low-level work of loading the module and initializing the
+<tt>Module</tt> structure is handled by the <tt>internal_load_module()</tt>
+helper routine mentioned above.  This routine:</p>
+
+<ul>
+<li class="spaced">Ensures that the name given (which, when using dynamic
+	linking, becomes part of the file pathname) does not contain
+	<tt>../</tt>", to avoid attempts by malicious code to access files
+	outside the Services data directory.</li>
+
+<li class="spaced">Checks whether the module has already been loaded,
+	returning an error if so.</li>
+
+<li class="spaced">Calls <tt>my_dlopen()</tt> (see below) to actually load
+	the module into memory.</li>
+
+<li class="spaced">Allocates a new <tt>Module</tt> structure, filling in
+	the system module handle and module name.</li>
+
+<li class="spaced">Looks up the <tt>_this_module_ptr</tt> symbol in the
+	module, returning an error if the symbol is not found, and stores
+	the symbol's value in the <tt>this_module_pptr</tt> field of the
+	<tt>Module</tt> structure.  The variable pointed to by
+	<tt>_this_module_ptr</tt> is then set to the module handle,
+	allowing the <tt>THIS_MODULE</tt> macro to work.
+
+	<p>To perform the lookup, <tt>internal_load_module()</tt> first
+	calls <tt>check_module_symbol()</tt> to get the symbol value.
+	Then, if dynamic linking is in use, the returned value is checked
+	the <tt>this_module_pptr</tt> field of each module in the loaded
+	module list to see whether the same address has been used for a
+	different module.  This latter check is required because of a
+	problem (on some systems) with the system function
+	<tt>dlsym()</tt>, used for looking up symbols when dynamic linking
+	is in use: if the requested symbol is not present in the requested
+	module but is present in another module, <tt>dlsym()</tt> may
+	return the symbol from the other module (see <a href="#s4-2">section
+	4-4-2</a> for details).</p>
+
+	<p>Note that the implementation used with static linking does not
+	have this problem, rendering the check unnecessary.  In fact,
+	attempting to perform the check with static linking can actually
+	cause problems on some systems.  This is due to constant merging
+	performed by linkers, which results in distinct modules
+	legitimately having the same value for such a symbol.  This has
+	been observed with the <tt>module_version</tt> symbol (see below),
+	so the check is disabled when static linking is in use.</p></li>
+
+<li class="spaced">Looks up the <tt>module_version</tt> symbol in the
+	module, returning an error if the symbol is not found or the 32-bit
+	value that it points to does not match the value of the
+	<tt>MODULE_VERSION_CODE</tt> macro, and stores the symbol value
+	(variable address) in the <tt>module_version_ptr</tt> field of the
+	<tt>Module</tt> structure.</li>
+
+<li class="spaced">Looks up the <tt>module_config</tt> symbol in the
+	module, setting the <tt>modconfig</tt> field of the <tt>Module</tt>
+	structure to the symbol's value (or <tt>NULL</tt> if the symbol is
+	not found).</li>
+
+<li class="spaced">Returns the new <tt>Module</tt> structure.</li>
+</ul>
+
+<p>The <tt>my_dlopen()</tt> function referred to above is one of four
+wrappers for the system dynamic linking functions: <tt>dlopen()</tt>,
+<tt>dlclose()</tt>, <tt>dlsym()</tt>, and <tt>dlerror()</tt>.  When using
+dynamic linking, the wrapper functions essentially just call their system
+counterparts, although <tt>my_dlopen()</tt> generates the actual pathname
+from the module name (prepending the module directory pathname and
+appending the shared object extension "<tt>.so</tt>"), and
+<tt>my_dlsym()</tt> includes workarounds for systems that prepend symbol
+names with underscores and that do not handle <tt>dlsym(NULL,...)</tt>.
+When static linking is in use, the wrapper functions instead search through
+the pregenerated module and symbol lists for the requested module or symbol
+(<tt>dlclose()</tt> does nothing, and <tt>dlerror()</tt> uses a static
+error message variable to hold the value to return).  See
+<a href="10.html#s3-2">section 10-3-2</a>) for details on the generation of
+these lists.</p>
+
+<p>Note that <tt>load_module()</tt> (and its counterpart,
+<tt>unload_module()</tt>) are only intended to be called by the Services
+core to load modules specified by <tt>LoadModule</tt> directives in
+<tt>ircservices.conf</tt>.  Modules should never attempt to load other
+modules on their own, since the user may have intentionally chosen not to
+load certain modules; instead, an error should be generated if a required
+module is not available.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-2">4-3-2. Module configuration</h4>
+
+<p>Configuration of modules is performed through the same routine,
+<tt>configure()</tt>, that handles the Services core configuration;
+however, a different file is used, <tt>modules.conf</tt> rather than
+<tt>ircservices.conf</tt>, and each module's configuration directives must
+be enclosed by the <tt>Module</tt> and <tt>EndModule</tt> meta-directives.
+(Configuration files and the <tt>configure()</tt> routine are described in
+detail in <a href="2.html#s3-2">section 2-3-2</a>.)</p>
+
+<p>Each module can define configuration directives to be parsed by the
+configuration file reader by creating an array of <tt>ConfigDirective</tt>
+entries named <tt>module_config</tt>.  <tt>load_module()</tt> will check
+for this symbol and, if found, pass it to <tt>configure()</tt>, as
+described above; thus, the variables corresponding to the configuration
+directives will have already been set when the module's
+<tt>init_module()</tt> function is called.  The directives will likewise be
+reprocessed automatically during reconfiguration; however, it may be
+necessary for the module to detect changes in configuration variables (such
+as the nickname of a pseudoclient).  For this purpose, the module can hook
+into the "<tt>reconfigure</tt>" callback, which is called once before
+reconfiguration takes place and once after (see
+<a href="c.html#s2">appendix C</a> for details on the callback).</p>
+
+<p>All configuration variables will be reset to their initial values when
+the module is unloaded, so the module's <tt>exit_module()</tt> routine does
+not need to take any particular actions with respect to such variables.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-3">4-3-3. Module unloading</h4>
+
+<p>Loaded modules are unloaded from memory with the <tt>unload_module()</tt>
+routine.  This routine, which is implemented in a separate
+<tt>internal_unload_module()</tt> routine to allow passing a
+<tt><i>shutdown</i></tt> parameter to the module's cleanup function,
+performs the reverse of <tt>load_module()</tt>'s operations, returning
+nonzero if the module is successfully unloaded, zero if not.  The routine:</p>
+
+<ul>
+<li class="spaced">Checks whether the module is in use (locked) by another
+	module (see <a href="#s3-5">section 4-3-5</a>), returning failure
+	if so.</li>
+
+<li class="spaced">Calls the module's <tt>exit_module()</tt> function (if
+	it exists) with a parameter of zero, indicating that the unload
+	request is explicit rather than part of the program shutdown
+	process.  The unload fails if the function returns zero
+	(failure).</li>
+
+<li class="spaced">Removes the module from the global module list, ensuring
+	that other modules cannot access it during the unload procedure
+	(particularly when the "<tt>unload module</tt>" callback is
+	called).</li>
+
+<li class="spaced">Checks that the module has not left any other modules in
+	a locked state, by calling <tt>use_module()</tt> without a
+	corresponding <tt>unuse_module()</tt> (see <a href="#s3-5">section
+	4-3-5</a>).  If it has, a warning message is logged and the
+	offending locks are removed.</li>
+
+<li class="spaced">Checks that the module has not left any callback
+	functions hooked into other modules' (or the core's) callbacks.  If
+	it has, a warning message is logged and the offending functions are
+	removed.</li>
+
+<li class="spaced">Checks that the module has not left any callbacks of its
+	own registered.  If it has, a warning message is logged and the
+	offending callbacks are removed.</li>
+
+<li class="spaced">Calls the "<tt>unload module</tt>" callback, passing the
+	handle for the module that is being unloaded.</li>
+
+<li class="spaced">Calls <tt>deconfigure()</tt> for the module's
+	configuration directives (if any), restoring configuration
+	variables to their original values.</li>
+
+<li class="spaced">Frees resources used by the <tt>Module</tt> structure,
+	and calls <tt>my_dlclose()</tt> to unload the module at the system
+	level.</li>
+</ul>
+
+<p>Aside from <tt>unload_module()</tt>, modules are also unloaded during
+the shutdown process (see <a href="#s3-6">section 4-3-6</a>).</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-4">4-3-4. Searching for a module</h4>
+
+<p>If one module needs to access another, it can do so with the
+<tt>find_module()</tt> routine.  This routine takes a module name as
+parameter, searches through the loaded module list for a module whose name
+exactly matches the given name (case-sensitively), and returns the handle
+for that module (<tt>NULL</tt> if no matching module is found).</p>
+
+<p><tt>find_module()</tt> is used most commonly when one module wants to
+use functionality provided by another; for example, the module implementing
+the ChanServ pseudoclient (<tt>chanserv/main</tt>) uses it to retrieve the
+handle for the NickServ module (<tt>nickserv/main</tt>).  Note, however,
+that in cases where the module being searched for is not required, it may
+not be present at initialization time; in this case, it is better to hook
+into the core's "<tt>load module</tt>" and "<tt>unload module</tt>"
+callbacks, and only use <tt>find_module()</tt> to check whether the desired
+module has already been loaded when <tt>init_module()</tt> is called.  For
+example, the MemoServ module, <tt>memoserv/main</tt>, takes this approach
+with respect to the <tt>chanserv/main</tt> module when deciding whether to
+enable channel memos.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-5">4-3-5. Locking a module in memory</h4>
+
+<p>If one module requires another in order to function properly, the
+"user" module can request that the "used" module not be unloaded.  This is
+accomplished by calling the <tt>use_module()</tt> routine, passing the
+"used" module as the <tt><i>module</i></tt> parameter; this causes the
+specified module to be locked in memory.  When the module is no longer
+needed (for example, when the "user" module's <tt>exit_module()</tt>
+routine is being called for unloading), <tt>unuse_module()</tt> unlocks the
+module, allowing it to be unloaded normally.</p>
+
+<p>One problem that can arise when locking resources is the case of a
+circular lock dependency: if module A has locked module B, but module B has
+also locked module A, then neither of them can be unloaded until one or the
+other module releases its lock; if the modules only release their locks at
+cleanup time, there would be no way to unload them.  In order to prevent
+situations like this, <tt>use_module()</tt> checks for such circular
+dependencies and issues a warning if one is detected (in the form of a
+"BUG" message written to the log file).  Naturally, it is also not
+permitted for a module to attempt to lock itself.</p>
+
+<p>Note that both of these routines are internally named with a preceding
+underscore (<tt>_use_module()</tt>, <tt>_unuse_module()</tt>) and take a
+second parameter, <tt>const Module *<i>caller</i></tt>, which is used to
+ensure that modules do not leave stale locks around when they are unloaded
+(as described in <a href="#s3-3">section 4-3-3</a>).  However, these are
+hidden by macros which automatically pass <tt>THIS_MODULE</tt> as the
+<tt><i>caller</i></tt> parameter.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-6">4-3-6. Global initialization and cleanup</h4>
+
+<p>Before calling any module-related routines, the module subsystem must be
+initialized by calling <tt>modules_init()</tt>, which obtains the system
+handle for the program itself (when using dynamic linking) and sets up the
+three module subsystem callbacks: "<tt>load module</tt>",
+"<tt>reconfigure</tt>", and "<tt>unload module</tt>".</p>
+
+<p>Likewise, the <tt>modules_cleanup()</tt> routine must be called when the
+program shuts down.  Aside from removing the callbacks mentioned above,
+<tt>modules_cleanup()</tt> checks that other parts of the Services core
+have removed any callbacks they registered, and calls the internal routine
+<tt>unload_all_modules()</tt> to walk the loaded module list and unload
+each module.  In this case, each module's <tt>exit_module()</tt> function
+is called with a nonzero <tt><i>shutdown</i></tt> value, indicating that
+the program is shutting down and the module must clean up after itself.
+(The module will be unloaded regardless of the return value of
+<tt>exit_module()</tt>.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s4">4-4. External symbols</h3>
+
+<p>While some modules only require Services core functions to operate, most
+interact with other modules.  This necessitates a way of accessing
+functions and data provided by outside modules.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-1">4-4-1. Exporting symbols</h4>
+
+<p>A module can designate certain symbols (functions or variables) to be
+exported, so that other modules can access them as described in the next
+section.  This is done using one of three macros, depending on what is
+being exported:</p>
+
+<ul>
+<li><b><tt>EXPORT_FUNC(<i>symbol</i>)</tt></b> (for functions)</li>
+<li><b><tt>EXPORT_VAR(<i>type</i>,<i>symbol</i>)</tt></b> (for ordinary
+	variables)</li>
+<li><b><tt>EXPORT_ARRAY(<i>eltype</i>,<i>symbol</i>)</tt></b> (for arrays;
+	<tt><i>eltype</i></tt> is the type of an element of the array)</li>
+</ul>
+
+<p>These macros do not expand to anything themselves, but are used by the
+compilation process (see <a href="10.html#s3-2">section 10-3-2</a>) to
+generate lists of exported symbols when using static linking.  Even without
+these macros, the symbols will still (if not declared <tt>static</tt>) be
+recorded in the object file, but since there is no way to access the
+program's symbols when using static linking&mdash;and in fact, the symbols
+may have been stripped from the executable file by the user&mdash;the
+macros must be used in order for <tt>get_module_symbol()</tt> (see
+<a href="#s4-2">section 4-4-2</a> below) to be able to retrieve the
+symbol's value.</p>
+
+<p>Note that the symbols used by the module subsystem
+(<tt>module_version</tt> and so on, as described in <a href="#s2-1">section
+4-2-1</a>) are automatically made available to the module subsystem, and
+need not be explicitly exported.  This is done by the <tt>Makefile</tt>
+controlling module compilation, as described in
+<a href="10.html#s3-2">section 10-3-2</a>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-2">4-4-2. Importing symbols</h4>
+
+<p>There are two methods of accessing symbols located in other modules: by
+calling <tt>get_module_symbol()</tt> or <tt>check_module_symbol()</tt>, or
+by referencing the symbol directly.  Each has its benefits and
+disadvantages.</p>
+
+<p><tt>get_module_symbol()</tt> and <tt>check_module_symbol()</tt> allow a
+caller to retrieve the value of a given symbol in a specified (or any)
+module.  The functions are declared as follows (note that
+<tt>get_module_symbol()</tt> is declared internally as
+<tt>_get_module_symbol()</tt> and takes a hidden <tt><i>caller</i></tt>
+parameter, but these are hidden by a macro in <tt>modules.h</tt>):</p>
+
+<div class="code">void *<b>get_module_symbol</b>(Module *<i>module</i>,
+                        const char *<i>symname</i>)
+int <b>check_module_symbol</b>(Module *<i>module</i>,
+                        const char *<i>symname</i>,
+                        void **<i>resultptr</i>,
+                        const char **<i>errorptr</i>)</div>
+
+<p>Both of these functions retrieve the value of the symbol
+<tt><i>symname</i></tt> in the module <tt><i>module</i></tt>; if
+<tt><i>module</i></tt> is <tt>NULL</tt>, the symbol is searched for in all
+loaded modules (if defined in more than one module, then an arbitrary
+module is used for the lookup).  If the symbol is not defined in
+<tt><i>module</i></tt> but is defined in another module, then the result of
+the lookup is defined to be either <tt>NULL</tt> or the value of the symbol
+in the module in which it is defined.  This undesirable behavior
+unfortunately cannot be avoided due to identical behavior by (at least) the
+glibc library used on Linux.  When using static linking, the functions
+always return <tt>NULL</tt> for this case.</p>
+
+<p>The difference between their two functions is how they deal with the
+case of a nonexistent symbol.  <tt>get_module_symbol()</tt> is intended for
+use when the symbol is assumed to exist; it returns the symbol's value
+directly if it exist, and logs a warning and returns <tt>NULL</tt>
+otherwise.  The danger of using this for symbols that may legitimately not
+exist (other than generating spurious log messages) is that it is possible
+for a symbol to have the value zero (<tt>NULL</tt>), which would be
+indistinguishable from a symbol lookup failure.
+<tt>check_module_symbol()</tt>, on the other hands, takes two extra
+parameters, a pointer to a variable in which the result is to be stored
+on success and a pointer to a variable in which the relevant error message
+is to be stored on failure (either or both of which may be <tt>NULL</tt>),
+and returns nonzero on success, zero on failure.  On success, the variable
+pointed to by <tt><i>resultptr</i></tt> is set to the value of the pointer,
+and the variable pointed to by <tt><i>errorptr</i></tt> is left unchanged;
+on failure, the variable pointed to by <tt><i>errorptr</i></tt> is set to a
+human-readable error string, and the variable pointed to by
+<tt><i>resultptr</i></tt> is left unchanged.</p>
+
+<p>Note that the "value of the symbol" here is the value in linker terms;
+in other words, when using these functions to access a variable, the value
+of the symbol is the <i>address</i> of the variable, not its value.  To
+access the value of the <tt>s_NickServ</tt> string variable in an
+unspecified module, for example, one would write code like:</p>
+
+<div class="code">char **p_s_NickServ = get_module_symbol(NULL, "s_NickServ");
+if (p_s_NickServ) {
+    notice(*p_s_NickServ, user->nick, "message");
+} else {
+    /* Unable to resolve s_NickServ */
+}</div>
+
+<p>It is also important to keep in mind that the value of such variables
+may change, or the module containing the variable may be unloaded, at any
+time.  Accesses should therefore always be done by looking up the symbol,
+ensuring that the symbol exists, and referencing it through the returned
+pointer.  Since this can incur significant overhead, however, another
+option (when the module name is known) is to use the "<tt>load module</tt>"
+and "<tt>unload module</tt>" callbacks to watch for the module to be loaded
+or unloaded; a single <tt>get_module_symbol()</tt> or
+<tt>check_module_symbol()</tt> will then suffice, and the returned variable
+pointer can be saved locally until the module is later unloaded.  Many of
+the modules distributed with Services take this approach.</p>
+
+<p>The other method of accessing symbols in other modules is to simply
+reference the symbol as if it was an ordinary external variable or
+function.  Doing this avoids the overhead of looking up the symbol every
+time it is to be used, or monitoring the relevant module for loads and
+unloads.  However, it also requires the module containing the symbol to be
+loaded before the module that uses it; if the modules are not loaded in the
+correct order, <tt>load_module()</tt> will report an "unresolved symbol"
+error.  For example, if module A exports a symbol <tt>symA</tt> which
+module B accesses directly, attempting to load module B before module A
+will cause an "unresolved symbol" error for <tt>symA</tt>, without giving
+module B a chance to manually resolve the symbol.  As a general rule,
+therefore, it is recommended to avoid direct references to symbols from
+other modules, unless the other module can be reasonably expected to be
+loaded first (for example, many of the pseudoclients' sub-modules access
+symbols from their respective core modules in this fashion).</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s5">4-5. Callbacks</h3>
+
+<p><i>Callbacks</i> are a method of allowing modules to signal other
+modules when certain events occur.  A module first establishes a callback
+by registering it, giving it a name unique among all callbacks for that
+module (two callbacks in different modules can share the same name).  Other
+modules can use that name to refer to the callback, and add functions to be
+called when the callback's event occurs (also referred to as <i>hooking
+into</i> the callback).  The module which added the callback can then
+instruct the module subsystem to call each of those functions in turn when
+the requisite event occurs.</p>
+
+<p>The Services core also sets up a number of callbacks which can be hooked
+into by modules as necessary.  A full list of callbacks available in the
+Services core and standard modules can be found in <a href="c.html">Appendix
+C</a>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s5-1">4-5-1. Registering callbacks</h4>
+
+<p>A module that wishes to register a new callback can do so with the
+<tt>register_callback()</tt> routine (internally
+<tt>_register_callback()</tt>):</p>
+
+<div class="code">int <b>register_callback</b>([Module *<i>module</i>,] const char *<i>name</i>)</div>
+
+<p>This routine checks to ensure that the given module has not already
+registered a callback of the same name (by calling <tt>find_callback()</tt>,
+an internal helper function that looks for a callback by name in a given
+module), then adds the callback to the module's callback table with an
+empty callback function list.  The return value is the ID value assigned to
+the callback (a value used when calling or removing the callback, both for
+efficiency and to eliminate the possibility of mistyping the callback name
+string when referring to it internally); a return value of -1 signals an
+error.  Note that the module's <tt>THIS_MODULE</tt> macro (which evaluates
+to <tt>NULL</tt> when called by the core) is automatically passed to the
+function by the <tt>register_callback()</tt> macro in <tt>modules.h</tt>,
+like the <tt><i>caller</i></tt> parameter to <tt>use_module()</tt> and
+<tt>unuse_module()</tt>.</p>
+
+<p>When the callback is no longer needed, it can be unregistered by
+calling <tt>unregister_callback()</tt> (internally
+<tt>_unregister_callback()</tt>):</p>
+
+<div class="code">int <b>unregister_callback</b>([Module *<i>module</i>,] int <i>id</i>)</div>
+
+<p>The routine returns 1 if the callback was found and freed, 0 if the ID
+value given was invalid.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s5-2">4-5-2. Hooking into callbacks</h4>
+
+<p>Once a callback has been registered, other modules can add functions to
+or remove functions from the callback with the <tt>add_callback()</tt>,
+<tt>add_callback_pri()</tt>, and <tt>remove_callback()</tt> functions
+(internally <tt>_add_callback_pri()</tt> and
+<tt>_remove_callback</tt>&mdash;<tt>add_callback()</tt> is defined in terms
+of <tt>add_callback_pri()</tt>):</p>
+
+<div class="code">int <b>add_callback</b>(Module *<i>module</i>,
+                 const char *<i>name</i>,
+                 callback_t <i>callback</i>,
+                 [const Module *<i>caller</i>])
+int <b>add_callback_pri</b>(Module *<i>module</i>,
+                     const char *<i>name</i>,
+                     callback_t <i>callback</i>,
+                     int <i>priority</i>,
+                     [const Module *<i>caller</i>])
+int <b>remove_callback</b>(Module *<i>module</i>,
+                    const char *<i>name</i>,
+                    callback_t <i>callback</i>,
+                    [const Module *<i>caller</i>])</div>
+
+<p>The type of a callback function is defined as <tt>callback_t</tt>:</p>
+
+<div class="code">typedef int (*callback_t)()</div>
+
+<p>The number and type of parameters passed to the function depends on the
+particular callback, and thus the <tt>callback_t</tt> type is not a true
+prototype.  The <tt>int</tt> return value is used both to return a result
+from the callback function itself and to control execution of the list of
+callback functions, with a nonzero value terminating execution, as
+described in <a href="#s5-3">section 4-5-3</a> below.</p>
+
+<p><tt>add_callback()</tt> and <tt>add_callback_pri()</tt> add the given
+function to the selected callback, returning nonzero on success, zero on
+error.  In the case of <tt>add_callback_pri()</tt>, the callback function
+can be given a numeric priority; callback functions with higher priority
+values are called before those with lower values, and callback functions
+with the same priority value are called in the same order they were added.
+<tt>add_callback()</tt> is equivalent to <tt>add_callback_pri()</tt> with a
+priority of zero, and in fact is implemented as a macro that does exactly
+that.  <i>Implementation note: Priorities were added to allow the
+<tt>operserv/sessions</tt> module to have its "<tt>user check</tt>"
+callback function, which increments the user count for a session if the
+user passes the session check, called last.  This is arguably a bad design
+decision, as it would be better (if less efficient) to move the session
+count incrementing to the "<tt>user create</tt>" callback, and the current
+method cannot stop another module from adding a callback function at an
+even lower priority and causing the session count to "leak" if the
+lower-priority function rejects the user.</i></p>
+
+<p><tt>remove_callback()</tt> removes the given function from the selected
+callback, returning nonzero if the function was found and successfully
+removed, else zero.  <tt>remove_callback()</tt> deliberately does not
+generate a log warning when used with a callback function that has not been
+added, in order to simplify modules' cleanup routines (so that they can
+call <tt>remove_callback()</tt> for all callbacks that may have potentially
+been added without having to keep track of which ones were in fact
+added).</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s5-3">4-5-3. Calling callbacks</h4>
+
+<p>A module can instruct the module subsystem to call all callback
+functions for a particular callback with the <tt>call_callback()</tt> set
+of functions (actually macros, with the implementing function internally
+named <tt>_call_callback_5()</tt>):</p>
+
+<div class="code">int <b>call_callback</b>([Module *<i>module</i>,] int <i>id</i>)
+int <b>call_callback_1</b>([Module *<i>module</i>,] int <i>id</i>,
+                    void *<i>arg1</i>)
+int <b>call_callback_2</b>([Module *<i>module</i>,] int <i>id</i>,
+                    void *<i>arg1</i>, void *<i>arg2</i>)
+int <b>call_callback_3</b>([Module *<i>module</i>,] int <i>id</i>,
+                    void *<i>arg1</i>, void *<i>arg2</i>, void *<i>arg3</i>)
+int <b>call_callback_4</b>([Module *<i>module</i>,] int <i>id</i>,
+                    void *<i>arg1</i>, void *<i>arg2</i>, void *<i>arg3</i>,
+                    void *<i>arg4</i>)
+int <b>call_callback_5</b>([Module *<i>module</i>,] int <i>id</i>,
+                    void *<i>arg1</i>, void *<i>arg2</i>, void *<i>arg3</i>,
+                    void *<i>arg4</i>, void *<i>arg5</i>)</div>
+
+<p>As with <tt>register_module()</tt> and <tt>unregister_module()</tt>,
+the module handle of the calling module is automatically passed in the
+hidden <tt><i>module</i></tt> parameter.</p>
+
+<p>These functions all call the selected callback (specified by callback
+ID value, as returned from <tt>register_callback()</tt>), and differ only
+in the number of parameters passed to the callback.  The parameters
+<tt><i>arg1</i></tt> through <tt><i>arg5</i></tt> are passed to the
+callback functions unchanged; the parameters are declared as the (more or
+less) generic type <tt>void&nbsp;*</tt>, but may be of any type, as the
+<tt>call_callback()</tt> macros take care of converting the parameters to
+<tt>void&nbsp;*</tt> to avoid type conversion warnings (but see
+<a href="11.html#s1">section 11-1</a> for problems with this method of
+passing parameters).  It is the callback function's responsibility to
+ensure that it is declared with the correct parameter list.</p>
+
+<p>After checking the validity of the module and callback ID parameters,
+<tt>call_callback()</tt> calls each callback function that has been added
+to the callback, in priority and time order (see <a href="#s5-2">section
+4-5-2</a> about calling order).  If any callback function returns a nonzero
+value, <tt>call_callback()</tt> stops immediately and returns that value,
+skipping the rest of the callback functions; if all callback functions
+return zero (or if there are no callback functions for the given callback),
+zero is returned.  (-1 is returned if the callback ID is invalid.)  Thus,
+callbacks should be designed so that a return value of zero from a callback
+function means "continue processing" and a nonzero value means "stop
+processing or take some other action".</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s6">4-6. Adding a module to Services</h3>
+
+<p>Adding a new module to Services consists generally of the following
+steps:</p>
+
+<ul>
+<li>Create a subdirectory for the module under the <tt>modules</tt>
+	directory.</li>
+<li>Write the module itself.</li>
+<li>Create a Makefile for the module (see <a href="10.html#s3-2">section
+	10-3-2</a>).</li>
+</ul>
+
+<p>For submodules of pre-existing modules, like new NickServ or ChanServ
+features, the module can naturally go in the appropriate pre-existing
+directory instead, with the corresponding Makefile modified to compile the
+new module.</p>
+
+<p>For modules intended to be distributed separately from Services itself,
+it is sufficient to distribute the subdirectory containing the module
+source code and Makefile; by copying that directory into the <tt>modules</tt>
+directory of a fresh Services distribution, the module Makefile will
+automatically detect it and compile the module without any further
+intervention on the part of the user.  (See also
+<a href="../3.html#10">section 3-10 of th user's manual</a>.)</p>
+
+<p>In addition to this section, sections <a href="2.html#s2">2-2</a>
+(concerning utility functions) and <a href="2.html#s4">2-4</a> (concerning
+logging), along with <a href="c.html">Appendix C</a> (containing a list of
+core and standard module callbacks), provide useful information for module
+development.  Additionally, the following sections of this manual can be
+helpful in writing different types of modules:</p>
+
+<ul>
+<li><b>Protocol modules:</b> sections <a href="5.html">5</a> and
+	<a href="2.html#s5">2-5</a>, and particularly section
+	<a href="5.html#s6-14">5-6-14</a>, which discusses the Unreal
+	protocol module in detail.</li>
+<li><b>Database modules:</b> sections <a href="6.html">6</a> and
+	<a href="2.html#s9-2">2-9-2</a>.</li>
+<li><b>Pseudoclient modules:</b> sections <a href="7.html">7</a>,
+	<a href="2.html#s6">2-6</a>, <a href="2.html#s8">2-8</a>,
+	<a href="2.html#s10">2-10</a>, and <a href="6.html#s2">6-2</a>.</li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="3.html">Previous section: Communication (socket) handling</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="5.html">Next section: IRC server interface</a></p>
+
+</body>
+</html>

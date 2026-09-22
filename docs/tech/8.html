@@ -1,0 +1,1435 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 8. Other modules</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">8. Other modules</h2>
+
+<p class="section-toc">
+     8-1. <a href="#s1">Encryption modules</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-1-1. <a href="#s1-1"><tt>encryption/md5</tt>: MD5 hashing</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-1-2. <a href="#s1-2"><tt>encryption/unix-crypt</tt>: Encryption with the <tt>crypt()</tt> system function</a>
+<br/>8-2. <a href="#s2">HTTP server modules</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-2-1. <a href="#s2-1">Client data structure and related constants</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-2-2. <a href="#s2-2">HTTP server utility routines</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-2-3. <a href="#s2-3"><tt>httpd/main</tt>: Main server module</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-2-4. <a href="#s2-4"><tt>httpd/auth-ip</tt>: Authorization by IP address</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-2-5. <a href="#s2-5"><tt>httpd/auth-password</tt>: Authorization by password</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-2-6. <a href="#s2-6"><tt>httpd/top-page</tt>: Static page for server root</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-2-7. <a href="#s2-7"><tt>httpd/redirect</tt>: Redirects to nickname/channel URLs</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-2-8. <a href="#s2-8"><tt>httpd/dbaccess</tt>: Provides database access via HTTP</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-2-9. <a href="#s2-9"><tt>httpd/debug</tt>: Debugging module</a>
+<br/>8-3. <a href="#s3">Mail-sending modules</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-3-1. <a href="#s3-1"><tt>mail/main</tt>: Main mail module</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-3-2. <a href="#s3-2"><tt>mail/sendmail</tt>: Sends mail using the <tt>sendmail</tt> program</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-3-3. <a href="#s3-3"><tt>mail/smtp</tt>: Sends mail using SMTP</a>
+<br/>8-4. <a href="#s4">Miscellaneous modules</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-4-1. <a href="#s4-1"><tt>misc/xml-export</tt>: Data export using XML</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;8-4-2. <a href="#s4-2"><tt>misc/xml-import</tt>: Data import using XML</a>
+</p>
+
+<p class="backlink"><a href="7.html">Previous section: Services pseudoclients</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="9.html">Next section: The database conversion tool</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">8-1. Encryption modules</h3>
+
+<p>As discussed in <a href="2.html#s9-1">section 2-9-1</a>, Services
+includes facilities for encrypting passwords.  While the Services core
+provides an interface for encryption, the actual encryption processing is
+handled by encryption modules, located in the <tt>modules/encryption</tt>
+directory.  Two encryption modules are included with Services:
+<tt>encryption/md5</tt>, using the MD5 hash function to encrypt passwords,
+and <tt>encryption/unix-crypt</tt>, using the system library's
+<tt>crypt()</tt> function.</p>
+
+<p>Encryption modules generally have three parts:</p>
+
+<ul>
+<li class="spaced">implementations of the <tt>CipherInfo</tt> functions
+	<tt><i>encrypt</i>()</tt>, <tt><i>decrypt</i>()</tt>, and
+	<tt><i>check_password</i>()</tt>;</li>
+
+<li class="spaced">a <tt>CipherInfo</tt> data structure, containing the
+	cipher's identifying name and pointers to the three functions;
+	and</li>
+
+<li class="spaced">calls to <tt>register_cipher()</tt> and
+	<tt>unregister_cipher()</tt> in the module initialization and
+	cleanup routines.</li>
+</ul>
+
+<p>The three <tt>CipherInfo</tt> functions mentioned above provide
+encryption, decryption, and encrypt-and-compare functionality for the
+particular cipher implemented by the module.  They are defined as follows
+(the actual function names are of course up to the particular module):</p>
+
+<dl>
+<dt><tt>int <b>encrypt</b>(const char *<i>src</i>, int <i>len</i>, char *<i>dest</i>, int <i>size</i>)</tt></dt>
+    <dd>Encrypts the plaintext stored in <tt><i>src</i></tt>, which is
+	<tt><i>len</i></tt> bytes long, and stores the result in the buffer
+	pointed to by <tt><i>dest</i></tt> (of size <tt><i>size</i></tt>
+	bytes).  The source plaintext is <i>not</i> (necessarily)
+	null-terminated, and should be treated as a block of binary data
+	rather than a textual string.  Returns:
+	<ul>
+	<li>0 on success</li>
+	<li>+<i>N</i> (a positive integer) if the destination buffer is too
+		small; <i>N</i> is the minimum size buffer (in bytes)
+		required to hold the encrypted data</li>
+	<li>-1 on other error</li>
+	</ul></dd>
+
+<dt><tt>int <b>decrypt</b>(const char *<i>src</i>, char *<i>dest</i>, int <i>size</i>)</tt></dt>
+    <dd>Decrypts the ciphertext stored in <tt><i>src</i></tt>, storing the
+	result in the buffer pointed to by <tt><i>dest</i></tt> (of size
+	<tt><i>size</i></tt> bytes).  Returns:
+	<ul>
+	<li>0 on success</li>
+	<li>+<i>N</i> (a positive integer) if the destination buffer is too
+		small; <i>N</i> is the minimum size buffer (in bytes)
+		required to hold the encrypted data</li>
+	<li>-2 if the encryption algorithm does not allow decription</li>
+	<li>-1 on other error</li>
+	</ul></dd>
+
+<dt><tt>int <b>check_password</b>(const char *<i>plaintext</i>, const char *<i>password</i>)</tt></dt>
+    <dd>Compares the null-terminated string <tt><i>plaintext</i></tt>
+	against the encrypted data <tt><i>password</i></tt>.  Returns:
+	<ul>
+	<li>1 if the password matches</li>
+	<li>0 if the password does not match</li>
+	<li>-1 if an error occurred while checking</li>
+	</ul></dd>
+</dl>
+
+<p>The core encryption source file, <tt>encrypt.c</tt> in the top source
+directory, contains definitions of these three functions for use when no
+encryption module is loaded; the functions simply copy the plaintext string
+into or out of the provided encryption buffer, truncating as necessary.
+(As a result, only the first <tt>PASSMAX</tt> bytes of longer passwords are
+valid; any password beginning with those same bytes will be treated as
+equivalent, similar to the way old Unix-like systems ignored any characters
+in passwords after the first 8.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s1-1">8-1-1. <tt>encryption/md5</tt>: MD5 hashing</h4>
+
+<p>The <tt>encryption/md5</tt> module, defined in <tt>md5.c</tt>, uses the
+MD5 message-digest algorithm to encrypt passwords.  The bulk of the file
+consists of a literal copy of the <tt>md5c.c</tt> implementation published
+by RSA Data Security, Inc.; the <tt>CipherInfo</tt> implementation function
+<tt>md5_encrypt()</tt> simply calls these functions to obtain a 16-byte
+hash of its input and returns that hash (as binary data, not a hexadecimal
+string).</p>
+
+<p>Of the remaining two <tt>CipherInfo</tt> functions, <tt>md5_decrypt()</tt>
+simply returns the special value -2, indicating that MD5 passwords cannot
+be decrypted; <tt>md5_check_password()</tt> calls <tt>md5_encrypt()</tt> on
+the plaintext string it is passed, comparing the resulting hash against the
+given password buffer to determine whether the password is correct.</p>
+
+<p>The module includes one configuration option,
+<tt>EnableAnopeWorkaround</tt>.  This is intended to be used with databases
+that have been imported from the Epona or Anope programs, some versions of
+which have a bug (which, to be fair, was inherited from an earlier version
+of Services) causing MD5-encrypted passwords to be stored incorrectly.  The
+bug is in assuming that the <tt>MD5Final()</tt> routine returns an ASCII
+string of hexadecimal characters&mdash;in fact, it returns the raw 128-bit
+hash value&mdash;and attempting to convert that value into binary,
+resulting in 8 bytes of garbled hash data and 8 bytes that are essentially
+random.  The workaround implemented by <tt>EnableAnopeWorkaround</tt>
+performs this same procedure when checking passwords if the hash itself
+does not match; since it only compares the 8 valid bytes of the corrupted
+hash, there is naturally a greater possibility of a hash collision, which
+would result in an incorrect password mistakenly being signaled as correct.
+See also the relevant part of <a href="../5.html#3-2">section 5-3-2 of the
+user's manual</a>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s1-2">8-1-2. <tt>encryption/unix-crypt</tt>: Encryption with the <tt>crypt()</tt> system function</h4>
+
+<p>The <tt>encryption/unix-crypt</tt> module, defined in
+<tt>unix-crypt.c</tt>, makes use of the <tt>crypt()</tt> function defined
+in the system libraries to encrypt passwords.  Due to this, it may not be a
+desirable choice where portability of data is concerned, since differing
+systems may have incompatible implementations of <tt>crypt()</tt>; on the
+other hand, it allows Services to take advantage of more secure encryption
+algorithms as the operating system comes to support them, without having to
+write new Services modules as well.  The impetus for the development of
+this module was the use of <tt>crypt()</tt> as one encryption method in the
+PTlink Services program (coincidentally, it was also this program's use of
+a "cipher type" field stored with passwords that provided the inspiration
+for the redesign of encryption functionality in Services 5.0).</p>
+
+<p>The only noteworthy aspect of the <tt>encryption/unix-crypt</tt> module
+is the encryption routine, <tt>unixcrypt_encrypt()</tt>.  Since the
+<tt>crypt()</tt> function requires a null-terminated password string (the
+input is not guaranteed to be null-terminated) and a "salt" parameter,
+these have to be prepared beforehand; the password is copied into a buffer
+of size PASSMAX and a trailing null attached, and the "salt" string is
+generated using the <tt>random()</tt> function.  These are then passed to
+<tt>crypt()</tt>, and the result copied into the output buffer, assuming
+it is large enough.  (Some modern systems implement <tt>crypt()</tt> using
+an MD5 hash, returned as a 32-character hexadecimal string with a
+distinguishing prefix; for such cases, <tt>PASSMAX</tt> must be raised from
+the default of 32, or passwords will not fit.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">8-2. HTTP server modules</h3>
+
+<p>Services includes a simple HTTP server that can be used to access
+Services data from outside IRC.  The server is implemented by several
+modules in the <tt>modules/httpd</tt> directory: a core server module
+(<a href="#s2-3">section 8-2-3</a>), authorization modules (sections
+(<a href="#s2-4">8-2-4</a> and <a href="#s2-5">8-2-5</a>), and resource
+modules (sectiona <a href="#s2-6">8-2-6</a> through
+<a href="#s2-9">8-2-9</a>).  All modules make use of a common header file
+containing data structure and constant definitions, described in
+<a href="#s2-1">8-2-1</a>; there are also several utility functions
+shared by all modules (and compiled into the core server module), discussed
+in <a href="#s2-2">section 8-2-2</a>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-1">8-2-1. Client data structure and related constants</h4>
+
+<p>All modules make use of the header file <tt>http.h</tt>.  This header
+file contains a definition of the <tt>Client</tt> structure, used by the
+modules to store information about a single client, along with various
+HTTP-server-related constants and declarations of the utility routines
+listed in <a href="#s2-2">section 8-2-2</a>.</p>
+
+<p>The <tt>Client</tt> structure contains the following fields:</p>
+
+<dl>
+<dt><tt>Socket *<b>socket</b></tt></dt>
+    <dd>Contains the <tt>Socket</tt> structure used for communicating with
+	the client (see <a href="3.html">section 3</a>).</dd>
+
+<dt><tt>Timeout *<b>timeout</b></tt></dt>
+    <dd>A timeout (see <a href="2.html#s7">section 2-7</a>) used to
+	disconnect clients after a certain period of idle time.</dd>
+
+<dt><tt>char <b>address</b>[22]</tt></dt>
+    <dd>The client's IP address and port number, as a string.  (22 bytes is
+	exactly long enough to hold a string of the form
+	"<tt>123.123.123.123:12345</tt>".)</dd>
+
+<dt><tt>uint32 <b>ip</b></tt></dt>
+    <dd>The client's IP address, in network byte order.</dd>
+
+<dt><tt>uint16 <b>port</b></tt></dt>
+    <dd>The client's (remote) port number, in network byte order.</dd>
+
+<dt><tt>int <b>request_count</b></tt></dt>
+    <dd>The number of requests that the client has made over the course of
+	the connection, used to disconnect clients that make more than a
+	certain number of requests.</dd>
+
+<dt><tt>int <b>in_request</b></tt></dt>
+    <dd>A flag indicating whether a request is currently being processed
+	for the client.</dd>
+
+<dt><tt>char *<b>request_buf</b></tt></dt>
+    <dd>The buffer used to hold request data received from the client.</dd>
+
+<dt><tt>int32 <b>request_len</b></tt></dt>
+    <dd>The number of bytes of request data received from the client for
+	this request (<i>i.e.,</i> the number of bytes stored in
+	<tt>request_buf</tt>).</dd>
+
+<dt><tt>int <b>version_major</b></tt></dt>
+    <dd>The major version of HTTP in use (the "<tt><i>x</i></tt>" in
+	<tt>HTTP/<i>x</i>.<i>y</i></tt>).</dd>
+
+<dt><tt>int <b>version_minor</b></tt></dt>
+    <dd>The minor version of HTTP in use (the "<tt><i>y</i></tt>" in
+	<tt>HTTP/<i>x</i>.<i>y</i></tt>).</dd>
+
+<dt><tt>int <b>method</b></tt></dt>
+    <dd>The request method (one of the <tt>METHOD_*</tt> constants; see
+	below).</dd>
+
+<dt><tt>char *<b>url</b></tt></dt>
+    <dd>The URL given by the client.  Points into <tt>request_buffer</tt>.</dd>
+
+<dt><tt>char *<b>data</b></tt></dt>
+    <dd><tt>POST</tt> data for the request, or the query string for a
+	<tt>GET</tt> or <tt>HEAD</tt> request.  Points into
+	<tt>request_buffer</tt>.</dd>
+
+<dt><tt>int32 <b>data_len</b></tt></dt>
+    <dd><tt>POST</tt> data length, in bytes.</dd>
+
+<dt><tt>char **<b>headers</b></tt>
+<br/><tt>int32 <b>headers_count</b></tt></dt>
+    <dd>A variable-length array containing the request headers.  Each
+	element of the array consists of the header name and its value
+	separated by a null byte; the entries point into
+	<tt>request_buffer</tt>.</dd>
+
+<dt><tt>char **<b>variables</b></tt>
+<br/><tt>int32 <b>variables_count</b></tt></dt>
+    <dd>A variable-length array containing any variables found in
+	<tt>POST</tt> data or a <tt>GET</tt> or <tt>HEAD</tt> request.
+	Each element of the array consists of the variable's name and value
+	separated by a null byte, with URL escapes converted to their
+	respective characters.</dd>
+</dl>
+
+<p>There are also several constants defined by the header file:</p>
+
+<dl>
+<dt><tt>HTTP_LINEMAX</tt> (4096)</dt>
+    <dd>Defines the maximum length (including the trailing null byte) of a
+	request line that the server will handle.  Lines longer than this
+	will cause the request to be aborted with an HTTP error.</dd>
+
+<dt><tt>HTTP_AUTH_*</tt></dt>
+    <dd>Constants used as return values from authorization functions (see
+	<a href="#s2-3">section 8-2-3</a>).</dd>
+
+<dt><tt>HTTP_METHOD_*</tt></dt>
+    <dd>Constants used to indicate the request method in the <tt>method</tt>
+	field of the <tt>Client</tt> structure.</dd>
+</dl>
+
+<p>These are followed by constants for the various HTTP return codes, as
+defined by the relevant RFC documents.  Not all (or even most) of these
+are used by Services modules, but all are included for completeness.  The
+name of each constant includes a character indicating the type of response
+(much like the first digit of the numeric code): "<tt>I</tt> for
+Informational, "<tt>S</tt>" for Successful, and so on.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-2">8-2-2. HTTP server utility routines</h4>
+
+<p>The <tt>util.c</tt> source file contains several common functions used
+by HTTP server modules, listed below.  <tt>util.c</tt> is linked into the
+main HTTP server module, <tt>httpd/main</tt>, so all submodules can make
+use of them without the necessity of explicitly importing each function.</p>
+
+<dl>
+<dt><tt>char *<b>http_get_header</b>(Client *<i>c</i>, const char *<i>header</i>)</tt></dt>
+    <dd>Returns the contents of the header <tt><i>header</i></tt> in the
+	given client's currently active request, or <tt>NULL</tt> if the
+	request did not include such a header.  If <tt><i>header</i></tt>
+	is <tt>NULL</tt>, returns the next instance of the header last
+	searched for; this usage allows the caller to cycle through
+	multiple headers of the same name, much like <tt>strtok()</tt>
+	iterates through tokens in a string.</dd>
+
+<dt><tt>char *<b>http_get_variable</b>(Client *<i>c</i>, const char *<i>variable</i>)</tt></dt>
+    <dd>Returns the contents of the variable <tt><i>variable</i></tt> in
+	the given client's currently active request, or <tt>NULL</tt> if
+	the request did not include such a variable.  Like
+	<tt>http_get_header()</tt>, a <tt>NULL</tt> value for the
+	<tt><i>variable</i></tt> parameter allows iterating through
+	multiple instances of a variable.</dd>
+
+<dt><tt>char *<b>http_quote_html</b>(const char *<i>str</i>, char *<i>outbuf</i>, int32 <i>outsize</i>)</tt></dt>
+    <dd>Applies HTML-style quoting to <tt><i>str</i></tt>, replacing the
+	characters <tt>&lt; &gt; &amp;</tt> with "<tt>&amp;lt;</tt>",
+	"<tt>&amp;gt;</tt>", and "<tt>&amp;amp;</tt>" respectively.
+	<!-- It sure is messy trying to talk about HTML in HTML... -->
+	The result is placed in <tt><i>outbuf</i></tt>, and is truncated if
+	necessary to fit within <tt><i>outsize</i></tt> bytes, including
+	the trailing null byte; however, HTML entities inserted by this
+	routine will never be partially truncated (if an entity would cause
+	a buffer overflow, the output string will be terminated at the
+	location where the entity would have been inserted).  The routine
+	returns <tt><i>outbuf</i></tt>, except when a parameter is invalid,
+	in which case <tt>NULL</tt> is returned.</dd>
+
+<dt><tt>char *<b>http_quote_url</b>(const char *<i>str</i>, char *<i>outbuf</i>, int32 <i>outsize</i>, int <i>slash_question</i>)</tt></dt>
+    <dd>Applies URL escaping to <tt><i>str</i></tt>, replacing with their
+	equivalent <tt>%<i>nn</i></tt> escapes any characters not in the
+	set:
+	<br/><tt>&nbsp;&nbsp;&nbsp;&nbsp;A-Z a-z 0-9 - . _</tt>
+	<br/>As with <tt>http_quote_html()</tt>, stores the (possibly
+	truncated, but without partial escapes) result in
+	<tt><i>outbuf</i></tt>, and returns <tt><i>outbuf</i></tt>, or
+	<tt>NULL</tt> on invalid parameters.</dd>
+
+<dt><tt>char *<b>http_unquote_url</b>(char *<i>buf</i>)</tt></dt>
+    <dd>Converts any URL escapes in the string <tt><i>buf</i></tt> to their
+	corresponding characters, overwriting the buffer.  A truncated
+	escape at the end of the string is discarded, as is any malformed
+	escape (a <tt>%</tt> followed by two characters, one or both of
+	which are not hexadecimal digits).  Returns <tt><i>buf</i></tt>.
+	(Note that Unicode escapes of the form <tt>%U<i>nnnn</i></tt> are
+	<i>not</i> handled by this routine, and will be interpreted as a
+	malformed escape followed by three ordinary characters.)</dd>
+
+<dt><tt>void <b>http_send_response</b>(Client *<i>c</i>, int <i>code</i>)</tt></dt>
+    <dd>Sends an HTTP response line with the response code
+	<tt><i>code</i></tt>, followed by a <tt>Date:</tt> header.  The
+	header portion of the response is not terminated, so the caller can
+	send additional headers as necessary.</dd>
+
+<dt><tt>void <b>http_error</b>(Client *<i>c</i>, int <i>code</i>, const char *<i>format</i>, ...)</tt></dt>
+    <dd>Sends an error message (response headers and body) to the given
+	client, then closes the client's connection.  The HTTP response
+	code for the error message is given by <tt><i>code</i></tt>.
+	<tt><i>format</i></tt> gives an optional <tt>printf()</tt>-style
+	format string to use for generating the body of the error message;
+	if it is <tt>NULL</tt>, then default body text is chosen based on
+	the response code.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-3">8-2-3. <tt>httpd/main</tt>: Main server module</h4>
+
+<p>The core of the HTTP server is implemented by the <tt>httpd/main</tt>
+module, defined in the source file <tt>main.c</tt> (along with
+<tt>util.c</tt>, mentioned above).  This module takes care of establishing
+a listener socket with which to accept client connections, receiving and
+parsing requests from clients, and passing those requests off to handlers
+which generate data to send back to the client.  (The core module does not
+respond to any requests by itself, except for generating errors for
+requests that cannot be successfully processed.</p>
+
+<p>Unlike most other modules, which take actions in response to messages
+received from the IRC network, the HTTP server operates independently,
+relying on the socket framework (see <a href="3.html">section 3</a>) to
+inform it of activity.  The module initialization routine,
+<tt>init_module()</tt>, opens the port or ports specified by the
+<tt>ListenTo</tt> configuration directive, creating listener sockets which
+call back to the <tt>do_accept()</tt> function when a connection is
+received.  The initialization routine also creates two callbacks,
+"<tt>auth</tt>" and "<tt>request</tt>", into which submodules can hook to
+provide authorization or request handling services; these are covered in
+the discussion of request handling below.</p>
+
+<p>When a connection has been accepted on a socket, the <tt>do_accept()</tt>
+routine first ensures that the client address is available (as it may be
+necessary for authorization purposes), then creates and initializes a
+<tt>Client</tt> structure in which to store information about the client.
+This is done before checking the number of active connections so that, if
+the client is to be disconnected due to load, an appropriate error response
+can be sent with <tt>http_error()</tt> (which requires a valid
+<tt>Client</tt> structure).  If all goes well, read-line and disconnect
+callbacks are set on the new socket, along with a timeout (as given by the
+<tt>IdleTimeout</tt> configuration directive), and <tt>do_accept()</tt>
+returns.</p>
+
+<p>The actual request processing takes place in two stages: first the
+full request is received from the client (unless the connection is aborted
+with an error), and then the request is passed to the relevant handlers.
+These stages are handled by the <tt>do_readline()</tt> socket callback
+function and the <tt>handle_request()</tt> routine.</p>
+
+<p><tt>do_readline()</tt> is called for each line of the request received
+from the client, and parses each line into appropriate parts of the
+<tt>Client</tt> structure.  The routine tells the first (request) line from
+subsequent (header) lines by whether or not the <tt>url</tt> field of the
+<tt>Client</tt> structure is set; if the first line has been successfully
+processed, this field will always have a non-<tt>NULL</tt> value.  Header
+lines are handled by the subroutine <tt>parse_header()</tt>, which checks
+whether the line is a new header or a continuation line of a previous
+header and processes it accordingly.</p>
+
+<p>Once the blank line signaling the end of headers has been received,
+<tt>do_readline()</tt> checks whether the request has a body part (a
+<tt>POST</tt> request with a nonzero <tt>Content-Length</tt> header).  If
+so, the read-line callback on the socket is removed, and
+<tt>do_readdata()</tt> is instead added as a read-data callback;
+<tt>do_readdata()</tt> reads in the requisite number of body data bytes and
+calls <tt>handle_request()</tt>.  Otherwise, <tt>do_readline()</tt> calls
+<tt>handle_request()</tt> itself, after first truncating any query portion
+of the URL of a <tt>GET</tt> or <tt>HEAD</tt> request and putting the query
+data in the <tt>Client</tt> structure's <tt>data</tt> field.</p>
+
+<p><tt>handle_request()</tt> first takes any <tt>GET</tt> query or
+<tt>POST</tt> data and splits it up into variables and values, by calling
+either <tt>parse_data()</tt> or <tt>parse_data_multipart()</tt> depending
+on the request type.  After this, it increments the client'S request count,
+sets the <tt>in_request</tt> flag, and then sets a local variable
+<tt>close</tt> which is used to indicate whether the client connection
+should be closed when the request processing is finished.  After this setup
+is complete, <tt>handle_request()</tt> calls the two callbacks
+"<tt>auth</tt>" and "<tt>request</tt>" to perform the actual request
+handling; callback functions for both callbacks take the <tt>Client</tt>
+structure and a pointer to the <tt>close</tt> variable (which may be
+modified) as parameters.</p>
+
+<p>The "<tt>auth</tt>" callback is used for request authorization.  Each
+callback function must return one of the <tt>HTTP_AUTH_*</tt> values
+defined in <tt>http.h</tt>.  A value of <tt>HTTP_AUTH_ALLOW</tt> causes the
+request to be allowed at that point, skipping any subsequent callback
+functions; likewise, a value of <tt>HTTP_AUTH_DENY</tt> causes the request
+to be immediately denied.  <tt>HTTP_AUTH_UNDECIDED</tt> can be used when
+the callback function has nothing to say about the instant request, and
+allows the next callback function to handle authorization.  If all callback
+functions return <tt>HTTP_AUTH_UNDECIDED</tt> (or no callback functions are
+registered), the request is allowed.</p>
+
+<p>The "<tt>request</tt>" callback is used for actual request processing.
+Each callback function should check the URL to determine whether it is one
+to be processed by that function or not; if so, then the routine should
+take appropriate action and return a nonzero value, causing any subsequent
+callback functions to be skipped.  If all callback functions return zero,
+the core server module will send a "not found" (404) error to the client.</p>
+
+<p>Once the request has been processed, <tt>handle_request</tt> either
+closes the socket or clears out the <tt>Client</tt> structure, depending on
+whether the <tt>close</tt> flag is set (nonzero) or clear (zero).  In the
+latter case, request processing for the connection then starts over with
+parsing of request lines by <tt>do_readline()</tt>.  As an adjunct to the
+<tt>clear</tt> flag, if the <tt>Client</tt> structure's <tt>in_request</tt>
+field has a negative value, the connection is closed as well; this is to
+allow <tt>http_error()</tt>, which does not receive a pointer to the
+<tt>close</tt> flag, to signal that the client should be disconnected.</p>
+
+<p>It should be noted that client sockets are set to blocking mode (see
+the description of <tt>sock_set_blocking()</tt> in
+<a href="3.html#s2-1">section 3-2-1</a>), to simplify implementation of
+request handlers.  Depending on the modules and setting used, this can
+allow a malicious user to cause Services to freeze by requesting a large
+amount of data from Services (enough to increase the socket buffer to its
+maximum size) and deliberately not receiving any of that data.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-4">8-2-4. <tt>httpd/auth-ip</tt>: Authorization by IP address</h4>
+
+<p>The <tt>httpd/auth-ip</tt> module, defined in <tt>auth-ip.c</tt>, is one
+of two authentication modules included with the Services HTTP server, and
+allows requests to be allowed or denied based on the IP address of the
+client.  The module maintains a list of allow/deny rules, each with an
+associated URL path prefix, IP address, and network mask; when a request is
+found that matches a rule's prefix/address/mask triplet, the request is
+either allowed or denied based on the type of rule.  (If the request
+matches more than one rule, only the first in the table&mdash;also the
+first in the file&mdash;is applied.)</p>
+
+<p>The callback function for the server core's "<tt>auth</tt>" callback,
+<tt>do_auth()</tt>, is very simple, needing only to iterate through the
+rule table to find a matching rule for the request.  The hard work of
+converting the list of <tt>AllowHost</tt> and <tt>DenyHost</tt> rules into
+a table that can be easily processed is handled at module configuration
+time via custom handler functions for the two directives,
+<tt>do_AllowHost()</tt> and <tt>do_DenyHost()</tt>.  In fact, these are
+both stubs which call a common routine, <tt>do_AllowDenyHost()</tt>, with
+an extra parameter to indicate the rule type (allow or deny).</p>
+
+<p>Note that this module interprets "allow" rules to mean "allow unless
+denied by another authorization method", and not "allow regardless of any
+other circumstances".  Thus, if a request matches an "allow" rule, the
+callback function returns <tt>HTTP_AUTH_UNDECIDED</tt> rather than
+<tt>HTTP_AUTH_ALLOW</tt>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-5">8-2-5. <tt>httpd/auth-password</tt>: Authorization by password</h4>
+
+<p>The <tt>httpd/auth-password</tt> module, defined in
+<tt>auth-password.c</tt>, performs authorization based on a username and
+password provided by a client (using the WWW-Basic HTTP authorization
+method).  If a request is denied, the authorization handler sends an
+HTTP "401 Unauthorized" message to the client, giving the realm name
+specified in the rule to provide a user prompt.  Other than this, and the
+comparative simplicity of the configuration directive handler functions,
+this module is more or less identical to <tt>auth-ip.c</tt>.</p>
+
+<p>As with the <tt>httpd/auth-ip</tt> module (and also mentioned in
+comments in the source code for this module), "allow" rules are treated as
+"allow subject to other permission checks" rather than "allow
+unconditionally", and the callback function <tt>do_auth()</tt> returns
+<tt>HTTP_AUTH_UNDECIDED</tt> rather than <tt>HTTP_AUTH_ALLOW</tt> for such
+rules.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-6">8-2-6. <tt>httpd/top-page</tt>: Static page for server root</h4>
+
+<p>The <tt>httpd/top-page</tt> module, defined in <tt>top-page.c</tt>, is a
+very simple request handler which (depending on configuration settings)
+sends either the contents of a local file or an HTTP redirect in response
+to a request for the server's top page ("<tt>/</tt>").</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-7">8-2-7. <tt>httpd/redirect</tt>: Redirects to nickname/channel URLs</h4>
+
+<p>The <tt>httpd/redirect</tt> module, defined in <tt>redirect.c</tt>,
+allows URLs stored with registered nicknames and channels to be accessed
+through the HTTP server.  Two URL prefixes, one each for nicknames and
+channels, are defined via configuration directives (<tt>NicknamePrefix</tt>
+and <tt>ChannelPrefix</tt> respectively); when a request is received that
+matches one of the prefixes, the remainder of the URL is used as a nickname
+or channel name, and a redirect is sent for the URL associated with the
+nickname or channel (if not registered or no URL is stored, an error is
+returned).</p>
+
+<p>Since the "<tt>#</tt>" character is treated specially by web browsers,
+channel names are specified without the "<tt>#</tt>", which is added back
+internally when accessing the channel's data.  For example, if
+<tt>ChannelPrefix</tt> is "<tt>/channel/</tt>", then a URL of
+"<tt>/channel/SomeChannel</tt>" will redirect to the URL record for the
+channel <tt>#SomeChannel</tt>.</p>
+
+<p>Naturally, in order to access nickname and channel data, the module
+must interface with the NickServ and ChanServ modules.  This is done via
+the "<tt>load module</tt>" and "<tt>unload module</tt>" callbacks, which
+watch for the <tt>nickserv/main</tt> and <tt>chanserv/main</tt> modules to
+be loaded and save pointers to necessary functions.  To avoid problems
+arising from the order in which the module is loaded, the
+<tt>init_module()</tt> routine also checks for the presence of these
+modules, and calls the "<tt>load module</tt>" callback function
+<tt>do_load_module()</tt> manually if they are already loaded.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-8">8-2-8. <tt>httpd/dbaccess</tt>: Provides database access via HTTP</h4>
+
+<p>The <tt>http/dbaccess</tt> module, defined in <tt>dbaccess.c</tt>,
+provides access to the data stored in the Services pseudoclient databases.
+It is easily the most complex of the HTTP server modules, as it must
+interface with each of the pseudoclient modules to obtain the data it
+provides to the client, and it must remain up-to-date with any changes to
+the internal data storage format used by the various modules.</p>
+
+<p>At the top of the file are several definitions used to simplify access
+to imported functions and variables.  As noted in the source code, these
+are not only referenced when the corresponding module has been loaded and
+the symbols successfully dereferenced, so there is no need to check the
+pointers for <tt>NULL</tt> values.  <i>(Implementation note: Nonetheless,
+it would be a good idea to do so anyway, just in case.)</i>  These are
+followed by the <tt>PRINT_SELOPT()</tt> macro, used to generate HTML for
+selecting among one of several display options, and the
+<tt>my_strftime()</tt> function, which converts a <tt>time_t</tt> timestamp
+value to a standard-format string and HTML-quotes the result.</p>
+
+<p>The main request handler routine, <tt>do_request()</tt>, is located
+following these initial definitions.  The only actual work performed by
+this routine, however, is checking the URL against the prefix defined for
+use by the module (in the <tt>Prefix</tt> variable, set by the same-named
+configuration directive), and generating a root page under <tt>Prefix</tt>
+redirecting to each of the available sets of data, one per pseudoclient
+(and one for XML export, as noted below).  All requests for subpages are
+delivered to the appropriate subpath handler.</p>
+
+<p>This routine is followed by the subpath handlers themselves, each with a
+name of the form <tt>handle_<i>XXX</i>()</tt> indicating the subpath
+handled by the routine (with a few exceptions, noted below).  Each handler
+takes the <tt>Client *<i>c</i></tt> and <tt>int *<i>close_ptr</i></tt>
+parameters from the original request, along with a <tt>char *<i>path</i></tt>
+parameter indicating the remainder of the URL path below the handler's own
+subpath.</p>
+
+<p>The first of these handlers is the OperServ data handler,
+<tt>handle_operserv()</tt>.  In addition to the current number of users
+and operators along with basic data recorded by OperServ (the maximum user
+count and time), the page includes links to further subhandlers for
+autokills and exclusions, news items, session exceptions, and S-lines.
+Each of these has its own handler function; with the exception of news
+items (handled by <tt>handle_operserv_news()</tt>), the subhandlers make
+use of a common routine, <tt>handle_operserv_maskdata()</tt>, to output
+the appropriate data.  (However, there is no support for an explicit path
+<tt>/operserv/maskdata</tt>.)</p>
+
+<p>The <tt>handle_operserv_maskdata()</tt> routine has two modes of
+operation, as do many of the lowest-level data handlers.  When called with
+no further subpath (<i>e.g.</i> <tt>/operserv/akill/</tt>), a list of
+mask-data records of the appropriate type is sent to the client as a list
+of links.  Selecting one of these will go to a path with that string as the
+final path element, and will cause the routine to display detailed
+information about the selected entry, much like using the <tt>VIEW</tt>
+subcommand of OperServ's various mask-data commands.</p>
+
+<p>Unlike the other OperServ data sets, there is no detailed information to
+show about news items.  Therefore, the <tt>handle_operserv_news()</tt>
+routine simply outputs a list of news items (both logon news and operator
+news), like the <tt>LOGONNEWS LIST</tt> and <tt>OPERNEWS LIST</tt>
+commands.</p>
+
+<p>The OperServ data handlers are followed by <tt>handle_nickserv()</tt>,
+for displaying nickname data.  Unlike <tt>handle_operserv()</tt>, this
+routine does not call on any subroutines, as there are only two modes of
+operation: listing registered nicknames (handled at the top of the routine)
+and displaying detailed information on a specific nickname (handled by the
+long remainder of the routine).  The length of the routine is mainly the
+result of the need to quote all special characters in nickname data, to
+prevent malicious users from corrupting the output by setting particular
+strings in their nickname data.</p>
+
+<p>This is followed by <tt>handle_chanserv()</tt>, which functions
+similarly to <tt>handle_nickserv()</tt> except that it works on channels
+rather than nicknames.  However, to reduce the amount of data sent in
+response to a single request, the privilege level, channel access, and
+autokick lists are split off into separate pages, accessed by appending
+"<tt>/levels</tt>", "<tt>/access</tt>", or "<tt>/autokick</tt>"
+respectively to the URL.  The local variable <tt>mode</tt> keeps track of
+what type of data the routine is to display.</p>
+
+<p>Next is <tt>handle_statserv()</tt>, which predictably displays
+information from the StatServ pseudoclient's database.  As StatServ
+currently only tracks a minimal amount of data, the implementation is
+comparatively simple, either listing the servers recorded with StatServ or
+displaying information for a selected server.</p>
+
+<p>Finally, <tt>handle_xml_export()</tt> is used to generate an XML data
+set containing all data registered with Services pseudoclients, using the
+<tt>misc/xml-export</tt> module described in <a href="#s4-1">section
+8-4-1</a>.  As browsers may attempt to parse the data rather than
+displaying or saving it if a content type of <tt>text/xml</tt> is used,
+the module instead sends the type <tt>text/plain</tt>.  (The acerbic
+comment in the source code has to do with a misfeature in at least some
+versions of the Microsoft Internet Explorer web browser; such versions
+ignore a <tt>Content-Type: text/plain</tt> header and attempt to interpret
+the data using internal heuristics, resulting in users being unable to view
+the XML data.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-9">8-2-9. <tt>httpd/debug</tt>: Debugging module</h4>
+
+<p>The <tt>http/debug</tt> module, defined in <tt>debug.c</tt>, is intended
+to be used for debugging the HTTP server, and dumps several fields of the
+<tt>Client</tt> structure in response to requests to a particular URL (set
+by the <tt>DebugURL</tt> configuration directive).  While the module does
+not return any sensitive information to the client, only information about
+the client itself, it is still bad practice to leave any unnecessary
+functionality such as this enabled, so this module should not be (and is
+not intended to be) loaded except when debugging.</p>
+
+<p>The <tt>do_request()</tt> function in the source code, which does the
+actual request handling, also includes a number of comments explaining the
+request-handling process in more detail.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">8-3. Mail-sending modules</h3>
+
+<p>In order to facilitate features such as mail authentication and memo
+forwarding, Services includes a set of modules allowing mail to be sent to
+remote systems.  As with the built-in HTTP server described in
+<a href="#s2">section 8-2</a>, this functionality operates independently
+of the primary pseudoclients and IRC network connection (except to the
+extent that the sending of mail is typically initiated in response to a
+pseudoclient command).</p>
+
+<p>The mail-sending subsystem is composed of a core module implementing the
+mail interface, <tt>mail/main</tt>, and submodules for specific methods of
+sending mail.  All relevant source files are located in the
+<tt>modules/mail</tt> directory.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-1">8-3-1. <tt>mail/main</tt>: Main mail module</h4>
+
+<p>The core mail-sending functionality is located in the <tt>mail/main</tt>
+module, defined in <tt>main.c</tt>.  The module consists of two interfaces:
+an external interface, declared in the <tt>mail.h</tt> header file, for use
+by other modules to send mail, and an internal interface, declared in the
+<tt>mail-local.h</tt> header file, used for communicating with the
+low-level modules that perform the actual send operation.</p>
+
+<p>The external interface consists of a single function, <tt>sendmail()</tt>,
+declared as follows:</p>
+
+<div class="code">void <b>sendmail</b>(const char *<i>to</i>, const char *<i>subject</i>,
+              const char *<i>body</i>, const char *<i>charset</i>,
+              MailCallback <i>completion_callback</i>, void *<i>callback_data</i>)</div>
+
+<ul>
+<li class="spaced"><tt>const char *<i>to</i></tt>: The address to which the
+	message is to be sent.</li>
+<li class="spaced"><tt>const char *<i>subject</i></tt>: The subject line to
+	use with the message.</li>
+<li class="spaced"><tt>const char *<i>body</i></tt>: The body of the
+	message (newlines are permitted within the message body).</li>
+<li class="spaced"><tt>const char *<i>charset</i></tt>: <i>Optional.</i>
+	The MIME character set (<i>e.g.</i>, "<tt>iso-8859-1</tt>") in
+	which the message text is written.  If not specified, no character
+	set is assumed.</li>
+<li class="spaced"><tt>MailCallback <i>completion_callback</i></tt>:
+	<i>Optional.</i>  The function to be called when mail sending
+	completes (see below).</li>
+<li class="spaced"><tt>void *<i>callback_data</i></tt>: <i>Optional.</i>
+	Arbitrary data passed unchanged to the completion callback.</li>
+</ul>
+
+<p>The first thing to note about this function is that it does not return a
+value.  Mail sending is performed asynchronously (subject to limitations of
+the particular low-level module in use), so that when the function returns,
+the requested message has been queued but not necessarily sent.  In order
+to signal the result of a mail-sending operation, <tt>sendmail()</tt> takes
+a callback function parameter (<tt><i>completion_callback</i></tt>); this
+function is called when the sending operation has completed, successfully
+or otherwise.  The function type is defined as <tt><i>MailCallback</i></tt>
+in <tt>mail.h</tt>:</p>
+
+<div class="code">typedef void (*<b>MailCallback</b>)(int <i>status</i>, void *<i>data</i>)</div>
+
+<p>where <tt><i>data</i></tt> is the <tt><i>callback_data</i></tt> value
+passed to <tt>sendmail()</tt>, and <tt><i>status</i></tt> is one of the
+following values:</p>
+
+<ul>
+<li><tt>MAIL_STATUS_SENT</tt>: The message was successfully sent.</li>
+<li><tt>MAIL_STATUS_ERROR</tt>: An unspecified error occurred while sending
+	the message.</li>
+<li><tt>MAIL_STATUS_NORSRC</tt>: Insufficient resources were available to
+	perform the send operation.</li>
+<li><tt>MAIL_STATUS_REFUSED</tt>: Delivery of the message was refused by
+	the remote system.</li>
+<li><tt>MAIL_STATUS_TIMEOUT</tt>: A timeout occurred while trying to send
+	the message.</li>
+<li><tt>MAIL_STATUS_ABORTED</tt>: The operation was aborted (because the
+	low-level mail module was removed before the message was sent, for
+	example).</li>
+</ul>
+
+<p>It is important to note that, while <tt>sendmail()</tt> does not wait
+for the message to be sent before returning, there is nothing preventing
+the low-level module from delivering the message immediately if possible,
+and in cases such as sending to a user on the local system, the callback
+function may be called even before <tt>sendmail()</tt> itself returns!  For
+this reason, the caller must ensure that all setup required by the callback
+function is performed <i>before</i> calling <tt>sendmail()</tt>.</p>
+
+<p><tt>sendmail()</tt>, in turn, does its work by calling out to functions
+implemented in a low-level module.  The interface consists of two functions
+which the low-level module must provide, along with a function provided by
+the core module for signaling the completion of a mail operation:</p>
+
+<dl>
+<dt><tt>void (*<b>low_send</b>)(MailMessage *<i>msg</i>)</tt></dt>
+    <dd>Provided by the low-level module, this function performs the actual
+	work of starting the send operation, and is called by
+	<tt>sendmail()</tt> once parameter and other checks have been
+	performed.  As with <tt>sendmail()</tt>, the routine does not
+	return a value, but instead calls <tt>send_finished()</tt> (see
+	below) to signal the message's status.  Typically, this routine
+	will perform any necessary module-specific checks, then start the
+	asynchronous send operation and return without calling
+	<tt>send_finished()</tt>.
+
+	<p>The parameter passed to this routine is a structure (see below)
+	describing the message to be sent.  On entry, the structure's
+	<tt>from</tt>, <tt>to</tt>, <tt>subject</tt>, and <tt>body</tt> are
+	guaranteed to be non-<tt>NULL</tt>.  The strings in these fields
+	and the <tt>fromname</tt> field (which may be <tt>NULL</tt>) can be
+	changed freely, but the pointer values should be left
+	unmodified.</p></dd>
+
+<dt><tt>void (*<b>low_abort</b>)(MailMessage *<i>msg</i>)</tt></dt>
+    <dd>Provided by the low-level module, this function takes any actions
+	needed to abort the sending of a message currently in progress;
+	the message to abort is indicated by the <tt><i>msg</i></tt>
+	parameter, which will be the same as passed to a previous call to
+	<tt>low_send()</tt>.  The given message <i>must</i> be aborted, as
+	there is no way for the routine to signal a failure to abort.  The
+	routine should not call <tt>send_finished()</tt>, as the core
+	module will take care of setting the message completion status.</dd>
+
+<dt><tt>void <b>send_finished</b>(MailMessage *<i>msg</i>, int <i>status</i>)</tt></dt>
+    <dd>Provided by the core module, this function is called by low-level
+	modules to signal that a message has been successfully sent or an
+	error has occurred that prevents the message from being sent.  The
+	<tt><i>msg</i></tt> parameter is the same one passed to
+	<tt>low_send()</tt>, and <tt><i>status</i></tt> is one of the
+	status codes listed above (<tt>MAIL_STATUS_*</tt>).</dd>
+</dl>
+
+<p>As can be seen from the above, both <tt>low_send</tt> and
+<tt>low_abort</tt> are declared as function pointers in the core module;
+low-level modules must set these to point to their own implementations of
+the functions.  <i>Implementation note: It would be better to use a
+<tt>register()</tt>/<tt>unregister()</tt> pair of functions, as with the
+encryption and database code.</i></p>
+
+<p>The <tt>MailMessage</tt> structure used as a parameter in the above
+functions is used to collect the various parameters of a message into a
+single group for passing to the low-level modules.  The pointer itself also
+serves as a unique ID value for each message in transit.  The structure
+contains the following fields:</p>
+
+<ul>
+<li><tt>MailMessage *<b>next</b>, *<b>prev</b></tt>: Used by the core
+	module to manage the list of in-transit messages.</li>
+<li><tt>char *<b>from</b></tt>: Copied from the value given in the
+	<tt>FromAddress</tt> configuration directive.</li>
+<li><tt>char *<b>fromname</b></tt>: Copied from the value given in the
+	<tt>FromName</tt> configuration directive, or <tt>NULL</tt> if no
+	<tt>FromName</tt> directive was given.</li>
+<li><tt>char *<b>to</b></tt>: Copied from the <tt><i>to</i></tt> parameter
+	to <tt>sendmail()</tt>.</li>
+<li><tt>char *<b>subject</b></tt>: Copied from the <tt><i>subject</i></tt>
+	parameter to <tt>sendmail()</tt>.</li>
+<li><tt>char *<b>body</b></tt>: Copied from the <tt><i>body</i></tt>
+	parameter to <tt>sendmail()</tt>.</li>
+<li><tt>char *<b>charset</b></tt>: Copied from the <tt><i>charset</i></tt>
+	parameter to <tt>sendmail()</tt>, or <tt>NULL</tt> if the
+	<tt><i>charset</i></tt> parameter was <tt>NULL</tt>.</li>
+<li><tt>MailCallback <b>completion_callback</b></tt>: Set to the
+	<tt><i>completion_callback</i></tt> parameter to
+	<tt>sendmail()</tt>.</li>
+<li><tt>void *<b>callback_data</b></tt>: Set to the
+	<tt><i>callback_data</i></tt> parameter to <tt>sendmail()</tt>.</li>
+<li><tt>Timeout *<b>timeout</b></tt>: Used by the core module to manage
+	send timeouts.</li>
+</ul>
+
+<p>The core module itself, defined in <tt>main.c</tt>, simply serves as a
+kind of "glue" between external callers and the low-level modules; it
+consists of the implementations of <tt>sendmail()</tt> and
+<tt>send_finished()</tt>, along with a timeout callback function
+(<tt>send_timeout()</tt>) for messages which remain in transit longer than
+the time specified by the <tt>SendTimeout</tt> configuration directive.
+When <tt>sendmail()</tt> is called, it performs checks on its parameters
+(calling the callback function with an error code if a problem is found),
+then sets up a <tt>MailMessage</tt> structure for the message, activates a
+timeout if <tt>SendTimeout</tt> is enabled, and calls <tt>low_send()</tt>
+to begin the actual sending process.  When the low-level module calls
+<tt>send_finished()</tt>, it likewise calls the completion callback
+function with the specified status, then unlinks and frees the
+<tt>MailMessage</tt> structure for the message.  Messages can be aborted
+if they time out, or if the core module is removed with any messages
+still in transit.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-2">8-3-2. <tt>mail/sendmail</tt>: Sends mail using the <tt>sendmail</tt> program</h4>
+
+<p>The <tt>mail/sendmail</tt> module, defined in <tt>sendmail.c</tt>, makes
+use of an external "sendmail" program to send mail.  The module was
+designed primarily as a test module to ensure that the core mail processing
+code worked correctly, to help isolate problems before development of the
+more complex SMTP module started; it has been retained to support systems
+which cannot use SMTP to send mail directly, but such systems are presumed
+to be rare, and little effort has been put into improving this module.  In
+particular, the module (and thus Services itself) blocks while interacting
+with the external program, potentially causing Services to lag and even
+opening up the possibility of denial-of-service attacks on Services (by
+repeatedly sending messages to addresses which take a long time to
+process).</p>
+
+<p>The entire logic of the module, outside of the module initialization and
+cleanup code (which actually comprises about half of the source file), is
+contained in <tt>send_sendmail()</tt>, the implementation of the
+<tt>low_send()</tt> routine called by the core module's <tt>sendmail()</tt>
+function.  <tt>send_sendmail()</tt> opens a pipe to the program specified
+by the <tt>SendmailPath</tt> directive, which is assumed to take a
+"<tt>-t</tt>" option to read the recipient address from the message
+headers, as the standard Unix <tt>sendmail</tt> program does.  The message
+is then written over the pipe, and <tt>pclose()</tt> is called to wait for
+the message sending operation to complete.  This latter step, which is
+required to free the pipe resources as well, places Services at the mercy
+of the external program, as <tt>pclose()</tt> will not return until the
+process exits.  <i>Implementation note: One improvement would be to make
+the pipe non-blocking, but as Services has no facilities for monitoring
+arbitrary file descriptors, this would require a periodic check via a
+timeout routine to see whether the child process had exited.</i>  Finally,
+the message status is reported based on the exit code of the child
+process.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s3-3">8-3-3. <tt>mail/smtp</tt>: Sends mail using SMTP</h4>
+
+<p>The <tt>mail/smtp</tt> module, defined in <tt>smtp.c</tt>, sends mail
+via the SMTP protocol.  While the module makes some simplifying
+assumptions, notably that a relay server is available that will accept and
+distribute mail on behalf of Services, it is more robustly designed than
+the <tt>mail/sendmail</tt> module, and is the recommended module for use in
+Services.</p>
+
+<p>As mentioned above, the <tt>mail/smtp</tt> module relies on the presence
+of an external relay server, which can be as simple as an SMTP daemon
+running on the same machine, that will accept message from Services via
+SMTP and relay them to the appropriate destinations.  By doing this, the
+module is freed from the necessity of performing DNS lookups for each
+message sent, significantly reducing the complexity of the module.
+However, this also means that invalid addresses cannot be detected, except
+to the extent that the relay server checks for them during the SMTP
+connection from Services.</p>
+
+<p>For each message to be sent, the module creates a new connection to the
+relay server, taking advantage of the socket callbacks described in
+<a href="3.html">section 3</a> to process SMTP communications
+asynchronously.  The socket used for each message, along with the
+<tt>MailMessage</tt> structure itself and other per-message data, is stored
+in a <tt>SocketInfo</tt> structure; the module maintains a list of these
+structures, one for each message in transit.  The <tt>SocketInfo</tt>
+structure contains the following fields:</p>
+
+<dl>
+<dt><tt>struct SocketInfo_ *<b>next</b>, *<b>prev</b></tt></dt>
+    <dd>Used to maintain the linked list of structures.  (<tt>struct
+	SocketInfo_</tt> is the same type as <tt>SocketInfo</tt>, and is
+	used here only because the structure is defined as part of the
+	<tt>typedef</tt>.)</dd>
+
+<dt><tt>Socket *<b>sock</b></tt></dt>
+    <dd>The socket being used to send the message.</dd>
+
+<dt><tt>MailMessage *<b>msg</b></tt></dt>
+    <dd>The message data structure passed in from the core module.</dd>
+
+<dt><tt>int <b>msg_status</b></tt></dt>
+    <dd>The message status code to be passed to <tt>send_finished()</tt>.</dd>
+
+<dt><tt>int <b>relaynum</b></tt></dt>
+    <dd>The index (into the <tt>RelayHosts[]</tt> array) of the relay
+	server currently in use.  If a connection to the first server
+	fails, the code will increment this field and retry the connection
+	until the list of relay hosts is exhausted.</dd>
+
+<dt><tt>enum {...} <b>state</b></tt></dt>
+    <dd>The current state of the connection:
+    <ul>
+	<li><b><tt>ST_GREETING</tt>:</b> Waiting for the remote server's
+		greeting.</li>
+	<li><b><tt>ST_HELO</tt>:</b> Waiting for a response to the
+		<tt>HELO</tt> command.</li>
+	<li><b><tt>ST_MAIL</tt>:</b> Waiting for a response to the
+		<tt>MAIL</tt> command.</li>
+	<li><b><tt>ST_RCPT</tt>:</b> Waiting for a response to the
+		<tt>RCPT</tt> command.</li>
+	<li><b><tt>ST_DATA</tt>:</b> Waiting for a response to the
+		<tt>DATA</tt> command.</li>
+	<li><b><tt>ST_FINISH</tt>:</b> Waiting for the server to confirm
+		that it has accepted the message.</li>
+    </ul></dd>
+
+<dt><tt>int <b>replycode</b></tt></dt>
+    <dd>The reply code associated with the line currently being received
+	from the server.  A value of zero indicates that the next character
+	received will be the beginning of a new line.</dd>
+
+<dt><tt>char <b>replychar</b></tt></dt>
+    <dd>The fourth character of the line currently being received (normally
+	either a space or a hyphen, indicating the absence or presence of
+	continuation lines respectively).</dd>
+
+<dt><tt>int <b>garbage</b></tt></dt>
+    <dd>The number of garbage (non-reply) lines received from the server,
+	used to check for an erroneous connection to a non-SMTP server.</dd>
+</dl>
+
+<p>When the <tt>low_send()</tt> implementation routine, <tt>send_smtp()</tt>,
+is called, it first cleans any double quotes out of the "From" name (since
+that name will later be enclosed in double quotes), then sets up a
+<tt>SocketInfo</tt> structure for the message and creates a socket for SMTP
+communication.  On success, the socket's callbacks are set, and
+<tt>try_next_relay()</tt> is called to attempt a connection to the first
+SMTP relay specified in the configuration file.  (The <tt>msg_status</tt>
+field of <tt>SocketInfo</tt> is set to <tt>MAIL_STATUS_ERROR</tt> to
+provide a fallback value in case an error in the module results in
+<tt>send_finished()</tt> being called without an explicit status being set;
+the "don't depend on this" is simply a reminder to ensure that the status
+is in fact set correctly, rather than relying on that default value, since
+the default could potentially change.)</p>
+
+<p><tt>try_next_relay()</tt>, in turn, increments the <tt>relaynum</tt>
+field, then checks whether it has exceeded the number of configured relay
+servers.  If so, sending is terminated with an error code based on the
+value of <tt>errno</tt> as returned from the last system call (the routine
+is assumed to be called immediately after a socket-related system call);
+otherwise, a connection is initiated to the next relay server, looping back
+to the top of the function if the <tt>conn()</tt> call fails.</p>
+
+<p>Actual socket processing is handled by the <tt>smtp_readline()</tt> and
+<tt>smtp_disconnect()</tt> functions.  The latter, <tt>smtp_disconnect()</tt>,
+simply calls <tt>send_finished()</tt>, passing either the value of
+<tt>msg_status</tt> (if the connection was closed locally) or an
+appropriate error status (if the connection was broken remotely or failed),
+then frees the <tt>SocketInfo</tt> structure with <tt>free_socketinfo()</tt>,
+which also closes the socket itself.  (If the routine is called as the
+result of a failed connection, however, it calls <tt>try_next_relay()</tt>
+instead.)</p>
+
+<p><tt>smtp_readline()</tt> is the workhorse of the <tt>mail/smtp</tt>
+module, processing data read from the server and sending the SMTP commands
+necessary to relay the message.  The routine first reads a line of data
+from the socket, ensuring that it ends with a newline and removing that
+newline.  (While the socket subsystem ensures that a full line is
+available when the read-line callback is called, <tt>smtp_readline()</tt>
+is also able to handle partial lines, except in the pathological case of a
+truncated reply code.)  If the text received is at the beginning of a line,
+the 3-digit reply code and continuation character are parsed and stored in
+the <tt>SocketInfo</tt> structure corresponding to the socket.  When a
+complete, non-continued response line has been received,
+<tt>smtp_readline()</tt> then either generates an error (for 4xx or 5xx
+error responses from the SMTP server) or sends the next command or message
+data to the server, depending on the connection state, and the state is
+incremented.  (After sending the final <tt>QUIT</tt> command, the socket is
+closed, causing <tt>send_finished()</tt> to be called from the socket
+disconnection callback.)</p>
+
+<p>The module's implementation of the <tt>low_abort()</tt> function can be
+found in <tt>smtp_abort()</tt>.  The routine simply looks up the
+<tt>SocketInfo</tt> corresponding to the message, then frees it,
+disconnecting the socket in the process.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s4">8-4. Miscellaneous modules</h3>
+
+<p>This section documents the two remaining modules which do not fit
+neatly into any other category: the <tt>misc/xml-export</tt> and
+<tt>misc/xml-import</tt> modules, used for exporting Services pseudoclient
+data to an XML file and vice versa.  Both of these modules are located in
+the <tt>modules/misc</tt> directory.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-1">8-4-1. <tt>misc/xml-export</tt>: Data export using XML</h4>
+
+<p>The <tt>misc/xml-export</tt> module, defined in <tt>xml-export.c</tt>
+along with declarations in <tt>xml.h</tt>, provides a method through which
+Services pseudoclient data can be exported into an XML file suitable for
+use with external programs.  It should be noted that this module does not
+make use of the standard database interface, relying instead on direct
+calls to the appropriate modules' database access functions and direct
+access to the corresponding data structures, and thus cannot export data
+added by third-party modules.  This limitation is a result of the module's
+implementation in version 5.0, before the current database system was
+developed; one possible solution would be to reimplement this module and
+<tt>misc/xml-import</tt> as database modules
+(see <a href="11.html#s1">section 11-1</a>).</p>
+
+<p>One thing worth noting about the structure of the module is that, since
+it is also compiled into the <tt>convert-db</tt> tool, there are a number
+of code segments (mainly logging calls) that need to be compiled
+differently.  These are protected by preprocessor conditionals on the
+<tt>CONVERT_DB</tt> symbol, defined by <tt>tools/Makefile</tt> (see
+<a href="10.html#s3-4">section 10-3-4</a>).</p>
+
+<p>Exporting is handled by the <tt>xml_export()</tt> routine defined near
+the bottom of the file.  This routine takes two parameters: a function
+pointer of type <tt>xml_writefunc_t</tt>, specifying the function to be
+called to output data, and an arbitrary pointer value which is passed
+unchanged to the function.  The <tt>xml_writefunc_t</tt> type is defined in
+<tt>xml.h</tt> as:</p>
+
+<div class="code">int (*<b>xml_writefunc_t</b>)(void *<i>data</i>, const char *<i>fmt</i>, ...)</div>
+
+<p>where <tt><i>data</i></tt> is the pointer parameter passed to
+<tt>xml_export()</tt> and <tt><i>fmt</i></tt> is a <tt>printf()</tt>-style
+format string.  (This prototype was chosen so that <tt>fprintf()</tt> could
+be used as a callback function.  <tt>sprintf()</tt> also fits the
+prototype, but should be avoided due to the likelihood of buffer
+overflows.)</p>
+
+<p><tt>xml_export()</tt> does not actually export any data itself, other
+than writing the <tt>&lt;?xml?&gt;</tt> header tag and top-level
+<tt>&lt;ircservices-db&gt;</tt> enclosing tags.  Rather, it calls helper
+routines to export each class of data, passing the write function pointer
+and data pointer along to each routine.</p>
+
+<p>The first of these helper routines is <tt>export_constants()</tt>.
+This routine does not export any data <i>per se</i>, but instead writes
+out the values of various constants used by Services; this allows other
+programs which read in the data to interpret numerical data such as
+channel access levels and special values of limits properly, rather than
+relying on the definitions used in any particular version of Services (or
+whatever other program may have generated the data).</p>
+
+<p>Following this is <tt>export_operserv_data()</tt>, the first of the
+actual data export routines.  This routine writes out the maximum user
+count and timestamp, along with the super-user password if present.  The
+password is written in encrypted format, and is first passed through the
+<tt>xml_quotebuf()</tt> function to avoid the danger of special characters
+like <tt>&lt;</tt>, <tt>&gt;</tt>, or the null character from causing
+problems when the data is read in.  This latter function, defined near the
+top of the file, converts all non-ASCII bytes in the passed-in buffer to
+their equivalent character codes, and converts the three characters
+<tt>&lt;</tt> <tt>&gt;</tt> <tt>&amp;</tt> to "<tt>&amp;lt;</tt>",
+"<tt>&amp;gt;</tt>", and "<tt>&amp;amp;</tt>" respectively.  The size of
+the static return buffer, <tt>BUFSIZE*6+1</tt>, is so that an input buffer
+of up to <tt>BUFSIZE</tt> bytes can be encoded with no truncation (the
+longest possible encoding for a single byte is 6 characters:
+"<tt>&#<i>nnn</i>;</tt>").</p>
+
+<p>The next routine, <tt>export_nick_db()</tt>, is the first of the true
+database export routines, iterating through all nickname groups and then
+all nicknames to dump the data for each record to the XML output stream.
+The routine takes advantage of these <tt>XML_PUT_*</tt> macros defined at
+the top of the source file to simplify the writing of the various structure
+fields and substructures.  These macros are:</p>
+
+<ul>
+<li><b><tt>XML_PUT_STRING()</tt>:</b> Writes out a string field.</li>
+<li><b><tt>XML_PUT_PASS()</tt>:</b> Writes out a password field.</li>
+<li><b><tt>XML_PUT_LONG()</tt>:</b> Writes out a signed integer field of
+	size no greater than <tt>long</tt> (but possibly smaller).</li>
+<li><b><tt>XML_PUT_ULONG()</tt>:</b> Writes out an unsigned integer field
+	of size no greater than <tt>unsigned long</tt> (but possibly
+	smaller).</li>
+<li><b><tt>XML_PUT_STRARR()</tt>:</b> Writes out a variable-length string
+	array field.</li>
+</ul>
+
+<p>Each macro takes three parameters: <tt><i>indent</i></tt>, a string
+prefixed to the output line for indenting; <tt><i>structure</i></tt>, the
+structure (not structure pointer) in which the field to write resides; and
+<tt><i>field</i></tt>, the name of the field to write.  The value written
+is enclosed in tags named the same as the field name.</p>
+
+<p>The subsequent database export routines&mdash;<tt>export_channel_db()</tt>,
+<tt>export_news_db()</tt>, <tt>export_maskdata</tt>, and
+<tt>export_statserv_db()</tt>&mdash;export the corresponding databases in a
+similar manner.  One point of note is the writing of mode locks in
+<tt>export_channel_db()</tt>: since the <tt>on</tt> and <tt>off</tt> fields
+of the <tt>ModeLock</tt> structure are strings rather than bitmasks in the
+<tt>convert-db</tt> tool, as noted in <a href="7.html#s4-1-1">section
+7-4-1-1</a>, they are handled differently depending on whether the
+preprocessor symbol <tt>CONVERT_DB</tt> is defined.</p>
+
+<p>The <tt>misc/xml-export</tt> module also includes a callback function
+for the core's "<tt>command line</tt>" callback, allowing the pseudoclient
+databases to be exported without connecting to the network.  The callback
+function, <tt>do_command_line()</tt>, checks for the <tt>-export</tt>
+option; if present, the XML database dump is written to the named file, or
+to standard output if no filename is given, and the function returns 3 (on
+success) or 2 (on error) to signal the core code to terminate immediately.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-2">8-4-2. <tt>misc/xml-import</tt>: Data import using XML</h4>
+
+<p>The <tt>misc/xml-import</tt> module, defined in <tt>xml-import.c</tt>,
+performs the opposite function of the <tt>misc/xml-export</tt> module,
+reading data from an XML file and adding it to the various pseudoclient
+databases.  As with the <tt>misc/xml-export</tt> module, this module is
+heavily intertwined with the pseudoclient modules and is unable to handle
+data used by third-party modules.  Note that the <tt>xml.h</tt> header file
+is included by <tt>xml-import.c</tt>, as it is considered a common XML
+header file for both import and export, but there are no declarations in
+<tt>xml.h</tt> that are actually used in this module.</p>
+
+<p>Since the import of data will typically create new records, the
+<tt>xml-import</tt> module requires a way to allocate and initialize a
+record of each of the various structure types.  This is done for nickname
+and channel records by defining the <tt>STANDALONE_NICKSERV</tt> and
+<tt>STANDALONE_CHANSERV</tt> preprocessor symbols and including
+<tt>modules/nickserv/util.c</tt> and <tt>modules/chanserv/util.c</tt> (see
+also <a href="7.html#s3-1-4">section 7-3-1-4</a>), and for other record
+types by allocating with <tt>calloc()</tt> and freeing with custom free
+routines.  This is admittedly a very kludgey way of doing things, but again
+is a carryover from previous versions, before the current database system
+was developed.</p>
+
+<p>When importing data, there is the possibility that data in the imported
+XML file will conflict with data already stored in Services' databases.  In
+the case of OperServ mask-data (autokill, etc.) records and StatServ server
+entries, the record in the imported data is always dropped; however, for
+nicknames and channels, one of several methods of handling collisions can
+be chosen.  The various methods, along with the corresponding configuration
+options and the flags used to represent them internally, are:</p>
+
+<ul>
+<li class="spaced"><b><tt>XMLI_NICKCOLL_SKIPGROUP</tt>:</b> When a nickname
+	in the imported data conflicts with a nickname in the database, the
+	entire nickname group in the imported data containing the
+	conflicting nickname is discarded.  This is the default behavior.</li>
+
+<li class="spaced"><b><tt>XMLI_NICKCOLL_SKIPNICK</tt>:</b> When a nickname
+	in the imported data conflicts with a nickname in the database,
+	only that nickname is discarded; if any other (non-colliding)
+	nicknames remain in the same nickname group, they are imported
+	normally, otherwise the resulting empty group is discarded.  This
+	behavior is selected by <tt>OnNicknameCollision skipnick</tt>.</li>
+
+<li class="spaced"><b><tt>XMLI_NICKCOLL_OVERWRITE</tt>:</b> When a nickname
+	in the imported data conflicts with a nickname in the database, the
+	nickname in the database is dropped, along with its nickname group
+	if there are no other nicknames in the group.  This behavior is
+	selected by <tt>OnNicknameCollision overwrite</tt>.</li>
+
+<li class="spaced"><b><tt>XMLI_NICKCOLL_ABORT</tt>:</b> When a nickname in
+	the imported data conflicts with a nickname in the database, the
+	import procedure is aborted after the XML data has been read in.
+	This behavior is selected by <tt>OnNicknameCollision abort</tt>.</li>
+</ul>
+
+<ul>
+<li class="spaced"><b><tt>XMLI_CHANCOLL_SKIP</tt>:</b> When a channel in
+	the imported data conflicts with a channel in the database, the
+	channel in the imported data is discarded.  This is the default
+	behavior.</li>
+
+<li class="spaced"><b><tt>XMLI_CHANCOLL_OVERWRITE</tt>:</b> When a channel
+	in the imported data conflicts with a channel in the database, the
+	channel in the database is dropped.  This behavior is selected by
+	<tt>OnChannelCollision overwrite</tt>.</li>
+
+<li class="spaced"><b><tt>XMLI_CHANCOLL_ABORT</tt>:</b> When a channel in
+	the imported data conflicts with a channel in the database, the
+	import procedure is aborted after the XML data has been read in.
+	This behavior is selected by <tt>OnNicknameCollision abort</tt>.</li>
+</ul>
+
+<p>One flag from each set is stored in the file-local variable <tt>flags</tt>
+at module initialization or reconfiguration time, based on the configuration
+file settings.</p>
+
+<p>XML input is assumed to be from a file, whose file pointer is stored in
+the file-local variable <tt>import_file</tt>.  The local function
+<tt>get_byte()</tt> reads in a byte from this file, returning the value of
+that byte or -1 on error, as well as performing buffering (which is
+probably redundant with the buffering performed by the stdio functions) and
+updating byte and line counters for use in error messages.  The macro
+<tt>NEXT_BYTE</tt> encapsulates this call, assigning the return value of
+<tt>get_byte()</tt> to a variable <tt>c</tt> and returning -1 when
+end-of-file is reached.</p>
+
+<p>The XML data is processed by a simple XML parser, implemented by the
+<tt>parse_tag()</tt> routine.  This routine calls <tt>read_tag()</tt> to
+parse a single tag, then looks up the tag in the <tt>tags[]</tt> table and
+calls the associated handler to read and process the tag's contents, and
+returns a pointer to those contents (whose type can vary depending on the
+tag).  The function has three special return values: <tt>CONTINUE</tt> for
+tags that were processed successfully but contain no data, <tt>NULL</tt> to
+indicate an error processing a tag, or <tt>PARSETAG_END</tt> when the
+closing tag corresponding to the tag given in the <tt><i>caller_tag</i></tt>
+parameter has been found (or end-of-file is reached).  The parser does not
+handle empty tags (of the "<tt>&lt;tag/&gt;</tt>" syntax), as they are not
+used in well-formed Services data dumps; every tag has some sort of data
+associated with it.</p>
+
+<p><tt>read_tag()</tt>, in turn, reads bytes from the file until it locates
+the beginning of a tag, then parses the tag name and any attribute (only
+the first attribute is processed).  The function itself returns 1 for an
+opening tag, 0 for a closing tag, or a negative value on error; the tag
+name, attribute name, attribute value, pre-tag text, and text length are
+stored in the variables pointed to by the parameters <tt><i>tag_ret</i></tt>,
+<tt><i>attr_ret</i></tt>, <tt><i>attrval_ret</i></tt>,
+<tt><i>text_ret</i></tt>, and <tt><i>textlen_ret</i></tt>, respectively.
+The strings returned point into a dynamically-allocated buffer local to the
+function, which can be freed by calling it with <tt><i>tag_ret</i></tt> set
+to <tt>NULL</tt>.</p>
+
+<p>Each tag handler takes as parameters the tag name, attribute name
+(<tt>NULL</tt> if no attribute is present), and attribute value string
+(also <tt>NULL</tt> if no attribute is present).  Since many tags consist
+of simple integer or string values, they make use of the common handlers
+<tt>th_text()</tt>, <tt>th_int32()</tt>, <tt>th_uint32()</tt>,
+<tt>th_time()</tt>, and <tt>th_strarray()</tt>.  Of these, <tt>th_text()</tt>
+returns a <tt>TextInfo</tt> structure containing the <tt>malloc()</tt>'d
+text buffer, null-terminated, along with the length in bytes of the string
+(not including the null terminator); <tt>th_strarray()</tt> returns an
+<tt>ArrayInfo</tt> structure containing the <tt>malloc()</tt>'d,
+null-terminated string elements and element count; the other handlers
+return a pointer to the relevant type.  The returned variables themselves
+are stored in static buffers local to each handler.</p>
+
+<p>For simple tag handlers like the standard handlers mentioned above,
+handling a tag consists of simply parsing the text between the start and
+end tags for that tag.  This is done by repeatedly calling
+<tt>parse_tag()</tt>, passing the handler's <tt><i>tag</i></tt> parameter
+as <tt><i>caller_tag</i></tt>, until the function returns
+<tt>PARSETAG_END</tt>, and converting the inter-tag text from the final
+<tt>parse_tag()</tt> call (the code assumes no intervening tags) to the
+proper format.  For the case of <tt>th_strarray()</tt>, the
+<tt>parse_tag()</tt> loop checks for <tt>&lt;array-element&gt;</tt> tags,
+converting their contents to an <tt>ArrayInfo</tt> structure.</p>
+
+<p>The handlers for specific types, like <tt>NickInfo</tt> and
+<tt>ChannelInfo</tt>, are more complex, having to deal with multiple
+subtags, but follow the same general structure.  These handlers return
+dynamically allocated structures which are added directly into the import
+data list upon being returned from the tag handler.</p>
+
+<p>The overall import process consists of reading the contents of the
+<tt>&lt;ircservices-db&gt;</tt> into data structures in memory, then
+merging those data structures into the appropriate databases.  The reading
+and parsing is handled by the <tt>read_data()</tt> routine; if it succeeds,
+the data is then merged into the databases with <tt>merge_data()</tt>, and
+the loaded data is freed with <tt>free_data()</tt>.  These routines are
+called by the top-level <tt>xml_import()</tt> function.</p>
+
+<p><tt>read_data()</tt> takes the place of the tag handler for the
+<tt>&lt;ircservices-db&gt;</tt> tag, which is read in manually by
+<tt>xml_import()</tt> (by calling <tt>read_tag()</tt>).  Like other tag
+handlers, it loops calling <tt>parse_tag()</tt> to read in subtag contents,
+adding each returned structure into the temporary databases used for
+storing the data to import.  <tt>read_data()</tt> also takes care of
+checking for collisions with data already existing in the pseudoclient
+databases, and taking proper action in such cases.  The routine returns
+nonzero if all data was successfully read in and no collisions caused an
+abort, else zero.</p>
+
+<p>If <tt>read_data()</tt> succeeds, <tt>merge_data()</tt> is then called
+to store the read-in records in the main Services databases.  An extra
+check is performed here for nicknames and channels, ensuring that no
+collisions occur unless the collision flags specified overwriting current
+records; deletion of such colliding records is also performed at this stage
+(rather than when the data is read in, to avoid the case of a nickname or
+channel getting deleted and an error then being found later in the imported
+data).  In the case of colliding nickname group IDs, the imported group is
+renumbered to use a free ID value, and all relevant channel entries
+(founders, successors, and access list entries) are adjusted accordingly.</p>
+
+<p>The top-level <tt>xml_import()</tt> function is in turn called by the
+<tt>do_command_line()</tt> callback function, hooked into the core's
+"<tt>command line</tt>" callback.  Like the <tt>misc/xml-export</tt>
+module, this module checks for a specific command-line option (in this
+case, "<tt>-import</tt>"; if found, <tt>xml_import()</tt> is called with
+the file given as a parameter to the option (an error is generated if the
+parameter is missing or the file cannot be opened), and the function's
+return value (2 or 3) signals Services to exit with an exit code indicating
+the success or failure of the import.</p>
+
+<p>Formerly, the <tt>httpd/dbaccess</tt> module (see <a href="#s2-8">section
+8-2-8</a>) also provided the ability to import XML data via this module, by
+uploading a file via HTTP.  This functionality was removed, however, mainly
+to avoid the security and stability issues raised by deleting data records
+(nicknames and channels) already in use on the network.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="7.html">Previous section: Services pseudoclients</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="9.html">Next section: The database conversion tool</a></p>
+
+</body>
+</html>

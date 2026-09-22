@@ -1,0 +1,2884 @@
+#!/bin/sh
+#
+# Configuration script for Services.
+#
+# IRC Services is copyright (c) 1996-2009 Andrew Church.
+#     E-mail: <achurch@achurch.org>
+# Parts written by Andrew Kempe and others.
+# This program is free but copyrighted software; see the file GPL.txt for
+# details.
+
+###########################################################################
+
+# Temporary directory to use for various things.
+CONFTMP=conf-tmp
+
+###########################################################################
+
+# Nifty handy functions.
+
+# Echo something and stay on the same line.
+echo2 () {
+    $ECHO2 "$*$ECHO2SUF"        # these are defined below
+}
+
+# Write a line to the log file, including the current test mode.
+log () {
+    echo >&3 "$MODE: $*"
+}
+
+# Run a command, writing the command, output, and exit status (if nonzero)
+# to the log.
+run () {
+    echo >&3 "$MODE: >>> $*"
+    ("$@") >&3 2>&3 </dev/null
+    xxres=$?
+    if [ $xxres -ne 0 ] ; then
+        echo >&3 "$MODE: *** Command failed (exit code $xxres)"
+    fi
+    return $xxres
+}
+
+# Test whether a file exists (some shells don't have "test -e").
+exists () {
+    if [ -f $1 -o -d $1 -o -p $1 -o -c $1 -o -b $1 ] ; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Run grep without any output.
+grep_q () {
+    grep >/dev/null 2>&1 "$@"
+}
+
+###########################################################################
+
+# How can we echo something without going to the next line?
+
+ECHO2SUF=''
+if [ "`echo -n a ; echo -n b`" = "ab" ] ; then
+    ECHO2='echo -n'
+elif [ "`echo 'a\c' ; echo 'b\c'`" = "ab" ] ; then
+    ECHO2='echo' ; ECHO2SUF='\c'
+elif [ "`printf 'a' 2>&1 ; printf 'b' 2>&1`" = "ab" ] ; then
+    ECHO2='printf "%s"'
+else
+    # oh well...
+    ECHO2='echo'
+fi
+export ECHO2 ECHO2SUF
+
+###########################################################################
+
+# Kludge around GNU coreutils stuffiness.  (Some versions of `head' refused
+# to recognize the standard "head -1" syntax, insisting on "head -n 1".)
+
+head_is_broken=""
+if [ x`echo test | head -1 2>/dev/null` != xtest ] ; then
+    head_is_broken=broken
+elif [ "x`echo test | head -1 2>&1 >/dev/null`" != x ] ; then
+    head_is_broken=broken
+fi
+HEAD () {
+    if test "$head_is_broken" ; then
+        count=$1; shift
+        head -n`echo x$count | cut -c3-` "$@"
+    else
+        head "$@"
+    fi
+}
+
+###########################################################################
+
+# Return the default flags for the given C compiler.
+
+def_cc_flags () {
+    GCC=no
+    a=`echo "x$1" | cut -c1-4`
+    if [ "$a" = "xgcc" -o "x$1" = "xkgc" ] ; then
+        GCC=yes
+    elif "$1" --version 2>/dev/null | grep_q '(GCC)' ; then
+        GCC=yes
+    fi
+    if [ $GCC = yes ] ; then
+        echo "-O2 -fno-strict-aliasing"
+    elif [ "X$1" = "Xicc" ] ; then
+        echo "-O0 -wd144,167,556"
+    fi
+}
+
+###########################################################################
+
+# Test for the presence of a given include file or function.  If the
+# variable TEST is non-empty, it contains code to be placed at the end of
+# main(), and should return 0 if everything is okay, else 1.
+#
+# For includes: Pass the include filename as an argument.  The variable
+# HAVE_include_name, where "include_name" is the name of the include file
+# with letters uppercased and non-alphanumerics replaced by underscores, is
+# set to 1 if the include file is present, else 0.
+#
+# For functions: Pass the return type, function name, and prototype as
+# arguments.  The variable HAVE_function, where "function" is the name
+# of the function with letters uppercased, is set to 1 if the function is
+# available, else 0.
+#
+# For both: The result code of the function will be 0 (true) if the entity
+# is present, else 1 (false).
+
+test_include () {
+    include="$1"
+    inc2="`echo $include | sed 'y+abcdefghijklmnopqrstuvwxyz/.-+ABCDEFGHIJKLMNOPQRSTUVWXYZ___+'`"
+    if [ -f "/usr/include/$include" ] ; then
+        eval "HAVE_${inc2}=1"
+        log "found $include in /usr/include"
+        return 0
+    fi
+    cat >$CONFTMP/test.c <<EOT
+#include <$include>
+int main() { return 0; }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        eval "HAVE_${inc2}=1"
+        log "found $include"
+        return 0
+    else
+        eval "HAVE_${inc2}=0"
+        log "didn't find $include"
+        return 1
+    fi
+}
+
+
+test_function () {
+    rettype="$1"
+    func="$2"
+    proto="$3"
+    if [ ! "$rettype" -o ! "$func" ] ; then
+        log "test_function: missing parameter(s)"
+        return 1
+    fi
+    if [ ! "$proto" ] ; then
+        proto="(...)"
+    fi
+    func2=`echo $func | tr 'abcdefghijklmnopqrstuvwxyz' 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'`
+    if [ ! "$TEST" ] ; then
+        TEST="return 0;"
+    fi
+    cat >$CONFTMP/test.c <<EOT
+    int main() {
+        extern $rettype $func$proto;
+        $TEST
+    }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test && (run $CONFTMP/test) 2>&1 ; then
+        eval "HAVE_${func2}=1"
+        log "found $func"
+        return 0
+    else
+        eval "HAVE_${func2}=0"
+        log "didn't find $func"
+        return 1
+    fi
+}
+
+###########################################################################
+
+# If something happens that really shouldn't:
+
+whoa_there () {
+    cat <<EOT
+
+*** WHOA THERE! ***
+
+We suddenly couldn't compile using the C compiler we already tested!
+The command line we used was:
+     $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test
+Please try to fix this; if you can't, mail achurch@achurch.org
+with information about your system, the output from this script,
+and the \`configure.log' file generated by this script.
+
+Configuration aborted.
+
+EOT
+    exit 4
+}
+
+###########################################################################
+###########################################################################
+
+# Start of actual script.
+
+###########################################################################
+
+# Create a temporary directory for our use.
+
+if exists $CONFTMP ; then
+    rm -rf $CONFTMP
+fi
+if mkdir $CONFTMP ; then : ; else
+    echo "Failed to create temporary directory!  Exiting."
+    exit 2
+fi
+if chmod u+rwx $CONFTMP ; then : ; else
+    echo "Cannot write to temporary directory!  Exiting."
+    exit 2
+fi
+
+###########################################################################
+
+# Variable initialization.
+
+MY_CONFIG_VERSION=105
+CONFIG_VERSION=
+
+PROGRAM=ircservices
+PREFIX=
+BINDEST=/usr/local/sbin
+DATDEST=/usr/local/lib/ircservices
+
+TEST_NT=
+INSTALL=
+MKDIR=
+CP_ALL=
+
+CC=
+CC_FLAGS=bonkle
+CC_LFLAGS=bonkle
+CC_LIBS=bonkle
+EXE_SUFFIX=bonkle
+NEED_GCC3_HACK=0
+SYMS_NEED_UNDERSCORES=0
+
+SORTED_LISTS=1
+CLEAN_COMPILE=1
+DUMPCORE=0
+MEMCHECKS=0
+SHOWALLOCS=0
+
+STATIC_MODULES=
+CC_SHARED=
+CC_DYN_LFLAGS=
+CC_DYN_LIBS=
+RANLIB=
+
+TYPE_INT8=
+TYPE_INT16=
+TYPE_INT32=
+TYPE_INT64=
+SIZEOF_INT=
+SIZEOF_LONG=
+SIZEOF_PTR=
+SIZEOF_TIME_T=
+MAX_TIME_T=
+SIZEOF_GID_T=bonkle
+HAVE_SOCKLEN_T=
+
+HAVE_STDINT_H=
+HAVE_STRINGS_H=
+HAVE_SYS_SELECT_H=
+HAVE_SYS_SYSPROTO_H=
+
+HAVE_STRERROR=
+HAVE_SYS_ERRLIST=0
+HAVE_HSTRERROR=
+
+HAVE_SNPRINTF=
+BAD_SNPRINTF=
+HAVE_STRTOK=
+HAVE_STRICMP=
+HAVE_STRCASECMP=
+HAVE_STRDUP=
+HAVE_STRSPN=
+HAVE_STRSIGNAL=
+HAVE_GETTIMEOFDAY=
+HAVE_SETGRENT=
+HAVE_SETREGID=
+HAVE_UMASK=
+HAVE_FORK=
+HAVE_GETHOSTBYNAME=
+HAVE_GETSETRLIMIT=
+HAVE_CRYPT=
+MISSING=bonkle
+
+###########################################################################
+
+# Command-line parsing.
+
+OPT_OS2=
+OPT_BINDEST=
+OPT_DATDEST=
+OPT_SORTED_LISTS=bonkle
+OPT_CLEAN_COMPILE=bonkle
+OPT_MEMCHECKS=bonkle
+OPT_SHOWALLOCS=bonkle
+OPT_DUMPCORE=bonkle
+IGNORE_CACHE=
+USE_LOCAL_FUNCS=
+NO_USE_LOCAL_FUNCS=
+USE_STATIC_MODULES=
+USE_DYNAMIC_MODULES=
+
+USER_CC=
+USER_CC_FLAGS=bonkle
+USER_CC_LFLAGS=bonkle
+USER_CC_LIBS=
+
+export OPT_OS2 OPT_BINDEST OPT_DATDEST IGNORE_CACHE
+export USE_LOCAL_FUNCS NO_USE_LOCAL_FUNCS USE_STATIC_MODULES
+export USE_DYNAMIC_MODULES OPT_SORTED_LISTS OPT_CLEAN_COMPILE
+export OPT_DUMPCORE OPT_MEMCHECKS OPT_SHOWALLOCS
+export USER_CC USER_CC_FLAGS USER_CC_LFLAGS USER_CC_LIBS
+
+while [ $# -gt 0 ] ; do
+    if echo "$1" | grep_q '^-' ; then
+        option=`echo "$1" | cut -c2-`
+        shift
+        if echo "$option" | grep_q '^-' ; then
+            option=`echo "$option" | cut -c2-`
+            if echo "$option" | grep_q '=' ; then
+                value=`echo "$option" | sed 's/^[^=]*=//'`
+                option=`echo "$option" | sed 's/=.*$//'`
+                set -- "$value" "$@"
+            fi
+        fi
+        if [ "$option" = "check" ] ; then
+            rm -rf $CONFTMP
+            if [ -f config.cache ] ; then
+                CACHEVER=`grep '^CONFIG_VERSION=' config.cache | cut -d= -f2`
+                if [ "x$CACHEVER" = "x$MY_CONFIG_VERSION" ] ; then
+                    exit 0
+                else
+                    exit 1
+                fi
+            else
+                exit 1
+            fi
+        elif [ "$option" = "ignore-cache" ] ; then
+            IGNORE_CACHE=bonkle
+        elif [ "$option" = "cc" ] ; then
+            USER_CC="$1"
+            shift
+        elif [ "$option" = "cflags" ] ; then
+            USER_CC_FLAGS="$1"
+            shift
+        elif [ "$option" = "lflags" ] ; then
+            USER_CC_LFLAGS="$1"
+            shift
+        elif [ "$option" = "libs" ] ; then
+            USER_CC_LIBS="$1"
+            shift
+        elif [ "$option" = "os2" ] ; then
+            OPT_OS2=1
+        elif [ "$option" = "program" ] ; then
+            if echo "x$1" | grep_q / ; then
+                echo >&2 "Error: -program parameter must not contain a slash"
+                exit 1
+            elif [ "$1" = "modules" ] ; then
+                echo >&2 'Error: "modules" cannot be used as the program name'
+                exit 1
+            else
+                PROGRAM="$1"
+            fi
+            shift
+        elif [ "$option" = "bindest" ] ; then
+            OPT_BINDEST="$1"
+            shift
+        elif [ "$option" = "datdest" ] ; then
+            OPT_DATDEST="$1"
+            shift
+        elif [ "$option" = "prefix" ] ; then
+            PREFIX="$1"
+            shift
+        elif [ "$option" = "use-local-funcs" ] ; then
+            USE_LOCAL_FUNCS=bonkle
+            NO_USE_LOCAL_FUNCS=
+        elif [ "$option" = "no-use-local-funcs" ] ; then
+            USE_LOCAL_FUNCS=
+            NO_USE_LOCAL_FUNCS=bonkle
+        elif [ "$option" = "use-static-modules" ] ; then
+            USE_DYNAMIC_MODULES=
+            USE_STATIC_MODULES=bonkle
+        elif [ "$option" = "no-use-static-modules" ] ; then
+            USE_DYNAMIC_MODULES=bonkle
+            USE_STATIC_MODULES=
+        elif [ "$option" = "sorted-lists" ] ; then
+            OPT_SORTED_LISTS=1
+        elif [ "$option" = "no-sorted-lists" ] ; then
+            OPT_SORTED_LISTS=0
+        elif [ "$option" = "clean-compile" ] ; then
+            OPT_CLEAN_COMPILE=y
+        elif [ "$option" = "no-clean-compile" ] ; then
+            OPT_CLEAN_COMPILE=
+        elif [ "$option" = "memchecks" ] ; then
+            OPT_MEMCHECKS=y
+        elif [ "$option" = "no-memchecks" ] ; then
+            OPT_MEMCHECKS=
+        elif [ "$option" = "showallocs" ] ; then
+            OPT_SHOWALLOCS=y
+        elif [ "$option" = "no-showallocs" ] ; then
+            OPT_SHOWALLOCS=
+        elif [ "$option" = "dumpcore" ] ; then
+            OPT_DUMPCORE=y
+        elif [ "$option" = "no-dumpcore" ] ; then
+            OPT_DUMPCORE=
+        else
+            if [ "$option" != "help" -a "$option" != "h" ]; then
+                echo >&2 "Unknown option/parameter: $option"
+                exitval=1
+            else
+                exitval=0
+            fi
+            cat >&2 <<EOT
+
+Available options:
+
+  *** Controlling the configure script ***
+
+        -help                Display list of command-line options
+        -ignore-cache        Don't use cache file if it exists
+
+  *** Controlling compilation ***
+
+        -cc PROGRAM          Specify C compiler to use (overrides cache and
+                                check; also clears cached CFLAGS/LFLAGS values)
+        -cflags FLAGS        Specify compilation flags (overrides cache/check)
+        -lflags FLAGS        Specify link flags for C compiler (default: none)
+        -libs LIBS           Specify extra libraries to use (default: none)
+        -os2                 Indicate that this is an OS/2 system
+
+  *** Controlling installation ***
+
+        -program NAME        Specify name to use for executable file (default
+                                "ircservices"); "ircservices-chk" script will
+                                also be renamed to "NAME-chk"
+        -bindest DIR         Specify directory for program file installation
+        -datdest DIR         Specify directory for data file installation
+        -prefix DIR          Specify GNU-style installation prefix (program
+                                will be installed in DIR/sbin, data in
+                                DIR/lib/<program>); overrides -bindest/-datdest
+
+  *** Controlling Services features ***
+
+  Note that the following functions can be disabled by adding "no-" before
+  the option name; for example, "-no-use-local-funcs".  For options with a
+  * before the option name, the option is on by default, and you must
+  explicitly give -no-option-name to disable it.
+
+        -use-local-funcs     Force the use of compatibility functions over
+                                system library functions (for debugging)
+        -use-static-modules  Force modules to be compiled statically, even if
+                                dynamic modules could be used
+      * -sorted-lists        Keep nickname/channel lists sorted (causes a
+                                performance penalty on large networks)
+      * -clean-compile       Attempt to compile with no warnings (causes a
+                                slight performance penalty)
+        -memchecks           Perform extra checks on memory allocation (for
+                                debugging only; causes a significant
+                                performance penalty)
+        -showallocs          Log all memory allocation activity (for
+                                debugging only; ignored unless -memchecks
+                                is enabled)
+        -dumpcore            Causes Services to attempt to write a core
+                                file if it crashes (for debugging)
+
+   *** Other options ***
+
+        -check               Check whether this script has already been run
+                                and whether the cache is up-to-date.  Exits
+                                with status 0 if up-to-date, 1 if not.
+
+
+GNU-style long options (--option[=value]) may also be used.
+
+Note that environment variables such as CC and CFLAGS are ignored; use
+the corresponding command-line options (-cc, -cflags, etc.) instead.
+EOT
+            exit $exitval
+        fi
+    fi
+done
+
+###########################################################################
+
+echo ""
+echo "Beginning IRC Services configuration."
+echo ""
+
+###########################################################################
+
+# First, test for the presence of a config.cache file.  If found, either
+# don't use it (-ignore-cache), or let the user know how to not use it and
+# then use it.
+
+if [ -f config.cache -a -r config.cache -a ! "$IGNORE_CACHE" ] ; then
+    cat <<EOT
+Using defaults from config.cache.  To ignore, either remove config.cache or
+give the command-line option "-ignore-cache".
+
+EOT
+    . ./config.cache
+    # Clear list of missing functions if either a relevant HAVE_* variable
+    # is missing or -no-use-local-funcs was specified.
+    if [ "$NO_USE_LOCAL_FUNCS" \
+                -o ! "$HAVE_SNPRINTF" \
+                -o ! "$BAD_SNPRINTF" \
+                -o ! "$HAVE_STRTOK" \
+                -o ! "$HAVE_STRICMP" \
+                -o ! "$HAVE_STRCASECMP" \
+                -o ! "$HAVE_STRDUP" \
+                -o ! "$HAVE_STRSPN" \
+                -o ! "$HAVE_STRSIGNAL" \
+                -o ! "$HAVE_GETTIMEOFDAY" \
+                -o ! "$HAVE_SETGRENT" \
+                -o ! "$HAVE_SETREGID" \
+                -o ! "$HAVE_UMASK" \
+                -o ! "$HAVE_FORK" \
+                -o ! "$HAVE_GETHOSTBYNAME" \
+                -o ! "$HAVE_GETSETRLIMIT" \
+                -o ! "$HAVE_CRYPT" \
+    ] ; then
+        MISSING=bonkle
+    fi
+    if [ ! "$CONFIG_VERSION" ] ; then
+        CONFIG_VERSION=0
+        CC_LFLAGS=bonkle
+        CC_LIBS=bonkle
+    fi
+    if [ $CONFIG_VERSION -lt 2 ] ; then
+        # missing -fno-strict-aliasing
+        CC=
+        CC_FLAGS=bonkle
+    fi
+    if [ $CONFIG_VERSION -lt 4 ] ; then
+        # socklen_t test broken on FreeBSD
+        HAVE_SOCKLEN_T=
+    fi
+    if [ $CONFIG_VERSION -lt 6 ] ; then
+        # deprecated GCC < 3.2, so recheck compiler
+        CC=
+    fi
+    if [ $CONFIG_VERSION -lt 7 ] ; then
+        # Added -fstack-protector avoidance, so recheck compiler flags
+        CC=
+    fi
+    if [ $CONFIG_VERSION -lt 8 ] ; then
+        # Added __builtin_xxx() bug check and fixed -fstack-protector
+        # avoidance, so recheck compiler and flags
+        CC=
+    fi
+    if [ $CONFIG_VERSION -lt 100 ] ; then
+        # Initial 5.1 version: remove support for pre-C99 compilers;
+        # use 0/1 instead of y/"" for compilation options
+        CC=
+        if [ "x$SORTED_LISTS" = "xy" ] ; then
+            SORTED_LISTS=1
+        else
+            SORTED_LISTS=0
+        fi
+        if [ "x$CLEAN_COMPILE" = "xy" ] ; then
+            CLEAN_COMPILE=1
+        else
+            CLEAN_COMPILE=0
+        fi
+        if [ "x$DUMPCORE" = "xy" ] ; then
+            DUMPCORE=1
+        else
+            DUMPCORE=0
+        fi
+        if [ "x$MEMCHECKS" = "xy" ] ; then
+            MEMCHECKS=1
+        else
+            MEMCHECKS=0
+        fi
+        if [ "x$SHOWALLOCS" = "xy" ] ; then
+            SHOWALLOCS=1
+        else
+            SHOWALLOCS=0
+        fi
+    fi
+    if [ $CONFIG_VERSION -lt 101 ] ; then
+        # Add checks for -lcrypt and crypt()
+        CC_LIBS=bonkle
+        MISSING=bonkle
+    fi
+    if [ $CONFIG_VERSION -lt 102 ] ; then
+        # Add check for -lm
+        CC_LIBS=bonkle
+    fi
+    if [ $CONFIG_VERSION -lt 103 ] ; then
+        # Modify checks for int8/int16/etc
+        TYPE_INT8=
+        TYPE_INT16=
+        TYPE_INT32=
+        TYPE_INT64=  # not present in this version, but clear it anyway
+    fi
+    if [ $CONFIG_VERSION -lt 104 ] ; then
+        # Add symbol resolution test to dynamic module check
+        STATIC_MODULES=
+    fi
+    if [ "$USE_DYNAMIC_MODULES" ] ; then
+        STATIC_MODULES=
+        RANLIB=
+    fi
+    if [ "$USE_STATIC_MODULES" ] ; then
+        RANLIB=
+    fi
+    if [ "x$USER_CC" != "x" -o "x$CC" = "x" ] ; then
+        # don't mix old flags and new compiler
+        CC_FLAGS=bonkle
+        CC_LFLAGS=bonkle
+    fi
+fi
+
+if [ "$OPT_SORTED_LISTS" != bonkle ] ; then
+    if [ "$OPT_SORTED_LISTS" = y ] ; then
+        SORTED_LISTS=1
+    else
+        SORTED_LISTS=0
+    fi
+fi
+if [ "$OPT_CLEAN_COMPILE" != bonkle ] ; then
+    if [ "$OPT_CLEAN_COMPILE" = y ] ; then
+        CLEAN_COMPILE=1
+    else
+        CLEAN_COMPILE=0
+    fi
+fi
+if [ "$OPT_DUMPCORE" != bonkle ] ; then
+    if [ "$OPT_DUMPCORE" = y ] ; then
+        DUMPCORE=1
+    else
+        DUMPCORE=0
+    fi
+fi
+if [ "$OPT_MEMCHECKS" != bonkle ] ; then
+    if [ "$OPT_MEMCHECKS" = y ] ; then
+        MEMCHECKS=1
+    else
+        MEMCHECKS=0
+    fi
+fi
+if [ "$OPT_SHOWALLOCS" != bonkle ] ; then
+    if [ "$OPT_SHOWALLOCS" = y ] ; then
+        SHOWALLOCS=1
+    else
+        SHOWALLOCS=0
+    fi
+fi
+
+###########################################################################
+
+# Determine installation directories.
+
+default=""
+
+if [ "$PREFIX" ] ; then
+    OPT_BINDEST="$PREFIX/sbin"
+    OPT_DATDEST="$PREFIX/lib/$PROGRAM"
+else
+    if [ ! "$OPT_BINDEST" ] ; then
+        OPT_BINDEST="$BINDEST"
+        default=1
+    fi
+    if [ ! "$OPT_DATDEST" ] ; then
+        if [ "$default" ] ; then
+            OPT_DATDEST="$DATDEST"
+        else
+            if [ x`echo "$OPT_BINDEST" | grep -c '/\(sbin\|bin\)$'` = x1 ] ; then
+                OPT_DATDEST=`echo "$OPT_BINDEST" | sed 's,\(sbin\|bin\)$,lib/$PROGRAM,'`
+            else
+                OPT_DATDEST=`echo "$OPT_BINDEST" | sed s,/*$,,`/lib
+            fi
+        fi
+    fi
+fi
+
+
+BINDEST="$OPT_BINDEST"
+echo "Executable (program) files will be installed in $BINDEST"
+if exists "$BINDEST/services.h" ; then
+    echo "$BINDEST appears to contain a Services source code distribution; aborting."
+    exit 1
+fi
+
+
+DATDEST="$OPT_DATDEST"
+echo "Data files will be installed in $DATDEST"
+if exists "$DATDEST/services.h" ; then
+    echo "$DATDEST appears to contain a Services source code distribution; aborting."
+    exit 1
+fi
+
+###########################################################################
+
+# Set up log file for automated tests, so we have a clue what's going on if
+# something dies.
+
+exec 3>configure.log
+
+MODE="                   "
+TEST=""
+export MODE TEST
+
+###########################################################################
+
+# Check whether we have a working "test FILE_A -nt FILE_B".
+
+MODE="check_test_nt      "
+if [ "$TEST_NT" ] ; then
+    log "cache says $TEST_NT"
+else
+    echo2 "Checking sanity of /bin/sh... "
+    touch $CONFTMP/file1
+    sleep 2  # just in case sleep 1 really does a sleep 0.997 or some such
+    touch $CONFTMP/file2
+    if run /bin/sh -c "test $CONFTMP/file2 -nt $CONFTMP/file1" ; then
+        TEST_NT=test
+        log "test works"
+        echo "high."
+    elif run /bin/test $CONFTMP/file2 -nt $CONFTMP/file1 ; then
+        TEST_NT=/bin/test
+        log "/bin/test works"
+        echo "medium."
+    elif run /usr/bin/test $CONFTMP/file2 -nt $CONFTMP/file1 ; then
+        TEST_NT=/usr/bin/test
+        log "/usr/bin/test works"
+        echo "medium."
+    else
+        log "neither test nor /bin/test nor /usr/bin/test work!"
+        echo "low."
+        echo "    Warning: Compilation may fail unless you pass a saner shell to make:"
+        echo "             make [or gmake] SHELL=/usr/local/bin/bash ..."
+    fi
+fi
+
+###########################################################################
+
+# Search for a compiler.
+
+MODE="find_cc            "
+# Don't use the cached flags unless we use the cached compiler as well
+CACHED_CC_FLAGS=$CC_FLAGS
+CC_FLAGS=bonkle
+echo2 "Searching for a suitable compiler... "
+if [ "$USER_CC" ] ; then
+    CC="$USER_CC"
+    echo "(supplied) using $CC."
+    log user supplied \`"$CC'"
+elif [ "$CC" ] ; then
+    echo "(cached) using $CC."
+    log cache supplied \`"$CC'"
+    CC_FLAGS=$CACHED_CC_FLAGS
+elif run gcc --version ; then
+    version=`gcc --version 2>&1 | HEAD -1 | sed 's/[^0-9]*[^0-9.]\([0-9][0-9.]*\).*/\1/'`
+    vmajor=`echo "x.$version.0" | cut -d. -f2`
+    vminor=`echo "x.$version.0" | cut -d. -f3`
+    if test "x$version" = x || (echo "x$vmajor" | cut -c2- | grep '[^0-9]' >/dev/null 2>&1) || (echo "x$vminor" | cut -c2- | grep '[^0-9]' >/dev/null 2>&1) ; then
+        log "unparseable version string: $version"
+        cat <<EOT
+
+
+*** WHOA THERE! ***
+
+Unable to determine the version of GCC installed on your system.  Please
+make certain you are using an official GCC distribution.  If you are
+certain \`gcc' is the correct compiler on your system and it is a recent
+version of GCC, re-run this script with the option \`-cc gcc' (or
+\`--cc=gcc').
+
+Configuration aborted.
+
+EOT
+        exit 1
+    elif test $vmajor -lt 3 || test $vmajor = 3 -a $vminor -lt 2 ; then
+        cat <<EOT
+
+
+*** WHOA THERE! ***
+
+Your version of GCC was detected as \`$version'.  As of Services 5.1,
+versions of GCC earlier than 3.2 are no longer supported, as they do not
+understand certain features of the C99 standard used by Services.  Please
+upgrade your compiler to GCC 3.2 or later.
+
+Configuration aborted.
+
+EOT
+        log "found \`gcc', but bad version: $version"
+        exit 1
+    else  # version okay
+        echo "great, found gcc!"
+        log using \`gcc\'
+        CC=gcc
+    fi
+else
+    echo "gcc not found."
+    echo2 "    Looking for alternatives... "
+    echo >$CONFTMP/test.c "int main(){return 1;}"
+    if run icc $CONFTMP/test.c -o $CONFTMP/test ; then
+        CC=icc
+    elif run cc $CONFTMP/test.c -o $CONFTMP/test ; then
+        CC=cc
+    else
+        echo "no C compiler found!"
+        echo "    Use the -cc command line option to specify your C compiler."
+        log "automatic tests failed"
+        exit 1
+    fi
+    # See if it handles ANSI.
+    cat >$CONFTMP/test.c <<EOT
+    int main(int argc, char **argv) {
+        extern void foo(int bar);
+    }
+EOT
+    log "test for ANSI..."
+    if run $CC $CONFTMP/test.c -o $CONFTMP/test ; then
+        echo "using $CC."
+        if [ "x`def_cc_flags $CC`" = "x" -a "x$USER_CC_FLAGS" = "x" ] ; then
+            echo "    Defaulting to no compiler flags.  Use the -cflags option"
+            echo "    if you need to specify any."
+        fi
+        log using \`"$CC'"
+    else
+        echo "found $CC, but it's not ANSI-compliant!"
+        echo "    Use the -cc command line option to specify your C compiler."
+        log \`"$CC' not ANSI-compliant"
+        exit 1
+    fi
+fi
+
+
+# See whether compiler supports various C99 features.
+
+log "test vararg macros..."
+cat >$CONFTMP/test.c <<EOT
+#define foo(a,...) int a() {printf("hello %s\n" , ##__VA_ARGS__); return 69;}
+foo(main,"world")
+EOT
+if run $CC $CONFTMP/test.c -o $CONFTMP/test && (run $CONFTMP/test; test $? = 69) ; then
+    log "vararg macros ok."
+else
+    log "vararg macros NG!  Aborting."
+    cat <<EOT
+
+*** WHOA THERE! ***
+
+Your C compiler is not compliant with modern C standards.  Services 5.1
+requires a C compiler that understands the C99 standard, such as GCC
+(version 3.2 or later).
+
+Configuration aborted.
+
+EOT
+    exit 1
+fi
+
+log "test va_copy..."
+cat >$CONFTMP/test.c <<EOT
+#include <stdarg.h>
+void foo(int a,...) {
+    va_list args, args2;
+    va_start(args,a);
+    va_copy(args2, args);
+    va_end(args);
+    va_end(args2);
+}
+int main() {
+    foo(1,2);
+    return 0;
+}
+EOT
+if run $CC $CONFTMP/test.c -o $CONFTMP/test && run $CONFTMP/test ; then
+    log "va_copy ok."
+else
+    log "va_copy NG!  Aborting."
+    cat <<EOT
+
+*** WHOA THERE! ***
+
+Your C compiler is not compliant with modern C standards.  Services 5.1
+requires a C compiler that understands the C99 standard, such as GCC
+(version 3.2 or later).
+
+Configuration aborted.
+
+EOT
+    exit 1
+fi
+
+
+# Test compiler options.
+
+MODE="find_ccopts        "
+if [ "$USER_CC_FLAGS" != bonkle ] ; then
+    CC_FLAGS="$USER_CC_FLAGS"
+    echo "Compiler flags supplied: $CC_FLAGS"
+    log user supplied flags: \`"$CC_FLAGS'"
+elif [ "$CC_FLAGS" != bonkle ] ; then
+    echo "Compiler flags: (cached) $CC_FLAGS"
+    log cache supplied flags: \`"$CC_FLAGS'"
+else
+
+    CC_FLAGS=`def_cc_flags $CC`
+
+    # Test for GCC stack-protector patch (generates broken code).
+    log "check for SSP"
+    cat >$CONFTMP/test.c <<EOT
+        void bar(int hogehoge) { printf("%d", hogehoge); }
+        void foo(int xyzzy) { __builtin_apply(bar,__builtin_apply_args(),64); }
+        int main(int ac, char **av) { foo(ac>1 ? 24 : 42); return 0; }
+EOT
+    if run $CC $CC_FLAGS -fstack-protector $CONFTMP/test.c -o $CONFTMP/test
+    then
+        log "SSP present"
+        # See if the bug exists; if so, disable stack protection.  Test
+        # twice just in case the bug exists but the stack happens to
+        # randomly contain 42.
+        a=`$CONFTMP/test`
+        b=`$CONFTMP/test x`
+        log "test results: a=[$a] b=[$b]"
+        if [ "$a" != 42 -o "$b" != 24 ] ; then
+            CC_FLAGS="$CC_FLAGS -fno-stack-protector"
+            log "SSP bug found, disabling"
+        else
+            log "SSP bug not detected"
+        fi
+    else
+        log "SSP not present"
+    fi
+
+    echo2 "Testing default compiler flags ($CC_FLAGS)... "
+    cat >$CONFTMP/test.c <<EOT
+        int main(int argc, char **argv) {
+            extern void foo(int bar);
+        }
+EOT
+    if run $CC $CC_FLAGS -c $CONFTMP/test.c -o $CONFTMP/test.o ; then
+        echo "looks good."
+    else
+        echo "no luck!  Using no flags."
+        echo "    If you know what flags you want, use the -cflags option to configure."
+        CC_FLAGS=
+    fi
+    log using flags: \`"$CC_FLAGS'"
+fi
+# If -fstack-protector isn't disabled, test once more to make sure
+# __builtin_apply() is working--but watch out for the __builtin_apply()
+# bugs below, as well as http://gcc.gnu.org/bugzilla/show_bug.cgi?id=20076
+if ! echo "$CC_FLAGS" | grep_q fno-stack-protector ; then
+    log "-fstack-protector check"
+    cat >$CONFTMP/test.c <<EOT
+#include <stdio.h>
+#if defined(__sparc__)
+# define APPLY __builtin_apply((void *)bar,__builtin_apply_args(),64); asm("ld [%sp-128],%i0")
+#elif defined(__POWERPC__)
+# define APPLY __builtin_apply((void *)bar,__builtin_apply_args(),64); asm("mr r0,r3")
+#else
+# define APPLY __builtin_return(__builtin_apply((void *)bar,__builtin_apply_args(),64))
+#endif
+        int bar(int hogehoge) { return printf("%d", hogehoge); }
+        int foo(int xyzzy) { APPLY; }
+        int main(int ac, char **av) { printf(" %d",foo(ac>1?9:42)); return 0; }
+EOT
+    if run $CC $CC_FLAGS -fno-inline-functions $CONFTMP/test.c -o $CONFTMP/test
+    then
+        run $CONFTMP/test  # to get the output into the log file
+        a=`$CONFTMP/test`
+        b=`$CONFTMP/test x`
+        log "test results: a=[$a] b=[$b]"
+        if [ "$a" != "42 2" -o "$b" != "9 1" ] ; then
+            log "-fstack-protector check failed!"
+            cat <<EOT
+
+*** WHOA THERE! ***
+
+Your compiler is not compiling certain code correctly; this will result in
+crashes when running Services.  If you have specified compiler flags, please
+add "-fno-stack-protector" to the flags, or remove "-fstack-protector" if it
+is present.  If this does not help, please reinstall or upgrade your
+compiler.  See section 2-1 of the manual for details.
+
+Configuration aborted.
+
+EOT
+            exit 1
+        fi
+    else
+        # For whatever reason, the compilation failed; maybe the compiler
+        # isn't a GCC flavor and doesn't understand -fno-inline-functions
+        # or __builtin_apply().  Assume things are okay.
+        log "-fstack-protector check compilation failed, ignoring"
+    fi
+fi
+
+###########################################################################
+
+# Check for the GCC __builtin_apply() and __builtin_return() bugs:
+# http://gcc.gnu.org/bugzilla/show_bug.cgi?id=8028
+# http://gcc.gnu.org/bugzilla/show_bug.cgi?id=11151
+
+MODE="check_gcc_builtin  "
+
+# Check whether this is actually GCC--if it doesn't understand
+# __builtin_apply, then probably not.
+cat >$CONFTMP/test.c <<EOT
+    int foo(int n)
+    {
+        return n;
+    }
+
+    int bar(int n)
+    {
+        return n*n+1;
+    }
+
+    int quux(int n)
+    {
+        foo(0);
+        __builtin_return(__builtin_apply((void *)bar, __builtin_apply_args(), 64));
+    }
+
+    int main(int argc, char **argv)
+    {
+        return quux(2)==5 && quux(3)==10 ? 0 : 1;
+    }
+EOT
+# As with the SSP check, avoid Bugzilla bug 20076 with -fno-inline-functions
+if run $CC $CC_FLAGS -fno-inline-functions $CONFTMP/test.c -o $CONFTMP/test ; then
+    log "checking for __builtin_apply()/__builtin_return() bugs"
+    # This is GCC--see if it runs correctly.
+    if run $CONFTMP/test ; then
+        log "bugs not detected"
+    else
+        case `uname -m` in
+            i?86|sparc|powerpc|"Power Macintosh")
+                log "bugs detected, applying workaround"
+                NEED_GCC3_HACK=1
+                ;;
+            *)
+                cat <<EOT
+
+*** WHOA THERE! ***
+
+Your C compiler has a bug which causes Services to be compiled incorrectly,
+and no workaround is available for your hardware.  Please try upgrading
+your compiler to the most recent version available (if you are using GCC,
+check http://gcc.gnu.org/ for the latest version).  See FAQ B.1.5 for
+details.
+
+Configuration aborted.
+
+EOT
+                exit 1
+                ;;
+        esac
+    fi  # if bug detected
+fi  # if GCC
+
+###########################################################################
+
+# Set linker flags.
+
+MODE="find_lflags        "
+if [ "$USER_CC_LFLAGS" != "bonkle" ] ; then
+    CC_LFLAGS=$USER_CC_LFLAGS
+    log user supplied \`"$CC_LFLAGS'"
+elif [ "$CC_LFLAGS" != "bonkle" ] ; then
+    log cache supplied \`"$CC_LFLAGS'"
+else
+    log using none
+    CC_LFLAGS=""
+fi
+
+###########################################################################
+
+# Find executable suffix.
+
+MODE="find_exe_suffix    "
+if [ "$OPT_OS2" ] ; then
+    log "-os2 option given, using \`.exe'"
+    EXE_SUFFIX=.exe
+else
+    rm -f $CONFTMP/test $CONFTMP/test.exe
+    echo >$CONFTMP/test.c "int main(){return 1;}"
+    if run $CC $CC_FLAGS $CC_LFLAGS $CONFTMP/test.c -o $CONFTMP/test ; then
+        if [ -f $CONFTMP/test.exe ] ; then
+            log using .exe
+            EXE_SUFFIX=.exe
+        elif [ -f $CONFTMP/test ] ; then
+            log using nothing
+            EXE_SUFFIX=""
+        else
+            log "can't find executable, assuming nothing"
+            EXE_SUFFIX=
+        fi
+    else
+        log "can't link test program, assuming nothing"
+        EXE_SUFFIX=
+    fi
+fi
+
+###########################################################################
+
+# See what libraries we have that we might need.
+
+MODE="find_libs          "
+echo2 "Let's see what libraries we need..."
+if [ "$CC_LIBS" != bonkle ] ; then
+    if [ "$CC_LIBS" ] ; then
+        echo " (cached) $CC_LIBS"
+    else
+        echo " (cached) none"
+    fi
+    log cache supplied \`"$CC_LIBS'"
+else
+    CC_LIBS=
+    HAVE_RESOLV=0
+    cat >$CONFTMP/test.c <<EOT
+        int main(int argc, char **argv) {
+            extern void foo(int bar);
+        }
+EOT
+    cat >$CONFTMP/test-pow.c <<EOT
+        int main(int argc, char **argv) {
+            extern double pow(double, double);
+            return pow(argc,argc);
+        }
+EOT
+    cat >$CONFTMP/test-socket.c <<EOT
+        int main(int argc, char **argv) {
+            extern void socket();
+            socket();
+        }
+EOT
+    cat >$CONFTMP/test-gethost.c <<EOT
+        int main(int argc, char **argv) {
+            extern void gethostbyname();
+            gethostbyname();
+        }
+EOT
+    cat >$CONFTMP/test-hstrerror.c <<EOT
+        int main(int argc, char **argv) {
+            extern void hstrerror();
+            hstrerror();
+        }
+EOT
+    cat >$CONFTMP/test-crypt.c <<EOT
+        int main(int argc, char **argv) {
+            extern void crypt();
+            crypt();
+        }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test-pow.c $CC_LIBS -o $CONFTMP/test ; then
+        :
+    elif run $CC $CC_FLAGS $CONFTMP/test-pow.c $CC_LIBS -lm -o $CONFTMP/test ; then
+        CC_LIBS="$CC_LIBS -lm"
+        echo2 " -lm"
+    fi
+    if run $CC $CC_FLAGS $CONFTMP/test-socket.c $CC_LIBS -o $CONFTMP/test ; then
+        :
+    elif run $CC $CC_FLAGS $CONFTMP/test-socket.c $CC_LIBS -lsocket -o $CONFTMP/test ; then
+        CC_LIBS="$CC_LIBS -lsocket"
+        echo2 " -lsocket"
+    fi
+    if run $CC $CC_FLAGS $CONFTMP/test-gethost.c $CC_LIBS -o $CONFTMP/test ; then
+        :
+    elif run $CC $CC_FLAGS $CONFTMP/test-gethost.c $CC_LIBS -lresolv -o $CONFTMP/test ; then
+        CC_LIBS="$CC_LIBS -lresolv"
+        HAVE_RESOLV=1
+        echo2 " -lresolv"
+    elif run $CC $CC_FLAGS $CONFTMP/test-gethost.c $CC_LIBS -lnsl -o $CONFTMP/test ; then
+        CC_LIBS="$CC_LIBS -lnsl"
+        echo2 " -lnsl"
+    elif run $CC $CC_FLAGS $CONFTMP/test-gethost.c $CC_LIBS -lnsl -lresolv -o $CONFTMP/test ; then
+        CC_LIBS="$CC_LIBS -lnsl -lresolv"
+        HAVE_RESOLV=1
+        echo2 " -lnsl -lresolv"
+    fi
+    if [ $HAVE_RESOLV = 0 ] ; then
+        if run $CC $CC_FLAGS $CONFTMP/test-hstrerror.c $CC_LIBS -o $CONFTMP/test ; then
+            :
+        elif run $CC $CC_FLAGS $CONFTMP/test-hstrerror.c $CC_LIBS -lresolv -o $CONFTMP/test ; then
+            CC_LIBS="$CC_LIBS -lresolv"
+            HAVE_RESOLV=1
+            echo2 " -lresolv"
+        fi
+    fi
+    if run $CC $CC_FLAGS $CONFTMP/test-crypt.c $CC_LIBS -o $CONFTMP/test ; then
+        :
+    elif run $CC $CC_FLAGS $CONFTMP/test-crypt.c $CC_LIBS -lcrypt -o $CONFTMP/test ; then
+        CC_LIBS="$CC_LIBS -lcrypt"
+        echo2 " -lcrypt"
+    fi
+    echo ""
+    CC_LIBS="`echo $CC_LIBS | sed 's/^ *//'`"
+fi
+if [ "$USER_CC_LIBS" ] ; then
+    CC_LIBS="$CC_LIBS $USER_CC_LIBS"
+    echo "Additional user-supplied libraries: $USER_CC_LIBS"
+    log user added \`"$USER_CC_LIBS'"
+fi
+
+###########################################################################
+
+MODE="check_shared       "
+if [ "$USE_STATIC_MODULES" ] ; then
+    echo "Modules will be compiled statically (-use-static-modules option)."
+    STATIC_MODULES=1
+    CC_SHARED=
+    CC_DYN_LFLAGS=
+    CC_DYN_LIBS=
+    log "static modules selected (-use-static-modules)"
+else
+    echo2 "Checking whether we can use dynamic modules... "
+    if [ "$STATIC_MODULES" = 0 ] ; then
+        echo "(cached) yes."
+        log "dynamic modules selected (cache)"
+    elif [ "$STATIC_MODULES" = 1 ] ; then
+        echo "(cached) no."
+        log "static modules selected (cache)"
+    else
+        OK=
+        dlfcn_ok=0
+        if test_include dlfcn.h ; then
+            dlfcn_ok=1
+        else
+            log "dlfcn.h not found, skipping dlfcn test"
+        fi
+        if [ $dlfcn_ok = 1 ] ; then
+            log "testing dlfcn method"
+            OK=ok
+            cat >$CONFTMP/test-dlopen.c <<EOT
+                #include <dlfcn.h>
+                int main(int argc, char **argv) {
+                    void *lib1 = dlopen("$CONFTMP/test-lib.so",
+                                        RTLD_NOW | RTLD_GLOBAL);
+                    void *lib2 = dlopen("$CONFTMP/test-lib2.so",
+                                        RTLD_NOW | RTLD_GLOBAL);
+                    printf("%d %d %d\n", lib1 ? 1 : 0,
+                           lib2 ? (dlsym(lib2,"foo") ? 1 : 2) : 0,
+                           lib2 ? (dlsym(0,"foo") ? 1 : 2) : 0);
+                    if (lib1)
+                        dlclose(lib1);
+                    if (lib2)
+                        dlclose(lib2);
+                    return 0;
+                }
+EOT
+            cat >$CONFTMP/test-lib.c <<EOT
+                int foo() {no_such_symbol();}
+EOT
+            cat >$CONFTMP/test-lib2.c <<EOT
+                int foo() {return 1;}
+EOT
+            if run $CC $CC_FLAGS $CC_LIBS $CONFTMP/test-dlopen.c -o $CONFTMP/test ; then
+                CC_DYN_LIBS=""
+                log "dlopen() found (no libs)"
+            elif run $CC $CC_FLAGS $CC_LIBS $CONFTMP/test-dlopen.c -ldl -o $CONFTMP/test
+            then
+                CC_DYN_LIBS=" -ldl"
+                log "dlopen() found (libdl)"
+            else
+                log "dlopen() not found"
+                OK=
+            fi
+            if [ "$OK" ] ; then
+                if run $CC -rdynamic $CC_FLAGS $CC_LIBS $CC_DYN_LIBS $CONFTMP/test-dlopen.c -o $CONFTMP/test ; then
+                    log "-rdynamic works"
+                    CC_DYN_LFLAGS=" -rdynamic"
+                else
+                    log "no -rdynamic, aborting dlfcn test"
+                    OK=
+                fi
+            fi
+            if [ "$OK" ] ; then
+                if [ "x`uname -s`" = "xOSF1" ] ; then
+                    CC_SHARED="$CC -shared -Wl,-expect_unresolved"
+                else
+                    CC_SHARED="$CC -shared"
+                fi
+                if run $CC_SHARED $CC_FLAGS $CC_LIBS $CONFTMP/test-lib.c -o $CONFTMP/test-lib.so && run $CC_SHARED $CC_FLAGS $CC_LIBS $CONFTMP/test-lib2.c -o $CONFTMP/test-lib2.so ; then
+                    log "-shared works"
+                else
+                    log "no -shared, aborting dlfcn test"
+                    CC_SHARED=
+                    OK=
+                fi
+            fi
+            if [ "$OK" ] ; then
+                if run $CONFTMP/test ; then
+                    a=`$CONFTMP/test 2>/dev/null`
+                    log "symbol resolution test: $CONFTMP/test => $a"
+                    if [ "x$a" = "x0 1 1" ] ; then
+                        log "symbol resolution test succeeded"
+                    else
+                        log "symbol resolution test failed"
+                        OK=
+                    fi
+                else
+                    log "couldn't run symbol resolution test program"
+                    OK=
+                fi
+            fi
+            if [ "$OK" ] ; then
+                cat >$CONFTMP/test-dynamic2.c <<EOT
+                    #include <stdio.h>
+                    int main(int argc, char **argv) {
+                        printf("%d\n", foo(atoi(argv[1])));
+                    }
+                    int quux(int xyzzy) {
+                        return xyzzy+1;
+                    }
+EOT
+                cat >$CONFTMP/test-dynamic.c <<EOT
+                    int foo(int bar) {
+                        return quux(bar)*2;
+                    }
+EOT
+                if run $CC_SHARED $CC_FLAGS $CC_LIBS $CONFTMP/test-dynamic.c -o $CONFTMP/test.so \
+                && run $CC $CC_FLAGS $CC_DYN_LFLAGS $CC_LIBS $CC_DYN_LIBS $CONFTMP/test-dynamic2.c $CONFTMP/test.so -o $CONFTMP/test
+                then
+                    a=`$CONFTMP/test 1`
+                    log "symbol resolution test: $CONFTMP/test 1 => $a"
+                    if [ "x$a" = "x4" ] ; then
+                        log "symbol resolution test: succeeded => using dynamic modules (dlfcn)"
+                    else
+                        log "symbol resolution test: bad output (expected 4)"
+                        OK=
+                    fi
+                else
+                    log "symbol resolution test: dynamic compile failed"
+                    OK=
+                fi
+            fi
+        fi  # dlfcn test
+        if [ "$OK" ] ; then
+            log "checking for underscores in symbols"
+            cat >$CONFTMP/test-dynamic2.c <<EOT
+                #include <stdio.h>
+                #include <dlfcn.h>
+                int main(int argc, char **argv) {
+                    void *handle = dlopen(NULL, 0);
+                    printf("%d%d\n", dlsym(handle,"foo")!=NULL ? 1 : 0,
+                                     dlsym(handle,"_foo")!=NULL ? 1 : 0);
+                    return 0;
+                }
+                int quux(int x) {return x;}
+EOT
+            if run $CC $CC_FLAGS $CC_DYN_LFLAGS $CC_LIBS $CC_DYN_LIBS $CONFTMP/test-dynamic2.c $CONFTMP/test.so -o $CONFTMP/test
+            then
+                a=`$CONFTMP/test`
+                log "underscore test: $CONFTMP/test => $a"
+                with_underscore=`echo "$a" | cut -c2`
+                without_underscore=`echo "$a" | cut -c1`
+                if [ "x$with_underscore" = "x1" ] ; then
+                    log "underscore test: succeeded with preceding underscore"
+                    SYMS_NEED_UNDERSCORES=1
+                elif [ "x$without_underscore" = "x1" ] ; then
+                    log "underscore test: succeeded with no preceding underscore"
+                    SYMS_NEED_UNDERSCORES=0
+                else
+                    log "underscore test: failed?! (bizarre output)"
+                    OK=
+                fi
+            else
+                log "underscore test: dynamic compile failed"
+                OK=
+            fi
+        fi  # underscore test
+        if [ "$OK" ] ; then
+            echo "yes."
+            STATIC_MODULES=0
+        else
+            log "static modules selected"
+            echo "no."
+            STATIC_MODULES=1
+            CC_SHARED=
+            CC_DYN_LFLAGS=
+            CC_DYN_LIBS=
+            SYMS_NEED_UNDERSCORES=
+        fi
+    fi
+fi
+
+# Also check for ranlib, and use it if found.
+MODE="check_ranlib       "
+echo2 "Checking whether ranlib exists... "
+if [ "$RANLIB" ] ; then
+    if [ "x$RANLIB" = xranlib ] ; then
+        log "cache says yes"
+        echo "(cached) yes."
+    else
+        log "cache says no"
+        echo "(cached) no."
+    fi
+else
+    if run echo test >$CONFTMP/testfile ; then : ; else
+        log "couldn't create temp file!"
+        echo ""
+        echo ""
+        echo "*** WHOA THERE! ***"
+        echo ""
+        echo "Unable to create a temporary file!"
+        echo "Are you out of disk space?"
+        exit 4
+    fi
+    if run ar -rc $CONFTMP/test.a $CONFTMP/testfile ; then
+        if run ranlib $CONFTMP/test.a ; then
+            log "ranlib found"
+            RANLIB=ranlib
+            echo "yes."
+        else
+            log "ranlib not found"
+            RANLIB='echo >/dev/null'
+            echo "no."
+        fi
+    else  # no ar
+        log "couldn't run ar!"
+        if [ $STATIC_MODULES = 1 ] ; then
+            echo ""
+            cat <<EOT
+
+*** WHOA THERE! ***
+
+The \`ar' program could not be executed.  This program is needed to
+compile Services, and is installed on most systems by default; make
+certain it is in your executable search path (for example, Solaris users
+may need to add /usr/ccs/bin to the search path) and re-run this script.
+
+Configuration aborted.
+
+EOT
+            exit 4
+        else
+            log "ar not found, assuming no ranlib"
+            RANLIB='echo >/dev/null'
+            echo "no."
+            cat <<EOT
+
+NOTICE: The \`ar' command was not found on your system.  This is not an
+        immediate problem, but it will prevent you from compiling
+        Services using static modules.  Please check and make certain
+        your executable search path is correct.
+
+EOT
+        fi
+    fi
+fi
+
+###########################################################################
+
+# Look for include files that might or might not be here.
+echo "Checking for presence of include files (it's okay if some aren't there):"
+
+MODE="check_stdint       "
+echo2 "    stdint.h... "
+if [ "$HAVE_STDINT_H" ] ; then
+    if [ "$HAVE_STDINT_H" = 1 ] ; then
+        echo "(cached) present"
+        log "cache says present"
+    else
+        echo "(cached) not present"
+        log "cache says not present"
+    fi
+else
+    if test_include stdint.h ; then
+        echo "present"
+    else
+        echo "not present"
+    fi
+fi
+
+MODE="check_strings      "
+echo2 "    strings.h... "
+if [ "$HAVE_STRINGS_H" ] ; then
+    if [ "$HAVE_STRINGS_H" = 1 ] ; then
+        echo "(cached) present"
+        log "cache says present"
+    else
+        echo "(cached) not present"
+        log "cache says not present"
+    fi
+else
+    if test_include strings.h ; then
+        echo "present"
+    else
+        echo "not present"
+    fi
+fi
+
+MODE="check_sysselect    "
+echo2 "    sys/select.h... "
+if [ "$HAVE_SYS_SELECT_H" ] ; then
+    if [ "$HAVE_SYS_SELECT_H" = 1 ] ; then
+        echo "(cached) present"
+        log "cache says present"
+    else
+        echo "(cached) not present"
+        log "cache says not present"
+    fi
+else
+    if test_include sys/select.h ; then
+        echo "present"
+    else
+        echo "not present"
+    fi
+fi
+
+MODE="check_sysproto     "
+echo2 "    sys/sysproto.h... "
+if [ "$HAVE_SYS_SYSPROTO_H" ] ; then
+    if [ "$HAVE_SYS_SYSPROTO_H" = 1 ] ; then
+        echo "(cached) present"
+        log "cache says present"
+    else
+        echo "(cached) not present"
+        log "cache says not present"
+    fi
+else
+    if test_include sys/sysproto.h ; then
+        echo "present"
+    else
+        echo "not present"
+    fi
+fi
+
+###########################################################################
+
+# See what sizes various types are.
+
+MODE="check_int8         "
+echo2 "Looking for an 8-bit integer type... "
+if [ "$TYPE_INT8" ] ; then
+    echo "(cached) $TYPE_INT8"
+    log "cache supplied $TYPE_INT8"
+else
+    if [ "$HAVE_STDINT_H" = 1 ] ; then
+        cat >$CONFTMP/test.c <<EOT
+            #include <stdint.h>
+            #include <stdio.h>
+            int main() {
+                char a;
+                int8_t b;
+                printf("%d,%d", sizeof(a), sizeof(b));
+                return 0;
+            }
+EOT
+    else
+        cat >$CONFTMP/test.c <<EOT
+            #include <stdio.h>
+            int main() {
+                char a;
+                printf("%d,0", sizeof(a));
+                return 0;
+            }
+EOT
+    fi
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        a="`$CONFTMP/test`"
+        log "test program output (sizeof(char),sizeof(int8_t)): $a"
+        b=`echo "$a" | cut -d, -f1`
+        c=`echo "$a" | cut -d, -f2`
+        if [ ! "$a" ] ; then
+            echo "test program failed!  Assuming char."
+            log "assuming char"
+            TYPE_INT8=char
+        elif [ "$c" = 1 ] ; then
+            echo int8_t
+            log "int8_t is 8 bits"
+            TYPE_INT8=int8_t
+        elif [ "$b" = 1 ] ; then
+            echo char
+            log "char is 8 bits"
+            TYPE_INT8=char
+        else
+            cat >$CONFTMP/test.c <<EOT
+                #include <stdio.h>
+                int main() {
+                    byte a;
+                    printf("%d", sizeof(a));
+                    return 0;
+                }
+EOT
+            if run $CC $CC_FLAGS $CONFTMP/tset.c $CC_LIBS -o $CONFTMP/test ; then
+                a="`$CONFTMP/test`"
+                log "test program 2 output (sizeof(byte)): $a"
+                if [ "$a" = 1 ] ; then
+                    echo byte
+                    log "byte is 8 bits"
+                    TYPE_INT8=byte
+                fi
+            else
+                log "couldn't compile test program 2, assuming no byte type"
+            fi
+            if [ ! "$TYPE_INT8" ] ; then
+                echo "none found?!"
+                cat <<EOF
+    Services requires an 8-bit integer type.  Please check your system
+    configuration.
+
+Configuration aborted.
+
+EOF
+                exit 1
+            fi
+        fi
+    else
+        whoa_there
+    fi
+fi
+
+MODE="check_int16        "
+echo2 "Looking for a 16-bit integer type... "
+if [ "$TYPE_INT16" ] ; then
+    echo "(cached) $TYPE_INT16"
+    log "cache supplied $TYPE_INT16"
+else
+    if [ "$HAVE_STDINT_H" = 1 ] ; then
+        cat >$CONFTMP/test.c <<EOT
+            #include <stdint.h>
+            #include <stdio.h>
+            int main() {
+                int a;
+                short b;
+                int16_t c;
+                printf("%d,%d,%d", sizeof(a), sizeof(b), sizeof(c));
+                return 0;
+            }
+EOT
+    else
+        cat >$CONFTMP/test.c <<EOT
+            #include <stdio.h>
+            int main() {
+                int a;
+                short b;
+                printf("%d,%d,0", sizeof(a), sizeof(b));
+                return 0;
+            }
+EOT
+    fi
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        a="`$CONFTMP/test`"
+        log "test program output (sizeof(int),sizeof(short),sizeof(int16_t)): $a"
+        if [ ! "$a" ] ; then
+            echo "test program failed!  Assuming short."
+            log "assuming short"
+            TYPE_INT16=short
+        else
+            size_int=`echo $a | cut -d, -f1`
+            size_short=`echo $a | cut -d, -f2`
+            size_int16_t=`echo $a | cut -d, -f3`
+            if [ "$size_int16_t" = 2 ] ; then
+                echo int16_t
+                log "int16_t is 16 bits"
+                TYPE_INT16=int16_t
+            elif [ $size_int = 2 ] ; then
+                echo int
+                log "int is 16 bits"
+                TYPE_INT16=int
+            elif [ $size_short = 2 ] ; then
+                echo short
+                log "short is 16 bits"
+                TYPE_INT16=short
+            else
+                echo "none found?!"
+                cat <<EOF
+    Services requires a 16-bit integer type.  Please check your system
+    configuration.
+
+Configuration aborted.
+
+EOF
+                exit 1
+            fi
+        fi
+    else
+        whoa_there
+    fi
+fi
+
+MODE="check_int32        "
+echo2 "Looking for a 32-bit integer type... "
+if [ "$TYPE_INT32" ] ; then
+    echo "(cached) $TYPE_INT32"
+    log "cache supplied $TYPE_INT32"
+else
+    if [ "$HAVE_STDINT_H" = 1 ] ; then
+        cat >$CONFTMP/test.c <<EOT
+            #include <stdint.h>
+            #include <stdio.h>
+            int main() {
+                int a;
+                long b;
+                int32_t c;
+                printf("%d,%d,%d", sizeof(a), sizeof(b), sizeof(c));
+                return 0;
+            }
+EOT
+    else
+        cat >$CONFTMP/test.c <<EOT
+            #include <stdio.h>
+            int main() {
+                int a;
+                long b;
+                printf("%d,%d,0", sizeof(a), sizeof(b));
+                return 0;
+            }
+EOT
+    fi
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        a="`$CONFTMP/test`"
+        log "test program output (sizeof(int),sizeof(long),sizeof(int32_t)): $a"
+        if [ ! "$a" ] ; then
+            echo "test program failed!  Assuming long."
+            log "assuming long"
+            TYPE_INT32=long
+        else
+            size_int=`echo $a | cut -d, -f1`
+            size_long=`echo $a | cut -d, -f2`
+            size_int32_t=`echo $a | cut -d, -f3`
+            if [ "$size_int32_t" = 4 ] ; then
+                echo int32_t
+                log "int32_t is 32 bits"
+                TYPE_INT32=int32_t
+            elif [ $size_int = 4 ] ; then
+                echo int
+                log "int is 32 bits"
+                TYPE_INT32=int
+            elif [ $size_long = 4 ] ; then
+                echo long
+                log "long is 32 bits"
+                TYPE_INT32=long
+            else
+                echo "none found?!"
+                cat <<EOF
+    Services requires a 32-bit integer type.  Please check your system
+    configuration.
+
+Configuration aborted.
+
+EOF
+                exit 1
+            fi
+        fi
+    else
+        whoa_there
+    fi
+fi
+
+MODE="check_int64        "
+echo2 "Looking for a 64-bit integer type... "
+if [ "$TYPE_INT64" ] ; then
+    echo "(cached) $TYPE_INT64"
+    log "cache supplied $TYPE_INT64"
+else
+    ran=0
+    if [ "$HAVE_STDINT_H" = 1 ] ; then
+        cat >$CONFTMP/test.c <<EOT
+            #include <stdint.h>
+            #include <stdio.h>
+            int main() {
+                long a;
+                long long b;
+                int64_t c;
+                printf("%d,%d,%d", sizeof(a), sizeof(b), sizeof(c));
+                return 0;
+            }
+EOT
+    else
+        cat >$CONFTMP/test.c <<EOT
+            #include <stdio.h>
+            int main() {
+                long a;
+                long long b;
+                printf("%d,%d,0", sizeof(a), sizeof(b));
+                return 0;
+            }
+EOT
+    fi
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        ran=1
+    else
+        if [ "$HAVE_STDINT_H" = 1 ] ; then
+            cat >$CONFTMP/test.c <<EOT
+                #include <stdint.h>
+                #include <stdio.h>
+                int main() {
+                    long a;
+                    int64_t c;
+                    printf("%d,0,%d", sizeof(a), sizeof(c));
+                    return 0;
+                }
+EOT
+        else
+            cat >$CONFTMP/test.c <<EOT
+                #include <stdio.h>
+                int main() {
+                    long a;
+                    printf("%d,0,0", sizeof(a));
+                    return 0;
+                }
+EOT
+        fi
+        if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+            ran=1
+        fi
+    fi
+    if test $ran = 1 ; then
+        a="`$CONFTMP/test`"
+        log "test program output (sizeof(long),sizeof(long long),sizeof(int64_t)): $a"
+        if [ ! "$a" ] ; then
+            echo "test program failed!  Assuming long long."
+            log "assuming long long"
+            TYPE_INT64="long long"
+        else
+            size_long=`echo $a | cut -d, -f1`
+            size_long_long=`echo $a | cut -d, -f2`
+            size_int64_t=`echo $a | cut -d, -f3`
+            if [ "$size_int64_t" = 8 ] ; then
+                echo int64_t
+                log "int64_t is 64 bits"
+                TYPE_INT64=int64_t
+            elif [ $size_long = 8 ] ; then
+                echo long
+                log "long is 64 bits"
+                TYPE_INT64=long
+            elif [ $size_long_long = 8 ] ; then
+                echo "long long"
+                log "long long is 64 bits"
+                TYPE_INT64="long long"
+            else
+                echo "none found?!"
+                cat <<EOF
+    Services requires a 64-bit integer type.  Please check your system
+    configuration.
+
+Configuration aborted.
+
+EOF
+                exit 1
+            fi
+        fi
+    else
+        whoa_there
+    fi
+fi
+
+MODE="check_int_size     "
+echo2 "Checking the size of int... "
+if [ "$SIZEOF_INT" ] ; then
+    echo "(cached) `expr $SIZEOF_INT \* 8` bits"
+    log "cache supplied `expr $SIZEOF_INT \* 8` bits"
+else
+    cat >$CONFTMP/test.c <<EOT
+        #include <stdio.h>
+        int main() {
+            int a = 0;
+            printf("%d", sizeof(a));
+            return 0;
+        }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        a="`$CONFTMP/test`"
+        log "test program output (sizeof(int)): $a"
+        if [ ! "$a" ] ; then
+            echo "test program failed!  Assuming 16 bits."
+            log "assuming 16 bits"
+            SIZEOF_INT=2
+        else
+            SIZEOF_INT="$a"
+            if [ $SIZEOF_INT -lt 2 ] ; then
+                echo "`expr $SIZEOF_INT \* 8` bits... huh?"
+                cat <<EOF
+    \`int' must be at least 16 bits.  Please check your compiler
+    settings.
+
+Configuration aborted.
+
+EOF
+                exit 1
+            else
+                echo `expr $SIZEOF_INT \* 8` bits
+                log "`expr $SIZEOF_INT \* 8` bits"
+            fi
+        fi
+    else
+        whoa_there
+    fi
+fi
+
+MODE="check_long_size    "
+echo2 "Checking the size of long... "
+if [ "$SIZEOF_LONG" ] ; then
+    echo "(cached) `expr $SIZEOF_LONG \* 8` bits"
+    log "cache supplied `expr $SIZEOF_LONG \* 8` bits"
+else
+    cat >$CONFTMP/test.c <<EOT
+        #include <stdio.h>
+        int main() {
+            long a = 0;
+            printf("%d", sizeof(a));
+            return 0;
+        }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        a="`$CONFTMP/test`"
+        log "test program output (sizeof(long)): $a"
+        if [ ! "$a" ] ; then
+            echo "test program failed!  Assuming 32 bits."
+            log "assuming 32 bits"
+            SIZEOF_LONG=4
+        else
+            SIZEOF_LONG="$a"
+            if [ $SIZEOF_LONG -lt 4 ] ; then
+                echo "`expr $SIZEOF_LONG \* 8` bits... huh?"
+                cat <<EOF
+    \`long' must be at least 32 bits.  Please check your compiler
+    settings.
+
+Configuration aborted.
+
+EOF
+                exit 1
+            else
+                echo `expr $SIZEOF_LONG \* 8` bits
+                log "`expr $SIZEOF_LONG \* 8` bits"
+            fi
+        fi
+    else
+        whoa_there
+    fi
+fi
+
+MODE="check_ptr_size  "
+echo2 "Checking the size of pointers... "
+if [ "$SIZEOF_PTR" ] ; then
+    echo "(cached) `expr $SIZEOF_PTR \* 8` bits"
+    log "cache supplied `expr $SIZEOF_PTR \* 8` bits"
+else
+    cat >$CONFTMP/test.c <<EOT
+        #include <stdio.h>
+        int main() {
+            void *a = 0;
+            printf("%d", sizeof(a));
+            return 0;
+        }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        a="`$CONFTMP/test`"
+        log "test program output (sizeof(void *)): $a"
+        if [ ! "$a" ] ; then
+            echo "test program failed!  Assuming 32 bits."
+            log "assuming 32 bits"
+            SIZEOF_PTR=4
+        else
+            SIZEOF_PTR="$a"
+            if [ $SIZEOF_PTR -lt $SIZEOF_INT ] ; then
+                echo "`expr $SIZEOF_PTR \* 8` bits... oops!"
+                cat <<EOF
+    Your compiler has a pointer type smaller than its integer type!
+    This may cause problems compiling or running Services.  Please check
+    your compiler settings.
+
+Configuration aborted.
+
+EOF
+                exit 1
+            else
+                echo `expr $SIZEOF_PTR \* 8` bits
+                log "`expr $SIZEOF_PTR \* 8` bits"
+            fi
+        fi
+    else
+        whoa_there
+    fi
+fi
+
+MODE="check_time_t       "
+echo2 "Checking the size of time_t... "
+if [ "$SIZEOF_TIME_T" -a "$MAX_TIME_T" ] ; then
+    echo "(cached) `expr $SIZEOF_TIME_T \* 8` bits"
+    log "cache supplied `expr $SIZEOF_TIME_T \* 8` bits, max $MAX_TIME_T"
+else
+    cat >$CONFTMP/test.c <<EOT
+        #include <stdio.h>
+        #include <time.h>
+        int main() {
+            time_t a = 0;
+            printf("%d ", sizeof(a));
+            if (a-1 > 0)
+                printf("(~(time_t)0)");
+            else
+                printf("(((time_t)1<<(sizeof(time_t)*8-2))+(((time_t)1<<(sizeof(time_t)*8-2))-1))");
+            return 0;
+        }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        a="`$CONFTMP/test`"
+        log "test program output (sizeof(time_t) MAX_TIME_T): $a"
+        if [ ! "$a" ] ; then
+            echo "test program failed!  Assuming 32 bits."
+            log "assuming 32 bits"
+            SIZEOF_TIME_T=4
+        else
+            SIZEOF_TIME_T=`echo "$a" | cut -d\  -f1`
+            MAX_TIME_T=`echo "$a" | cut -d\  -f2`
+            if [ $SIZEOF_TIME_T = 4 ] ; then
+                echo 32 bits
+                log "32 bits"
+            elif [ $SIZEOF_TIME_T = 8 ] ; then
+                echo "64 bits (nifty!)"
+                log "64 bits"
+            elif [ $SIZEOF_TIME_T -gt 4 ] ; then
+                echo "`expr $SIZEOF_TIME_T \* 8` bits... huh?"
+                echo "    If you experience any problems compiling or running Services, please"
+                echo "    report this."
+                log "`expr $SIZEOF_TIME_T \* 8` bits"
+            else
+                echo "`expr $SIZEOF_TIME_T \* 8` bits... huh?"
+                cat <<EOT
+    Services requires a \`time_t' of at least 32 bits.  Please check your
+    system configuration.
+
+Configuration aborted.
+
+EOT
+                log "`expr $SIZEOF_TIME_T \* 8` bits -- too small, aborting"
+                exit 1
+            fi
+        fi
+    else
+        whoa_there
+    fi
+fi
+
+MODE="check_gid_t        "
+echo2 "Checking the size of gid_t... "
+if [ "$SIZEOF_GID_T" != bonkle ] ; then
+    if [ "$SIZEOF_GID_T" ] ; then
+        echo "(cached) `expr $SIZEOF_GID_T \* 8` bits"
+        log "cache supplied `expr $SIZEOF_GID_T \* 8` bits"
+    else
+        echo "(cached) no gid_t"
+        log "cache said no gid_t"
+    fi
+else
+    cat >$CONFTMP/test.c <<EOT
+        #include <stdio.h>
+        #include <sys/types.h>
+        int main() {
+            gid_t a;
+            printf("%d", sizeof(a));
+            return 0;
+        }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        a="`$CONFTMP/test`"
+        log "test program output (sizeof(gid_t)): $a"
+        if [ ! "$a" ] ; then
+            echo "test program failed!  Assuming 16 bits."
+            log "assuming 16 bits"
+            SIZEOF_GID_T=2
+        else
+            SIZEOF_GID_T=$a
+            if [ $SIZEOF_GID_T = 4 ] ; then
+                echo 32 bits
+                log "32 bits"
+            elif [ $SIZEOF_GID_T = 2 ] ; then
+                echo "16 bits"
+                log "16 bits"
+            else
+                echo "`expr $SIZEOF_GID_T \* 8` bits... huh?"
+                echo "    If you experience any problems compiling or running Services, please"
+                echo "    report this."
+                log "`expr $SIZEOF_GID_T \* 8` bits"
+            fi
+        fi
+    else
+        echo "no gid_t found."
+        log "couldn't compile test program, assuming no gid_t"
+        SIZEOF_GID_T=
+        HAVE_SETREGID=0
+    fi
+fi
+
+MODE="check_socklen_t    "
+echo2 "Checking for socklen_t... "
+if [ "$HAVE_SOCKLEN_T" ] ; then
+    if [ $HAVE_SOCKLEN_T = 1 ] ; then
+        echo "(cached) present."
+        log "cache said present"
+    else
+        echo "(cached) not present."
+        log "cache said not present"
+    fi
+else
+    cat >$CONFTMP/test.c <<EOT
+        #include <unistd.h>
+        #include <sys/socket.h>
+        int main() {
+            socklen_t a;
+            return 0;
+        }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        log "socklen_t found"
+        echo "present."
+        HAVE_SOCKLEN_T=1
+    else
+        log "socklen_t not found"
+        echo "not present."
+        HAVE_SOCKLEN_T=0
+    fi
+fi
+
+###########################################################################
+
+# AIX workaround.
+
+MODE="check_aix_intNN    "
+echo2 "Seeing if your system defines int16/int32... "
+res="`run egrep int16\|int32 /usr/include/sys/systypes.h`"
+if [ "$res" ] ; then
+    echo "found."
+    echo "    (This is bad, but we can work around it.)"
+    log "int16/int32 types found, enabling workaround"
+    INTTYPE_WORKAROUND=1
+else
+    echo "not found (this is good)."
+    log "int16/int32 types not found"
+    INTTYPE_WORKAROUND=0
+fi
+
+###########################################################################
+
+# Look for missing/broken built-in routines, and similar compatibility
+# stuff.
+
+MODE="check_strerror     "
+if [ "$USE_LOCAL_FUNCS" ] ; then
+    log "not checking (-use-local-funcs)"
+    echo "Not checking for presence of strerror (-use-local-funcs specified)."
+    HAVE_STRERROR=0
+    HAVE_SYS_ERRLIST=0
+else
+    echo2 "How to complain when something goes wrong... "
+    if [ "$HAVE_STRERROR" ] ; then
+        if [ "$HAVE_STRERROR" = 1 ] ; then
+            echo "(cached) strerror()."
+            log "cache supplied strerror()"
+        elif [ "$HAVE_SYS_ERRLIST" = 1 ] ; then
+            echo "(cached) sys_errlist."
+            log "cache supplied sys_errlist"
+        else
+            HAVE_SYS_ERRLIST=0  # just in case... you never know.
+            echo "(cached) pseudo sys_errlist."
+            log "cache supplied pseudo sys_errlist"
+        fi
+    else
+        cat >$CONFTMP/test.c <<EOT
+            int main() {
+                extern void strerror(void);
+                strerror();
+            }
+EOT
+        if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+            HAVE_STRERROR=1
+            echo "ah, strerror() is here."
+            log "using strerror()"
+        else
+            HAVE_STRERROR=0
+            echo "no strerror()."
+            cat >$CONFTMP/test.c <<EOT
+                int main() {
+                    extern char *sys_errlist[];
+                    char *s;
+                    s = sys_errlist[0];
+                }
+EOT
+            log "trying sys_errlist..."
+            if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+                HAVE_SYS_ERRLIST=1
+                echo "    But you have sys_errlist, which will do nicely."
+                log "using sys_errlist"
+            else
+                HAVE_SYS_ERRLIST=0
+                echo "    You don't have sys_errlist either, so we'll have to make do."
+                log "using pseudo sys_errlist"
+            fi
+        fi
+    fi
+fi  # -use-local-funcs
+
+
+MODE="check_compat       "
+
+if [ "$USE_LOCAL_FUNCS" ] ; then
+    echo "Enabling compatibility functions: hstrerror snprintf strtok str[n]icmp strdup str[c]spn strsignal"
+    HAVE_HSTRERROR=0
+    HAVE_SNPRINTF=0
+    BAD_SNPRINTF=0
+    HAVE_STRTOK=0
+    HAVE_STRICMP=0
+    HAVE_STRCASECMP=0
+    HAVE_STRDUP=0
+    HAVE_STRSPN=0
+    HAVE_STRSIGNAL=0
+fi
+
+echo2 "Looking for other functions we want that you don't have... "
+
+if [ "$MISSING" != bonkle -a ! "$USE_LOCAL_FUNCS" ] ; then
+    if [ ! "$MISSING" ] ; then
+        echo "(cached) none"
+        log "cache supplied: (none)"
+    else
+        echo "(cached)$MISSING"
+        log "cache supplied:$MISSING"
+    fi
+else
+
+    if [ "$USE_LOCAL_FUNCS" ] ; then
+
+        MISSING=" hstrerror snprintf strtok str[n]icmp strdup str[c]spn strsignal"
+
+    else
+
+        MISSING=
+
+        MODE="check_hstrerror    "
+        TEST="(void) hstrerror(1); return 0;"
+        if test_function "const char *" hstrerror "(int)" ; then : ; else
+            MISSING="$MISSING hstrerror"
+            echo2 "hstrerror "
+        fi
+
+        MODE="check_snprintf     "
+        TEST='  extern int printf(const char *, ...);
+                extern unsigned int strlen(const char *);
+                char buf[16];
+                int res;
+                buf[0] = 0;
+                res = snprintf(buf, 8, "%d", 123456789);
+                if (strcmp(buf, "1234567") != 0) {
+                    printf("test: snprintf broken (bad result in buffer: wanted 1234567, got \"%s\")\n", buf);
+                    if (strlen(buf) > 7)
+                        printf("test: your snprintf does not check buffer size!\n");
+                        return 1;
+                    } else if (res != 7) {
+                        printf("test: snprintf broken (wrong return value: wanted 7, got %d)\n", res);
+                        return 1;
+                    } else
+                        return 0;'
+        if test_function int snprintf "(char *, int, const char *, ...)" ; then
+            BAD_SNPRINTF=0
+        else
+            tmp="`$CONFTMP/test 2>&1`"
+            res="`echo $tmp | cut -d\  -f10 2>&1`"
+            if [ "$res" = "-1)" ] ; then
+                BAD_SNPRINTF=1
+                log "found, but returns -1 if string too long"
+            elif [ "$res" = "9)" ] ; then
+                BAD_SNPRINTF=2
+                log "found, but returns large value if string too long"
+            else
+                BAD_SNPRINTF=0
+                MISSING="$MISSING snprintf"
+                echo2 "snprintf "
+            fi
+        fi
+
+        # Common failings with strtok() implementations:
+        # - strtok(NULL, ...) crashes after a NULL is returned
+        # - strtok(NULL, " ") returns NULL but a subsequent
+        #      strtok(NULL, "") doesn't
+        MODE="check_strtok       "
+        TEST='  char buf1[1];
+                char buf2[] = "1 2 3";
+                char buf3[] = "4 5 6";
+                char buf4[] = "     ";
+                buf1[0] = 0;
+                buf3[0] = 0;
+                if (strtok(buf1, " ") != (char *)0)
+                    return 1;
+                if (strtok((char *)0, " ") != (char *)0)
+                    return 2;
+                if (strtok(buf2, " ") != buf2)
+                    return 3;
+                if (strtok((char *)0, " ") != buf2+2)
+                    return 4;
+                if (strtok(buf3, " ") != (char *)0)
+                    return 5;
+                if (strtok((char *)0, " ") != (char *)0)
+                    return 6;
+                if (strtok(buf4, " ") != (char *)0)
+                    return 7;
+                if (strtok((char *)0, "") != (char *)0)
+                    return 8;
+                return 0;'
+        if test_function "char *" strtok "(char *, const char *)" ; then : ; else
+            MISSING="$MISSING strtok"
+            echo2 "strtok "
+        fi
+
+        # stricmp() (STRing case-Insensitive CoMPare) is another name, used
+        # by at least the Amiga DICE C compiler, for what POSIX calls
+        # strcasecmp().  I prefer the former because the latter (1) is
+        # unnecessarily long and (2) implies a case-sensitive compare when
+        # it's really a case-INsensitive compare.  If this system doesn't
+        # have stricmp() but does have strcasecmp(), we use a #define in
+        # defs.h to rename the latter to the former.
+        MODE="check_stricmp      "
+            TEST='extern int strnicmp(const char *, const char *, int); return stricmp("ABC","abc")==0 && strnicmp("ABC","abd",2)==0 ? 0 : 1;'
+        if test_function int stricmp "(const char *, const char *)" ; then
+            HAVE_STRCASECMP=0   # doesn't really matter
+        else
+            TEST='extern int strncasecmp(const char *, const char *, int); return strcasecmp("ABC","abc")==0 && strncasecmp("ABC","abd",2)==0 ? 0 : 1;'
+            if test_function int strcasecmp "(const char *, const char *)" ; then : ; else
+                MISSING="$MISSING str[n]icmp"
+                echo2 "str[n]icmp "
+            fi
+        fi
+
+        MODE="check_strdup       "
+        TEST='  char *s, *t;
+                s = "ABC";
+                t = strdup(s);'"
+                return (t != (char *)0 && t[0]=='A' && t[1]=='B' && t[2]=='C' && t[3]==0) ? 0 : 1;"
+        if test_function "char *" strdup "(const char *)" ; then : ; else
+            MISSING="$MISSING strdup"
+            echo2 "strdup "
+        fi
+
+        MODE="check_strspn       "
+        TEST='  extern int strcspn(const char *, const char *);
+                return (strspn("ABCBA","BA")==2 && strspn("123","123")==3
+                     && strcspn("ABCBA","C")==2 && strcspn("123","4")==3) ? 0 : 1;'
+        if test_function int strspn "(const char *, const char *)" ; then : ; else
+            MISSING="$MISSING str[c]spn"
+            echo2 "str[c]spn "
+        fi
+
+        MODE="check_strsignal    "
+        TEST="(void) strsignal(1); return 0;"
+        if test_function "char *" strsignal "(int)" ; then : ; else
+            MISSING="$MISSING strsignal"
+            echo2 "strsignal "
+        fi
+
+    fi  # -use-local-funcs
+
+    MODE="check_gettimeofday "
+    TEST="char buf[256]; (void) gettimeofday((void *)buf, (void *)buf); return 0;"
+    if test_function "char *" gettimeofday "(void *, void *)" ; then : ; else
+        MISSING="$MISSING gettimeofday"
+        echo2 "gettimeofday "
+    fi
+
+    MODE="check_setgrent     "
+    if [ "$SIZEOF_GID_T" ] ; then
+        TEST="(void) setgrent(); return 0;"
+        if test_function int setgrent "(void)" ; then : ; else
+            MISSING="$MISSING setgrent"
+            echo2 "setgrent "
+        fi
+    else
+        log "skipped (no gid_t)"
+        HAVE_SETGRENT=0
+    fi
+
+    MODE="check_setregid     "
+    if [ "$SIZEOF_GID_T" ] ; then
+        TEST="(void) setregid(-1,-1); return 0;"
+        if test_function int setregid "(int,int)" ; then : ; else
+            MISSING="$MISSING setregid"
+            echo2 "setregid "
+        fi
+    else
+        log "skipped (no gid_t)"
+        HAVE_SETREGID=0
+    fi
+
+    MODE="check_umask        "
+    TEST="(void) umask(1); return 0;"
+    if test_function int umask "(int)" ; then : ; else
+        MISSING="$MISSING umask"
+        echo2 "umask "
+    fi
+
+    MODE="check_fork         "
+    TEST="(void) fork(); return 0;"
+    if test_function int fork "(void)" ; then : ; else
+        MISSING="$MISSING fork"
+        echo2 "fork "
+    fi
+
+    MODE="check_gethostbyname"
+    TEST='(void) gethostbyname("localhost"); return 0;'
+    if test_function "struct hostent *" gethostbyname "(const char *)" ; then : ; else
+        MISSING="$MISSING gethostbyname"
+        echo2 "gethostbyname "
+    fi
+
+    MODE="check_getsetrlimit "
+    cat >$CONFTMP/test.c <<EOT
+        int main() {
+            extern void getrlimit(), setrlimit();
+            getrlimit();
+            setrlimit();
+        }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then
+        log "found getrlimit/setrlimit"
+        HAVE_GETSETRLIMIT=1
+    else
+        log "didn't find getrlimit/setrlimit"
+        HAVE_GETSETRLIMIT=0
+        MISSING="$MISSING get/setrlimit"
+        echo2 "get/setrlimit "
+    fi
+
+    MODE="check_crypt     "
+    TEST="(void) crypt(\"a\",\"bb\"); return 0;"
+    if test_function "char *" crypt "(char *, char *)" ; then : ; else
+        MISSING="$MISSING crypt"
+        echo2 "crypt "
+    fi
+
+    echo ""
+fi
+
+if [ "$MISSING" -a "$MISSING" != " gethostbyname" ] ; then
+    echo "    Services will use its own versions of the functions listed above."
+fi
+
+if [ "$HAVE_GETHOSTBYNAME" = 0 ] ; then
+    cat <<EOT
+
+NOTICE: Your system does not seem to have the gethostbyname() function.
+        This function is used to translate hostnames into IP addresses.
+        Since you don't have it (or we can't find it), you will need to
+        use IP addresses instead of hostnames when setting server addresses
+        in the configuration files (ircservices.conf and modules.conf).
+
+EOT
+fi
+
+###########################################################################
+
+MODE="check_install      "
+echo2 "Checking how to install files... "
+
+if [ "$INSTALL" ] ; then
+    if [ "`echo $INSTALL | cut -c1`" = "$" ] ; then
+        echo '(cached) using our own "install".'
+        log "cache says use our own"
+    else
+        echo '(cached) this system'\''s "install" works.'
+        log "cache says use regular "\`"install'"
+    fi
+else
+    cat >$CONFTMP/test.c <<EOT
+        int main() { return 0; }
+EOT
+    if run $CC $CC_FLAGS $CONFTMP/test.c $CC_LIBS -o $CONFTMP/test ; then : ; else
+        whoa_there
+    fi
+    if run cp -p $CONFTMP/test$EXE_SUFFIX $CONFTMP/test3$EXE_SUFFIX ; then : ; else
+        echo ""
+        echo ""
+        echo "*** WHOA THERE! ***"
+        echo ""
+        echo "A simple "\`"cp -p' failed!"
+        echo "Are you out of disk space?"
+        exit 4
+    fi
+
+    if run install -m 500 $CONFTMP/test$EXE_SUFFIX $CONFTMP/test2$EXE_SUFFIX && test -f $CONFTMP/test$EXE_SUFFIX && run cmp $CONFTMP/test$EXE_SUFFIX $CONFTMP/test2$EXE_SUFFIX ; then
+        echo 'looks like "install" will work.'
+        INSTALL="install"
+    elif run cp -p $CONFTMP/test3$EXE_SUFFIX $CONFTMP/test$EXE_SUFFIX ; run install -c -m 500 $CONFTMP/test$EXE_SUFFIX $CONFTMP/test2$EXE_SUFFIX && test -f $CONFTMP/test$EXE_SUFFIX && run cmp $CONFTMP/test$EXE_SUFFIX $CONFTMP/test2$EXE_SUFFIX ; then
+        echo 'looks like "install -c" will work.'
+        INSTALL="install -c"
+    elif run cp -p $CONFTMP/test3$EXE_SUFFIX $CONFTMP/test$EXE_SUFFIX ; run ginstall -m 500 $CONFTMP/test$EXE_SUFFIX $CONFTMP/test2$EXE_SUFFIX && test -f $CONFTMP/test$EXE_SUFFIX && run cmp $CONFTMP/test$EXE_SUFFIX $CONFTMP/test2$EXE_SUFFIX ; then
+        echo 'looks like "ginstall" will work.'
+        INSTALL="ginstall"
+    else
+        echo \"install\"" doesn't seem to work."
+        echo "    But we can still use cp and friends, so we'll roll our own "\"install\".
+        INSTALL='$(TOPDIR)/install-script'
+    fi
+    log "using: $INSTALL"
+fi
+
+###########################################################################
+
+MODE="check_install-d    "
+
+if [ "$INSTALL" = '$(TOPDIR)/install-script' ] ; then
+    MKDIR='$(INSTALL) -d'
+else
+    tmp=`echo $INSTALL | cut -d\  -f1`
+    echo2 "Seeing if \"$tmp\" will create directories... "
+    if [ "$MKDIR" ] ; then
+        if [ "$MKDIR" = '$(TOPDIR)/install-script' ] ; then
+            echo "(cached) no"
+            log "cache says no"
+        else
+            echo "(cached) yes"
+            log "cache says yes"
+        fi
+    else
+        MKDIR=$tmp
+        log "trying $MKDIR"
+        if run $MKDIR -d -m 700 $CONFTMP/testdir && test -d $CONFTMP/testdir ; then
+            echo "OK."
+            log "successful"
+        else
+            echo "nope, using workaround."
+            log "failed"
+            MKDIR='$(TOPDIR)/install-script'
+        fi
+    fi
+fi
+
+###########################################################################
+
+MODE="check_copy_recurse "
+echo2 "Checking how to copy directories... "
+
+if [ "$CP_ALL" ] ; then
+    echo "(cached) $CP_ALL"
+    log "cache supplied $CP_ALL"
+else
+    sysname=`/bin/uname -s 2>&1`
+    log "sysname: $sysname"
+    case $sysname in
+        *Linux) CP_ALL="/bin/cp -dpr";
+                log "guessing: cp -dpr";;
+        CYGWIN) CP_ALL="/bin/cp -dpr";
+                log "guessing: cp -dpr";;
+        *)      CP_ALL="/bin/cp -pr";
+                log "guessing: cp -pr";;
+    esac
+    run rm -rf $CONFTMP/test*
+    run echo test >$CONFTMP/test
+    run cp $CONFTMP/test $CONFTMP/test2
+    if run /bin/mkdir $CONFTMP/testA && run /bin/mkdir $CONFTMP/testB && run /bin/mv $CONFTMP/test2 $CONFTMP/testA ; then
+        :
+    else
+        echo ""
+        echo ""
+        echo "*** WHOA THERE! ***"
+        echo ""
+        echo "A few simple mkdir's and mv's failed!"
+        echo "Are you out of disk space?"
+        exit 4
+    fi
+    if run $CP_ALL $CONFTMP/testA $CONFTMP/testB/testC && run cmp $CONFTMP/testA/test2 $CONFTMP/testB/testC/test2 ; then
+        echo "$CP_ALL"
+        log \`"$CP_ALL' works"
+    else
+        log \`"$CP_ALL' doesn't work"
+        run /bin/rm -rf $CONFTMP/testB/*
+        if run sh -c '/bin/tar Ccf $CONFTMP/testA - . | /bin/tar Cxf $CONFTMP/testB -'
+        then
+            echo "tar (yuck)"
+            CP_ALL='$(TOPDIR)/cp-recursive -t'
+            log "using tar"
+        else
+            log "tar failed(!)"
+            echo ""
+            echo "    Neither cp nor tar work!  I give up."
+            exit 2
+        fi
+    fi
+fi
+
+###########################################################################
+
+# Create files.
+
+echo2 "Creating config.h... "
+rm -f config.h.new
+cat >config.h.new <<EOT
+/*
+ * This file is generated automatically by "configure".  Any changes made
+ * to it will be erased next time "configure" is run.
+ */
+
+#define PROGRAM                 "$PROGRAM"
+#define SERVICES_BIN            "$BINDEST/$PROGRAM"
+#define SERVICES_DIR            "$DATDEST"
+
+#define GCC3_HACK               $NEED_GCC3_HACK
+#define HASH_SORTED             $SORTED_LISTS
+#define CLEAN_COMPILE           $CLEAN_COMPILE
+#define DUMPCORE                $DUMPCORE
+#ifndef CONVERT_DB
+# define MEMCHECKS              $MEMCHECKS
+# define SHOWALLOCS             $SHOWALLOCS
+#endif
+
+#define STATIC_MODULES          $STATIC_MODULES
+EOT
+if [ "$SYMS_NEED_UNDERSCORES" ] ; then cat >>config.h.new <<EOT ; fi
+#define SYMS_NEED_UNDERSCORES   $SYMS_NEED_UNDERSCORES
+EOT
+cat >>config.h.new <<EOT
+
+#define HAVE_STDINT_H           $HAVE_STDINT_H
+#define HAVE_STRINGS_H          $HAVE_STRINGS_H
+#define HAVE_SYS_SELECT_H       $HAVE_SYS_SELECT_H
+#define HAVE_SYS_SYSPROTO_H     $HAVE_SYS_SYSPROTO_H
+
+EOT
+if [ "$TYPE_INT8" = int8_t ] ; then
+    cat >>config.h.new <<EOT
+#define int8 int8_t
+#define uint8 uint8_t
+EOT
+else
+    cat >>config.h.new <<EOT
+typedef   signed $TYPE_INT8   int8;
+typedef unsigned $TYPE_INT8  uint8;
+EOT
+fi
+if [ "$TYPE_INT16" = int16_t ] ; then
+    cat >>config.h.new <<EOT
+#define int16 int16_t
+#define uint16 uint16_t
+EOT
+else
+    cat >>config.h.new <<EOT
+typedef   signed $TYPE_INT16  int16;
+typedef unsigned $TYPE_INT16 uint16;
+EOT
+fi
+if [ "$TYPE_INT32" = int32_t ] ; then
+    cat >>config.h.new <<EOT
+#define int32 int32_t
+#define uint32 uint32_t
+EOT
+else
+    cat >>config.h.new <<EOT
+typedef   signed $TYPE_INT32  int32;
+typedef unsigned $TYPE_INT32 uint32;
+EOT
+fi
+if [ "$TYPE_INT64" = int64_t ] ; then
+    cat >>config.h.new <<EOT
+#define int64 int64_t
+#define uint64 uint64_t
+EOT
+else
+    cat >>config.h.new <<EOT
+typedef   signed $TYPE_INT64  int64;
+typedef unsigned $TYPE_INT64 uint64;
+EOT
+fi
+cat >>config.h.new <<EOT
+
+#define SIZEOF_INT              $SIZEOF_INT
+#define SIZEOF_LONG             $SIZEOF_LONG
+#define SIZEOF_PTR              $SIZEOF_PTR
+#define SIZEOF_TIME_T           $SIZEOF_TIME_T
+#define MAX_TIME_T              $MAX_TIME_T
+EOT
+if [ "$SIZEOF_GID_T" ] ; then cat >>config.h.new <<EOT ; fi
+#define SIZEOF_GID_T            $SIZEOF_GID_T
+EOT
+cat >>config.h.new <<EOT
+#define HAVE_SOCKLEN_T          $HAVE_SOCKLEN_T
+
+#define HAVE_STRERROR           $HAVE_STRERROR
+#define HAVE_SYS_ERRLIST        $HAVE_SYS_ERRLIST
+#define HAVE_HSTRERROR          $HAVE_HSTRERROR
+#define HAVE_SNPRINTF           $HAVE_SNPRINTF
+#define BAD_SNPRINTF            $BAD_SNPRINTF
+#define HAVE_STRTOK             $HAVE_STRTOK
+#define HAVE_STRICMP            $HAVE_STRICMP
+#define HAVE_STRCASECMP         $HAVE_STRCASECMP
+#define HAVE_STRDUP             $HAVE_STRDUP
+#define HAVE_STRSPN             $HAVE_STRSPN
+#define HAVE_STRSIGNAL          $HAVE_STRSIGNAL
+#define HAVE_GETTIMEOFDAY       $HAVE_GETTIMEOFDAY
+#define HAVE_SETGRENT           $HAVE_SETGRENT
+#define HAVE_SETREGID           $HAVE_SETREGID
+#define HAVE_UMASK              $HAVE_UMASK
+#define HAVE_FORK               $HAVE_FORK
+#define HAVE_GETHOSTBYNAME      $HAVE_GETHOSTBYNAME
+#define HAVE_GETSETRLIMIT       $HAVE_GETSETRLIMIT
+#define HAVE_CRYPT              $HAVE_CRYPT
+EOT
+
+if cmp config.h config.h.new >/dev/null 2>&1 ; then
+    rm -f config.h.new
+    echo "done (unchanged)."
+else
+    mv -f config.h.new config.h
+    echo "done."
+fi
+
+###########################################################################
+
+INSTEXEFLAGS="-m 750"
+INSTDATFLAGS="-m 640"
+MKDIRFLAGS="-m 750"
+
+echo2 "Creating Makefile.inc... "
+rm -f Makefile.inc.new
+cat >Makefile.inc.new <<EOT
+# This file is generated automatically by "configure".  Any changes made
+# to it will be erased next time "configure" is run.
+
+CC=$CC
+BASE_CFLAGS=$CC_FLAGS
+CDEFS=$CDEFS
+LFLAGS=$CC_LFLAGS$CC_DYN_LFLAGS
+LIBS=$CC_LIBS$CC_DYN_LIBS
+EXE_SUFFIX=$EXE_SUFFIX
+EOT
+if [ $STATIC_MODULES = 1 ] ; then
+    cat >>Makefile.inc.new <<EOT
+STATIC_MODULES=1
+EOT
+else
+    cat >>Makefile.inc.new <<EOT
+CC_SHARED=$CC_SHARED
+EOT
+fi
+if [ $HAVE_SNPRINTF = 0 -a $BAD_SNPRINTF = 0 ] ; then
+    cat >>Makefile.inc.new <<EOT
+
+VSNPRINTF_O=vsnprintf.o
+EOT
+fi
+cat >>Makefile.inc.new <<EOT
+RANLIB=$RANLIB
+
+PROGRAM=$PROGRAM
+BINDEST=$BINDEST
+DATDEST=$DATDEST
+
+TEST_NT=$TEST_NT
+INSTALL_EXE=$INSTALL $INSTEXEFLAGS
+INSTALL_DAT=$INSTALL $INSTDATFLAGS
+MKDIR=$MKDIR -d $MKDIRFLAGS
+CP_ALL=$CP_ALL
+EOT
+
+if cmp Makefile.inc Makefile.inc.new >/dev/null 2>&1 ; then
+    rm -f Makefile.inc.new
+    echo "done (unchanged)."
+else
+    mv -f Makefile.inc.new Makefile.inc
+    echo "done."
+fi
+
+###########################################################################
+
+# Save results in cache for next time around.
+
+echo2 "Saving configuration results in config.cache... "
+
+cat <<EOT >config.cache
+CONFIG_VERSION=$MY_CONFIG_VERSION
+
+BINDEST='$BINDEST'
+DATDEST='$DATDEST'
+
+TEST_NT='$TEST_NT'
+INSTALL='$INSTALL'
+MKDIR='$MKDIR'
+CP_ALL='$CP_ALL'
+
+CC='$CC'
+CC_FLAGS='$CC_FLAGS'
+CC_LFLAGS='$CC_LFLAGS'
+CC_LIBS='$CC_LIBS'
+
+SORTED_LISTS=$SORTED_LISTS
+CLEAN_COMPILE=$CLEAN_COMPILE
+MEMCHECKS=$MEMCHECKS
+SHOWALLOCS=$SHOWALLOCS
+DUMPCORE=$DUMPCORE
+
+STATIC_MODULES=$STATIC_MODULES
+CC_SHARED='$CC_SHARED'
+CC_DYN_LFLAGS='$CC_DYN_LFLAGS'
+CC_DYN_LIBS='$CC_DYN_LIBS'
+SYMS_NEED_UNDERSCORES=$SYMS_NEED_UNDERSCORES
+RANLIB='$RANLIB'
+
+TYPE_INT8=$TYPE_INT8
+TYPE_INT16=$TYPE_INT16
+TYPE_INT32=$TYPE_INT32
+TYPE_INT64=$TYPE_INT64
+SIZEOF_INT=$SIZEOF_INT
+SIZEOF_LONG=$SIZEOF_LONG
+SIZEOF_PTR=$SIZEOF_PTR
+SIZEOF_TIME_T=$SIZEOF_TIME_T
+MAX_TIME_T='$MAX_TIME_T'
+SIZEOF_GID_T=$SIZEOF_GID_T
+HAVE_SOCKLEN_T=$HAVE_SOCKLEN_T
+
+HAVE_STDINT_H=$HAVE_STDINT_H
+HAVE_STRINGS_H=$HAVE_STRINGS_H
+HAVE_SYS_SELECT_H=$HAVE_SYS_SELECT_H
+HAVE_SYS_SYSPROTO_H=$HAVE_SYS_SYSPROTO_H
+
+HAVE_STRERROR=$HAVE_STRERROR
+HAVE_SYS_ERRLIST=$HAVE_SYS_ERRLIST
+
+HAVE_SNPRINTF=$HAVE_SNPRINTF
+BAD_SNPRINTF=$BAD_SNPRINTF
+HAVE_HSTRERROR=$HAVE_HSTRERROR
+HAVE_STRTOK=$HAVE_STRTOK
+HAVE_STRICMP=$HAVE_STRICMP
+HAVE_STRCASECMP=$HAVE_STRCASECMP
+HAVE_STRDUP=$HAVE_STRDUP
+HAVE_STRSPN=$HAVE_STRSPN
+HAVE_STRSIGNAL=$HAVE_STRSIGNAL
+HAVE_GETTIMEOFDAY=$HAVE_GETTIMEOFDAY
+HAVE_SETGRENT=$HAVE_SETGRENT
+HAVE_SETREGID=$HAVE_SETREGID
+HAVE_UMASK=$HAVE_UMASK
+HAVE_FORK=$HAVE_FORK
+HAVE_GETHOSTBYNAME=$HAVE_GETHOSTBYNAME
+HAVE_GETSETRLIMIT=$HAVE_GETSETRLIMIT
+HAVE_CRYPT=$HAVE_CRYPT
+MISSING='$MISSING'
+EOT
+
+echo "done."
+
+###########################################################################
+
+# Delete the temporary directory we created.
+
+rm -rf $CONFTMP
+
+###########################################################################
+
+# All done!
+
+cat <<EOT
+
+All done!  Now edit defs.h as needed, and run "make" (or possibly "gmake")
+to compile Services.  See the README and FAQ if you have any problems.
+
+EOT
+
+exit 0
+
+###########################################################################
+
+# Local variables:
+#   indent-tabs-mode: nil
+# End:
+#
+# vim: expandtab shiftwidth=4:

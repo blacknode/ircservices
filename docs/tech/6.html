@@ -1,0 +1,1134 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 6. Database handling</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">6. Database handling</h2>
+
+<p class="section-toc">
+     6-1. <a href="#s1">Databases in Services</a>
+<br/>6-2. <a href="#s2">The database subsystem interface</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;6-2-1. <a href="#s2-1">Tables, records, and fields</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;6-2-2. <a href="#s2-2">Registering and unregistering tables</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;6-2-3. <a href="#s2-3">Loading and saving data</a>
+<br/>6-3. <a href="#s3">Database modules</a>
+<br/>6-4. <a href="#s4">Specific module details</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;6-4-1. <a href="#s4-1"><tt>database/standard</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6-4-1-1. <a href="#s4-1-1">Data format</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6-4-1-2. <a href="#s4-1-2">Module structure</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;6-4-2. <a href="#s4-2"><tt>database/version4</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6-4-2-1. <a href="#s4-2-1">Data format</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6-4-2-2. <a href="#s4-2-2">Module structure</a>
+<br/>6-5. <a href="#s5">Auxiliary source files</a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;6-5-1. <a href="#s5-1"><tt>fileutil.c</tt>, <tt>fileutil.h</tt></a>
+<br/>&nbsp;&nbsp;&nbsp;&nbsp;6-5-2. <a href="#s5-2"><tt>extsyms.c</tt>, <tt>extsyms.h</tt></a>
+</p>
+
+<p class="backlink"><a href="5.html">Previous section: IRC server interface</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="7.html">Next section: Services pseudoclients</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">6-1. Databases in Services</h3>
+
+<p>As with any program that handles large amounts of data, Services needs
+a place to store nickname, channel, and other data.  In Services, the
+primary data storage method is in-memory lists and tables; however, since
+these disappear when Services terminates, a more persistent method of
+recording the data is required.  This is implemented through the
+<i>database subsystem</i>, briefly touched on in
+<a href="2.html#s9-2">section 2-9-2</a>.</p>
+
+<p>The primary reason for the use of such a two-layer structure is because
+of the history of Services; as it was originally designed only for use on a
+small network, the effort required to implement Services using a true
+database management system was seen as excessive compared to the simplicity
+of accessing data structures already in memory.  As a result, little
+thought was given to the structure or accessibility of the persistent data
+files, which were seen as only an adjunct to the in-memory structures.
+While this served well enough for a time, the system's inflexibility proved
+cumbersome as more data was stored, and the file format's opaqueness caused
+trouble for other programs attempting to access the data.</p>
+
+<p>The latter problem of opaqueness was mostly resolved with the addition
+of XML-based data import and export modules (<tt>misc/xml-import</tt> and
+<tt>misc/xml-export</tt>, described in <a href="8.html#s4">section 8-4</a>).
+The database system itself remained an issue through version 5.0, but has
+been redesigned for version 5.1 to allow significantly more flexibility in
+storing data, as described below.  (The two-layer style has been retained,
+however, primarily due to the difficulty of changing it&mdash;a complete
+rewrite of Services would be required.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">6-2. The database subsystem interface</h3>
+
+<p>In Services (as in any typical database system), data to be stored in
+databases is organized into <i>tables</i>, <i>records</i>, and
+<i>fields</i>.  However, this organization is separate from the in-memory
+representation of the data: rather than storing the actual data itself,
+the "tables" handled by the database system hold information on <i>how to
+access the data</i>.  The actual operations of reading data from and
+writing data to persistent storage are then performed using this
+information, along with utility routines provided by the table's owner.</p>
+
+<p>The core part of the database subsystem is in the source files
+<tt>databases.c</tt> and <tt>databases.h</tt>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-1">6-2-1. Tables, records, and fields</h4>
+
+<p>A table, as used by the database subsystem, is defined by a
+<tt>DBTable</tt> structure, which contains information about the fields
+used in the table and utility routines used to create, delete, and access
+records in the table.  The structure is defined (in <tt>databases.h</tt>,
+along with all other database-related structures and declarations) as
+follows:</p>
+
+<dl>
+<dt><tt>const char *<b>name</b></tt></dt>
+    <dd>The name for the table.  This is used to identify the table to
+	the database system, and is generally used as a filename or other
+	identifier for the copy of the table in persistent storage.  The
+	name must be unique among all registered tables.</dd>
+
+<dt><tt>DBField *<b>fields</b></tt></dt>
+    <dd>A pointer to an array of <tt>DBField</tt> structures describing the
+	fields in the table, terminated by an entry with
+	<tt>DBField.name</tt> set to <tt>NULL</tt>.</dd>
+
+<dt><tt>void *(*<b>newrec</b>)()</tt></dt>
+    <dd>Returns a newly allocated record to place data in.  This function
+	is guaranteed to never be called for more than one record
+	simultaneously (in other words, a call to <tt>newrec()</tt> is
+	guaranteed to be followed by a call to either <tt>insert()</tt> or
+	<tt>freerec()</tt>), so this routine may return a pointer to a
+	static buffer instead than actually allocating memory if doing so
+	is more convenient (see the description of the
+	<tt>nickserv/access</tt> module in <a href="7.html#s3-2">section
+	7-3-2</a> for an example of such usage).</dd>
+
+<dt><tt>void (*<b>insert</b>)(void *<i>record</i>)</tt></dt>
+    <dd>Inserts a record into the table.  This function is called by the
+	database subsystem to insert a new record into the table after it
+	has been successfully loaded.  The record passed in is no longer
+	valid after the function returns.</dd>
+
+<dt><tt>void (*<b>freerec</b>)(void *<i>record</i>)</tt></dt>
+    <dd>Frees resources used by a record.  This function is called by the
+	database subsystem if an error occurs while loading a record,
+	before the record has been inserted into the table.</dd>
+
+<dt><tt>void *(*<b>first</b>)()</tt></dt>
+    <dd>Returns a pointer to the first record in the table.</dd>
+
+<dt><tt>void *(*<b>next</b>)()</tt></dt>
+    <dd>Returns a pointer to the next record in the table after the last
+	one returned by <tt>first()</tt> or <tt>next()</tt>.</dd>
+
+<dt><tt>int (*<b>postload</b>)()</tt></dt>
+    <dd>Called by the database subsystem after all records have been loaded.
+	This can be used to, <i>e.g.,</i> implement data integrity checks
+	which can only be performed after all data has been loaded.  If the
+	routine returns zero, the load operation is treated as a failure.
+	This field may be <tt>NULL</tt> if no post-load routine is
+	required.</dd>
+</dl>
+
+<p>As can be seen from this structure, the actual records themselves are
+not stored in the <tt>DBTable</tt> structure, but are rather left to the
+table's owner to store as appropriate.  For example, the ChanServ
+pseudoclient module stores the data for each record in a
+<tt>ChannelInfo</tt> structure.</p>
+
+<p>The field data, stored in <tt>DBField</tt> structures, likewise does
+not hold actual data, only instructions on how to access it.  The
+<tt>DBField</tt> structure contains:</p>
+
+<dl>
+<dt><tt>const char *<b>name</b></tt></dt>
+    <dd>The name for the field.  Typically the same as the field identifier
+	used in the program.</dd>
+
+<dt><tt>DBType <b>type</b></tt></dt>
+    <dd>The type of the field.  Valid types are defined in
+	<tt>databases.h</tt>:
+	<ul><li><tt><b>DBTYPE_INT<i>n</i></b></tt>,
+		<tt><b>DBTYPE_UINT<i>n</i></b></tt>:
+		Signed and unsigned integer values of different bit lengths
+		(8, 16, or 32).</li>
+	    <li><tt><b>DBTYPE_TIME</b></tt>: A <tt>time_t</tt> value.</li>
+	    <li><tt><b>DBTYPE_STRING</b></tt>: A string (<tt>char&nbsp;*</tt>)
+		value, which can be <tt>NULL</tt>.</li>
+	    <li><tt><b>DBTYPE_BUFFER</b></tt>: A fixed-length buffer.  The
+		buffer size is given in <tt>DBField.length</tt>.</li>
+	    <li><tt><b>DBTYPE_PASSWORD</b></tt>: A <tt>Password</tt> value,
+		as defined in <tt>encrypt.h</tt>.</li>
+	</ul></dd>
+
+<dt><tt>int <b>offset</b></tt></dt>
+    <dd>The offset in bytes from the start of the record to the location
+	where the field's value is stored.  For records stored in a
+	<tt>struct</tt>, this can be obtained using the standard
+	<tt>offsetof()</tt> macro; for example, the offset of this member
+	in a <tt>DBField</tt> structure is given by:
+	<div class="code">offsetof(DBField, offset)</div></dd>
+
+<dt><tt>int <b>length</b></tt></dt>
+    <dd>For <tt>DBTYPE_BUFFER</tt> fields, this gives the length of the
+	buffer, in bytes.  This value is ignored for other field types.</dd>
+
+<dt><tt>int <b>load_only</b></tt></dt>
+    <dd>If nonzero, the field is not saved to persistent storage.  This is
+	intended to facilitate changes in table format, as described
+	below.</dd>
+
+<dt><tt>void <b>get</b>(const void *<i>record</i>, void **<i>value_ret</i>)</tt></dt>
+    <dd>If not <tt>NULL</tt>, provides a function to retrieve the field's
+	value; the database subsystem will call this function instead of
+	simply accessing the data stored in the field.
+	<tt><i>record</i></tt> is a pointer to the record structure, and
+	<tt><i>value_ret</i></tt> points to a buffer to receive the value;
+	the buffer will be large enough to hold the data type specified by
+	<tt>DBField.type</tt>.  (For strings, store a <tt>char&nbsp;*</tt>
+	value in <tt>*<i>value_ret</i></tt>; the string will <i>not</i> be
+	freed after use, so a static buffer or other method is needed to
+	avoid memory leaks if the string is generated dynamically.)</dd>
+
+<dt><tt>void <b>put</b>(void *<i>record</i>, const void *<i>value</i>)</tt></dt>
+    <dd>If not <tt>NULL</tt>, provides a function to set the field's value;
+	the database system will call this function instead of simply
+	storing the loaded data into the field.  <tt><i>record</i></tt> is
+	a pointer to the record structure which is to receive the data, and
+	<tt><i>value</i></tt> points to the data itself, in the format
+	given by <tt>DBField.type</tt>.  (For strings, this is a
+	<tt>char&nbsp;*</tt> value which may be <tt>NULL</tt>; if not
+	<tt>NULL</tt>, the string has been allocated with <tt>malloc()</tt>
+	and will not be freed by the database subsystem, so you will need
+	to free it if you do not store the pointer directly into the
+	record.)</dd>
+</dl>
+
+<p>This structure is designed with the assumption that data will be stored
+in some structured type in memory; if no <tt>get()</tt> or <tt>put()</tt>
+routine is provided, the database subsystem will simply access the memory
+location derived by adding the field's offset to the record pointer
+returned by the table's record access functions (<tt>newrec()</tt>,
+<tt>first()</tt>, or <tt>next()</tt>).  If this is not sufficient, however,
+the table owner can define <tt>get()</tt> and/or <tt>put()</tt> functions
+for accessing the data.</p>
+
+<p>One member of the <tt>DBField</tt> structure that deserves particular
+mention is the <tt>load_only</tt> member.  If a field's <tt>load_only</tt>
+value is nonzero, then the field will be ignored when the database is saved
+to persistent storage.  This can be used to handle changes in the format of
+a table; if the old field is left defined with <tt>load_only</tt> nonzero
+and a <tt>put()</tt> routine provided, that routine will be called whenever
+a record with the old field is loaded, allowing the old field's value to be
+processed as necessary to fit the new table format.  Alternatively, the old
+field can be left in the in-memory structure, and code added to the table's
+<tt>insert()</tt> routine to handle the data translation.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-2">6-2-2. Registering and unregistering tables</h4>
+
+<p>In order for a database table to be loaded from and saved to persistent
+storage, it must first be registered with the database subsystem by calling
+the <tt>register_dbtable()</tt> routine; the complementary
+<tt>unregister_dbtable()</tt> routine must be called when the table is no
+longer needed (for example, when the module owning the table exits).  The
+routines' prototypes are as follows:</p>
+
+<div class="code">int <b>register_dbtable</b>(DBTable *<i>table</i>)
+void <b>unregister_dbtable</b>(DBTable *<i>table</i>)</div>
+
+<p>Both routines take a pointer to the <tt>DBTable</tt> structure
+describing the table to be registered or unregistered.  The
+<tt>register_dbtable()</tt> routine returns nonzero on success, zero on
+failure.</p>
+
+<p>Note that <tt>register_dbtable()</tt> assumes that the in-memory table
+is empty, and has no facility to signal the database owner to clear the
+table before data is loaded.  The database owner must ensure that the table
+is empty or take whatever other precautions are appropriate before
+registering the table.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s2-3">6-2-3. Loading and saving data</h4>
+
+<p>Data loading and saving is performed on a per-table basis when the table
+is registered or unregistered, respectively; thus data is immediately
+available for use when <tt>register_dbtable()</tt> returns successfully,
+and any changes made to the data after <tt>unregister_dbtable()</tt> is
+called will not be reflected in persistent storage.  There is also an
+auxiliary routine, <tt>save_all_dbtables()</tt>, which causes all
+registered tables to be saved (synced) to persistent storage immediately:</p>
+
+<div class="code">int <b>save_all_dbtables</b>()</div>
+
+<p>This routine returns one of the following values:</p>
+
+<ul>
+<li><b>1</b> if all database tables were saved with no errors, or if no
+	tables are registered.</li>
+<li><b>0</b> if some tables were saved successfully, but errors occured on
+	at least one table.</li>
+<li><b>-1</b> if no tables were saved successfully.</li>
+</ul>
+
+<p>This routine is called by the main loop (via the <tt>save_data_now()</tt>
+helper routine) at periodic intervals or when explicitly requested, as
+described in <a href="2.html#s3-3">section 2-3-3</a>.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">6-3. Database modules</h3>
+
+<p>The core portion of the database subsystem only provides the interface
+for persistent storage of databases; the actual work of transferring data
+to and front persistent storage is performed by <i>database modules</i>.
+The standard database modules are located in the <tt>modules/database</tt>
+directory.</p>
+
+<p>A database module registers itself with the core part of the subsystem
+by calling <tt>register_dbmodule()</tt>; as with tables, the module must
+unregister itself with the complementary <tt>unregister_dbmodule()</tt>
+when exiting:</p>
+
+<div class="code">int <b>register_dbmodule</b>(DBModule *<i>module</i>)
+void <b>unregister_dbmodule</b>(DBModule *<i>module</i>)</div>
+
+<p>Only one database module may be registered; if a second module tries to
+register itself, <tt>register_dbmodule()</tt> will return an error (zero).</p>
+
+<p>The <tt>DBModule</tt> structure passed to these functions contains two
+function pointers:</p>
+
+<div class="code">int (*<b>load_table</b>)(DBTable *<i>table</i>)
+int (*<b>save_table</b>)(DBTable *<i>table</i>)</div>
+
+<p>As the names suggest, <tt>load_table()</tt> is called to load a table
+from persistent storage, and <tt>save_table()</tt> is called to save a
+table to persistent storage.  Both routines should return nonzero on
+success, zero on failure.</p>
+
+<p>Since the <tt>DBTable</tt> structures representing registered database
+tables are passed directly to these two routines, the module must take care
+to observe the restrictions and requirements on calling the table's
+function pointers documented in <a href="#s2">section 6-2</a> above, such
+as not calling <tt>newrec()</tt> twice without an intervening
+<tt>insert()</tt> or <tt>freerec()</tt> and ensuring that <tt>postload()</tt>
+is called when a table has been loaded.  <i>Implementation note: A better
+implementation might hide the DBTable structure from database modules,
+providing an interface that ensures the rules are followed.</i></p>
+
+<p>To simplify data access logic and avoid bugs caused by misuse of data
+fields, database modules should use the <tt>get_dbfield()</tt> and
+<tt>put_dbfield()</tt> routines to read and write fields in database
+records.  These routines are declared as:</p>
+
+<div class="code">void <b>get_dbfield</b>(const void *<i>record</i>, const DBField *<i>field</i>, void *<i>buffer</i>)
+void <b>put_dbfield</b>(void *<i>record</i>, const DBField *<i>field</i>, const void *<i>value</i>)</div>
+
+<p>The routines will automatically call the field's <tt>get()</tt> or
+<tt>put()</tt> routine if one is supplied, or else copy the field's value
+to or from the supplied buffer.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s4">6-4. Specific module details</h3>
+
+<p>Services includes two standard database modules.  The first,
+<tt>database/standard</tt>, is (as the name implies) intended to be the
+standard module for use with version 5.1; it stores each table in a binary
+data file.  The second module, <tt>database/version4</tt>, uses the same
+file format as was used in Services versions 4.x and 5.0, and is intended
+for compatibility when testing Services 5.1 or converting databases to the
+new format.  (It is not possible to have one module handle loading and a
+different module handle saving, so data must first be exported to XML using
+the <tt>version4</tt> module and then imported using the <tt>standard</tt>
+module in the latter case.)</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-1">6-4-1. <tt>database/standard</tt></h4>
+
+<h5 class="subsubsubsection-title" id="s4-1-1">6-4-1-1. Data format</h5>
+
+<p>This module stores each table in a file whose name is constructed by
+replacing all non-alphanumeric characters (except hyphens and underscores)
+by underscores and appending "<tt>.sdb</tt>".  The file format consists of
+three main sections, described below.  In all cases, numeric data is
+written in big-endian format (with the most-significant byte first);
+strings are stored as a 16-bit length in bytes followed by the specified
+number of bytes of string data (including a terminating null byte), with a
+<tt>NULL</tt> string indicated by a length value of zero.
+<i>Implementation note: This obviously limits the length of a string to
+65,534 bytes.  This is the result of reusing the string reading and writing
+routines used for the old file format; while it has not proved to be a
+problem to date, it is nonetheless an unnecessary artificial
+limitation.</i></p>
+
+<dl>
+
+<dt><b>The file header</b></dt>
+
+    <dd><p>The file header contains basic information about the file, in the
+	following four fields:</p>
+	<ul>
+	<li class="spaced"><b>File format version:</b> <i>(32-bit integer)</i>
+		A value which identifies the file format in use.  This is
+		always the constant <tt>NEWDB_VERSION</tt>; the upper 24
+		bits of this value contain the ASCII string "<tt>ISD</tt>",
+		identifying the file as an <b>I</b>RC <b>S</b>ervices
+		<b>D</b>atabase, and the lower 8 bits contain a format
+		version number, currently 1.</li>
+	<li class="spaced"><b>Header size:</b> <i>(32-bit integer)</i>
+		The total size of the header, in bytes.  Currently 16.</li>
+	<li class="spaced"><b>Field list offset:</b> <i>(32-bit integer)</i>
+		The offset in bytes from the start of the file to the field
+		list, described below.</li>
+	<li class="spaced"><b>Record data offset:</b> <i>(32-bit integer)</i>
+		The offset in bytes from the start of the file to the
+		record data, described below.</li>
+	</ul>
+    </dd>
+
+<dt><b>The field list</b></dt>
+
+    <dd><p>The field list contains information about the fields in the data
+	table and how they are stored in the file.  The field list can be
+	stored anywhere in the file, but the current implementation writes
+	it immediately after the file header.  The field list consists of a
+	header followed by a variable number of field entries.  The header
+	contains the following three values:</p>
+	<ul>
+	<li class="spaced"><b>Field list size:</b> <i>(32-bit integer)</i>
+		The total size of the field list, in bytes.</li>
+	<li class="spaced"><b>Number of fields:</b> <i>(32-bit integer)</i>
+		The number of fields in the field list.</li>
+	<li class="spaced"><b>Record data size:</b> <i>(32-bit integer)</i>
+		The size in bytes of the fixed part of a single record's
+		data.  This is the portion of the record data which is
+		always stored in the same format, excluding variable-length
+		data such as strings.</li>
+	</ul>
+	<p>For each field, the following data is recorded:</p>
+	<ul>
+	<li class="spaced"><b>Field data size:</b> <i>(32-bit integer)</i>
+		The size in bytes of the data as stored in the fixed part
+		of the record data.  All fields are stored consecutively in
+		the order they appear in the field list, with no padding;
+		thus the offset of a field's data is equal to the sum of
+		the sizes of all previous fields.</li>
+	<li class="spaced"><b>Field type:</b> <i>(16-bit integer)</i>
+		The type of the field.  The value is one of the
+		<tt>DBTYPE_*</tt> constants defined in <tt>databaess.h</tt>.
+		<i>Implementation note: This is a bad idea; it would be
+		better to explicitly define constants in <tt>standard.c</tt>
+		to avoid problems arising from changes in the values of the
+		constants.</i></li>
+	<li class="spaced"><b>Field name:</b> <i>(string)</i>
+		The name of the field.</li>
+	</ul>
+    </dd>
+
+<dt><b>The record data</b></dt>
+
+    <dd><p>The last section of the file contains the actual data for each
+	record in the table.  To avoid the potential for a corrupt record
+	to render all following records unreadable (if, for example, the
+	length of a string is incorrect), the actual record data is
+	preceded by a <i>record descriptor table</i>, which contains a
+	file offset pointer and total length for each record's data.</p>
+
+	<p>In order to simplify the writing of database files, the record
+	descriptor table is allowed to be fragmented into multiple parts.
+	Each partial table consists of an 8-byte header containing:</p>
+	<ul>
+	<li class="spaced"><b>Next table pointer:</b> <i>(32-bit integer)</i>
+		The absolute file offset (in bytes) of the next record
+		descriptor table.  Set to zero for the last table in the
+		file.</li>
+	<li class="spaced"><b>Table length:</b> <i>(32-bit integer)</i>
+		The length of this record descriptor table in bytes,
+		including the header.</li>
+	</ul>
+	<p>The remainder of the table is filled with 8-byte record
+	descriptors, each containing:</p>
+	<ul>
+	<li class="spaced"><b>Record data pointer:</b> <i>(32-bit integer)</i>
+		The absolute file offset of the record's data.</li>
+	<li class="spaced"><b>Record data length:</b> <i>(32-bit integer)</i>
+		The length of the record's data in bytes.</li>
+	</ul>
+	<p>Note that the header has the same format as a record descriptor,
+	so the entire descriptor table can be treated as an array of
+	descriptors in which the first entry points to the next table
+	rather than a particular record.</p>
+
+	<p>The record data pointed to by each descriptor consists, in turn,
+	of a fixed-length part and a variable-length part.  The
+	fixed-length part (also referred to in the field list description
+	above) contains all data which is of a fixed length for every
+	record; this includes all numeric data, as well as a 32-bit data
+	offset pointer for strings (see below).  Variable-length data is
+	stored immediately after the fixed-length part of the data, in
+	arbitrary order.</p>
+
+	<p>The various field types are stored as follows (where not
+	explicitly mentioned, the value is stored entirely in the
+	fixed-length part of the record data):</p>
+	<ul>
+	<li class="spaced"><b><tt>DBTYPE_INT<i>n</i></tt>,
+		<tt>DBTYPE_UINT<i>n</i></tt>:</b> The value is stored
+		using the requisite number of bytes (1, 2, or 4, depending
+		on the data type size).</li>
+	<li class="spaced"><b><tt>DBTYPE_TIME</tt>:</b>
+		The value is stored as a 64-bit integer.</li>
+	<li class="spaced"><b><tt>DBTYPE_STRING</tt>:</b>
+		A 32-bit data offset is stored in the fixed-length part;
+		this is a byte offset relative to the start of the record
+		data, and points to the location of the actual string data
+		(a16-bit length followed by character data), stored in the
+		variable-length part of the record.</li>
+	<li class="spaced"><b><tt>DBTYPE_BUFFER</tt>:</b>
+		The value is stored using the number of bytes specified by
+		<tt>DBField.length</tt>.</li>
+	<li class="spaced"><b><tt>DBTYPE_PASSWORD</tt>:</b>
+		The value is stored as a data offset pointing to the string
+		giving the cipher name (<tt>Password.cipher</tt>) followed
+		by a fixed buffer of <tt>PASSMAX</tt> bytes.  The cipher
+		name itself is stored in the variable-length part, like
+		other strings.</li>
+	</ul>
+    </dd>
+
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h5 class="subsubsubsection-title" id="s4-1-2">6-4-1-2. Module structure</h5>
+
+<p>Database loading and saving are handled by the routines
+<tt>standard_load_table()</tt> and <tt>standard_save_table()</tt>,
+respectively.  (The <tt>standard_</tt> prefix comes from the module name,
+and is included to avoid potential name clashes with other database
+modules, which would complicate debugging.)  Each of these routines calls
+three subroutines to handle each of the three parts of a database file
+described in <a href="#s4-1-1">section 6-4-1-1</a> above.</p>
+
+<p>The <tt>SAFE()</tt> preprocessor macro defined at the top of the file is
+used in read and write operations to check for a premature end-of-file (on
+read) or a write error (on write) and abort the routine in these cases.</p>
+
+<p>Three helper functions used in loading and saving are defined first:</p>
+
+<dl>
+<dt><tt>TableInfo *<b>create_tableinfo</b>(const DBTable *<i>table</i>)</tt></dt>
+    <dd>Generates a <tt>TableInfo</tt> structure corresponding to the given
+	database table.  The <tt>TableInfo</tt> structure is defined at the
+	top of the file, and includes the size of each field as stored in
+	memory and on disk, as well as the location of each field within
+	the record's data as written to disk.  (This latter value,
+	<tt>offset</tt>, is set to -1 by this routine, since it is
+	initialized differently when loading than when saving.)</dd>
+
+<dt><tt>void <b>free_tableinfo</b>(TableInfo *<i>ti</i>)</tt></dt>
+    <dd>Frees a <tt>TableInfo</tt> structure created by
+	<tt>create_tableinfo()</tt>.</dd>
+
+<dt><tt>const char *<b>make_filename</b>(const DBTable *<i>table</i>)</tt></dt>
+    <dd>Generates the filename corresponding to the table name for the
+	given table.  The returned filename string is stored in a static
+	buffer, which will be overwritten by subsequent calls.</dd>
+</dl>
+
+<p>Following these routines is <tt>standard_load_table()</tt>, along with
+its helper routines <tt>read_file_header()</tt>, <tt>read_field_list()</tt>,
+and <tt>read_records()</tt>.  When called, <tt>standard_load_table()</tt>
+takes the following actions:</p>
+
+<ul>
+<li class="spaced">Generates a <tt>TableInfo</tt> structure for the
+	database table.</li>
+
+<li class="spaced">Opens the file corresponding to the table, using
+	<tt>open_db()</tt> from <tt>fileutil.c</tt>(see
+	<a href="#s5-1">section 6-5-1</a>).</li>
+
+<li class="spaced">Calls <tt>read_file_header()</tt> to read in the file
+	header.</li>
+
+<li class="spaced">Seeks to the beginning of the field list, and calls
+	<tt>read_field_list()</tt> to read it in.</li>
+
+<li class="spaced">Seeks to the beginning of the record data, and calls
+	<tt>read_records()</tt> to read it in.</li>
+</ul>
+
+<p><tt>read_file_header()</tt> is fairly straightforward; it simply reads
+in the four header fields, checks the version number and header size to
+ensure that they have appropriate values, and returns the field list and
+record data offsets in the variable references passed in.</p>
+
+<p><tt>read_field_list()</tt> is slightly more complex; since there is no
+guarantee that the record structure stored in the file will match that
+given by the <tt>DBTable</tt> structure, the routine must match fields in
+the file to those in the structure.  <tt>read_field_list()</tt> iterates
+through the fields in the loaded table, searching the <tt>TableInfo</tt>
+structure for a matching field (the name, type, and field size must all
+match); if found, the record data offset is recorded in the
+<tt>TableInfo</tt> structure, while unknown fields are simply ignored.
+<i>Implementation note: As a side effect of this handling, fields like
+nicknames, channel names, and passwords will cease to be recognized if the
+relevant buffer sizes are changed, thus the note in <tt>defs.h</tt> about
+backing up the data before changing the constants.</i></p>
+
+<p><tt>read_records()</tt> reads in and loops through the record descriptor
+tables, continuing until an empty descriptor, signifying the end of the
+table, is found.  In order to avoid duplication of code, the descriptor
+table is loaded (when necessary) at the beginning of the loop; however,
+since the descriptor table must be loaded before the end-of-data check can
+be made, the loop termination check is performed in the middle of the loop,
+immediately after the descriptor table loading.  The <tt>recnum</tt> loop
+variable indicates the current index in the descriptor table, with 1
+meaning the first record descriptor (after the header) and 0 meaning that a
+new table has to be loaded; the modulo arithmetic in the loop variable
+update expression ensures that when the index reaches the end of the table,
+it will be reset to zero, causing the next table to be loaded.</p>
+
+<p>The table-saving routine <tt>standard_save_table()</tt> and its
+subroutines <tt>write_file_header()</tt>, <tt>write_field_list()</tt>, and
+<tt>write_records()</tt> operate in essentially the same way, although they
+are slightly simpler because there is no need to check for invalid data, as
+must be done while reading.  The other point worth mentioning is that
+<tt>open_db()</tt> automatically writes the version number given as the
+third parameter into the file, so there is no need for
+<tt>write_file_header()</tt> to do so.  <i>Implementation note: Yes, this
+is ugly; see <a href="#s5-1">section 6-5-1</a> for an explanation.</i></p>
+
+<p>Finally, the source file concludes with the standard module variables
+and routines, along with the <tt>DBModule</tt> structure required for
+registering the database module.  However, for this module they are
+enclosed by <tt>#ifndef&nbsp;INCLUDE_IN_VERSION4</tt> and <tt>#endif</tt>;
+this is so that the source file can be directly included in the
+<tt>database/version4</tt> module (see <a href="#s4-2-2">section
+6-4-2-2</a> below) without causing identifier conflicts or other
+problems.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s4-2">6-4-2. <tt>database/version4</tt></h4>
+
+<p>This module is intended as a compatibility/transition module, and (as
+the name implies) supports database files in the format used by 4.x
+versions of Services, as well as the extended form of that format used in
+version 5.0.  These versions did not support generic database tables, so
+any such tables which do not correspond to tables used in version 4/5
+format files are simply written out in the same format used with the
+<tt>database/standard</tt> module.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h5 class="subsubsubsection-title" id="s4-2-1">6-4-2-1. Data format</h5>
+
+<p>The pre-5.1 data file format is a rather complex beast, an extended form
+of the original database files which were simply binary dumps of the
+structures used in memory.  The format is not documented outside of the
+code that implements it, and even I (the developer) often have to refer to
+the code when analyzing a database file from these versions.</p>
+
+<p>The database files used encompass all of the data handled by the
+standard pseudoclients, but the files are generally split by pseudoclient
+name rather than individual table: for example, the nickname, nickname
+group, and memo data are all stored in the same database.  This, again,
+derives from the fact that such data was at one time all stored as part of
+the same structure (even now, memos are stored in the nickname group
+structure rather than having their own separate table in memory).  The list
+of files and the tables they encompass follows:</p>
+
+<ul>
+<li class="spaced"><b><tt>nick.db</tt></b> contains the <tt>nick</tt>,
+	<tt>nickgroup</tt>, <tt>nick-access</tt>, <tt>nick-autojoin</tt>,
+	<tt>memo</tt>, and <tt>memo-ignore</tt> tables.</li>
+<li class="spaced"><b><tt>chan.db</tt></b> contains the <tt>chan</tt>,
+	<tt>chan-access</tt>, and <tt>chan-akick</tt> tables.</li>
+<li class="spaced"><b><tt>oper.db</tt></b> contains the <tt>oper</tt>
+	table.</li>
+<li class="spaced"><b><tt>news.db</tt></b> contains the <tt>news</tt>
+	table.</li>
+<li class="spaced"><b><tt>akill.db</tt></b> contains the <tt>akill</tt> and
+	<tt>exclude</tt> tables.</li>
+<li class="spaced"><b><tt>exception.db</tt></b> contains the
+	<tt>exception</tt> table.</li>
+<li class="spaced"><b><tt>sline.db</tt></b> contains the <tt>sgline</tt>,
+	<tt>sqline</tt>, and <tt>szline</tt> tables.</li>
+<li class="spaced"><b><tt>stats.db</tt></b> contains the
+	<tt>stat-servers</tt> table.</li>
+</ul>
+
+<p>In general, the contents of each database file can be divided into three
+parts: the base data, the 5.0 extension data, and the 5.1 extension
+data, all concatenated together.  This division of data was introduced in
+version 5.0 to allow databases written by version 5.0 to be read by version
+4.5 (minus the 5.0-specific features, of course); version 5.0 wrote the
+data in the format used by version 4.5, then appended the 5.0-specific data
+to the end of the file, so that the 4.5 code would simply ignore it,
+believing that it had reached the end of the data, while the 5.0 code would
+know to look for the extension data to supplement the (possibly inaccurate)
+data in the base part.  Version 5.1 takes the same approach with respect to
+version 5.0, resulting in database files which are very convoluted but
+which can be used in any of versions 4.5, 5.0, or 5.1.</p>
+
+<p>Each part begins with a 32-bit version number identifying the format of
+the data (like the 5.1 standard format, all values are stored in big-endian
+byte order); this value is fixed at 11 for the base data and 27 for the 5.0
+extension data, the file version numbers used in the final releases of
+these versions of Services.  The file version is followed immediately by
+the data itself, whose format varies depending on the particular data being
+stored.  Simple arrays like news and autokill data typically use a 16-bit
+count followed by the appropriate number of repetitions of the data
+structure, a format which is also used for sub-arrays such as access lists
+within nickname and channel data.  Nicknames and channels, on the other
+hand, do not have a count field, and instead simply consist of a byte with
+value 1 followed by the nickname or channel data structure for as many
+structures as necessary, followed by 256 zero bytes indicating the end of
+the table.  (The reason for 256 zero bytes instead of just one is that very
+old versions of Services, earlier than version 4.0, wrote out each
+collision list of the 256-element hash arrays separately, terminating each
+list with a zero; when this was changed, the fiction of 256 collision lists
+was kept in order to simplify the database reading logic.)</p>
+
+<p>For cases where there is a difference in data format or content between
+the base, 5.0, and 5.1 data, the data is written so that if loaded by the
+corresponding version of Services, it will be interpreted as closely as
+possible to the true value.  For example, the 32-bit nickname group ID is
+written into 16 bits of the nickname flags and the 16-bit registered
+channel limit in the base data, since 4.5 does not interpret these bits;
+however, since 5.0 does make use of them, the correct values of those two
+fields are then re-recorded in the 5.0 extension data.  Similarly, channel
+access levels are recorded in the base data using the 4.5 access level
+system (a range from -9999 to 9999 with standard levels clustered from -2
+to 10), and again in the 5.0 extension data using the current system.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h5 class="subsubsubsection-title" id="s4-2-2">6-4-2-2. Module structure</h5>
+
+<p>The source file, <tt>version4.c</tt>, starts with a workaround for a
+limitation of static module compilation.  As with the
+<tt>database/standard</tt> module, this module makes use of the utility
+routines in <tt>fileutil.c</tt>; however, if <tt>fileutil.c</tt> is simply
+linked into the module, as is done with the <tt>database/standard</tt>
+module, an error would occur at link time due to the symbols being defined
+in both modules.  While it is possible to adjust the compilation process to
+avoid this problem, the <tt>database/version4</tt> module instead simply
+uses <tt>#define</tt> to rename all of the exported functions in
+<tt>fileutil.c</tt>, then includes that source file directly.</p>
+
+<p>The four version number defines indicate the file version numbers to be
+used with various parts of the data:</p>
+<ul>
+<li><b><tt>FILE_VERSION</tt>:</b> The file version used for the base data.
+	Always 11 (the last value used in Services 4.5).</li>
+<li><b><tt>LOCAL_VERSION</tt>:</b> The file version used for the 5.1
+	extension data.  Incremented when the 5.1 extension data format
+	changes.</li>
+<li><b><tt>FIRST_VERSION_51</tt>:</b> The first file version used in
+	Services 5.1.  Used to ensure that the 5.1 extension data is
+	valid.</li>
+<li><b><tt>LOCAL_VERSION_50</tt>:</b> The file version used for the 5.0
+	extension data.  Always 27 (the last value used in Services 5.0).</li>
+</ul>
+
+<p>The <tt>CA_SIZE_4_5</tt>, <tt>ACCESS_INVALID_4_5</tt>, and
+<tt>def_levels_4_5[]</tt> constants and array are used when processing
+channel privilege level data as stored in the base data section.  Since
+Services 4.5 always stored the privilege level array, even if all values
+were set to the defaults, this array is used to detect such a case when
+loading data and to supply data for channels using the default settings
+when saving.  (The channel access levels themselves use a different scale
+in 4.5; this is handled by the <tt>convert_old_level()</tt> and
+<tt>convert_new_level()</tt> helper functions, defined later.)</p>
+
+<p>The last set of compatibility constants and variables,
+<tt>MAX_SERVADMINS</tt>, <tt>services_admins[]</tt> and so on, is used to
+handle loading and saving of the Services administrator and operator lists
+in <tt>oper.db</tt>.  (Version 4.5 kept these separate from the nickname
+data, as opposed to the current method which stores the OperServ status
+level in the nickname group data.)</p>
+
+<p>Following these preliminary declarations are the main load and save
+routines, <tt>version4_load_table()</tt> and <tt>version4_save_table()</tt>,
+preceded by forward declarations of the individual table handling routines.
+For the most part, these consist of checking the name of the table to be
+loaded or saved and calling the appropriate routine; however, since most
+database files encompass two or more tables, the table pointers must be
+saved in local variables until all relevant tables are available.  Also,
+several tables are simply ignored this is because the load/save routines
+access the corresponding data directly through the parent structures (for
+example, channel access and autokick lists are accessed via the
+<tt>ChannelInfo</tt> structures in the <tt>chan</tt> table).  One other
+workaround required when loading data is the temporary setting of the
+global <tt>noexpire</tt> flag; as the comments in the code indicate, this
+is because the databases are loaded in several steps, and records'
+expiration timestamps may not be correct until the final step, so leaving
+expiration enabled could cause records to be improperly expired during the
+loading process (since expiration occurs when a record is accessed via the
+various pseudoclients' <tt>get()</tt>, <tt>first()</tt>, and <tt>next()</tt>
+functions).</p>
+
+<p>Next are three short utility functions.  The first,
+<tt>my_open_db_r()</tt>, calls <tt>open_db()</tt> from <tt>fileutil.c</tt>
+(see <a href="#s5-1">section 6-5-1</a>) to open the given database file for
+reading, then reads in the file version number and checks that it is within
+range for the base data section; the version number is then returned in
+<tt>*<i>ver_ret</i></tt>.  (File versions below 5, corresponding to
+Services 3.0, are not supported because they stored numeric values in a
+machine-dependent format.)  The other two utility routines,
+<tt>read_maskdata()</tt> and <tt>write_maskdata</tt>, are used to read and
+write lists of <tt>MaskData</tt> structures, used (for example) in
+autokills and S-lines.</p>
+
+<p>The bulk of the module is taken up by the routines to load particular
+tables.  Since each database file has its own particular format, the table
+load/save routines must be tailored for each file; the load routines, in
+particular, must be able to handle multiple versions of files, and as such
+are especially complex (for the nickname and channel tables, the load
+routine is broken up into several subroutines).  For the sake of simplicity
+and speed, the routines access the relevant structures directly rather than
+going through the <tt>DBField</tt> entries of the table; this means that
+the module must be updated whenever the structures' formats or meanings
+change, but as the module is only intended as a transitional one, this is
+not seen to be a significant problem.</p>
+
+<p>The load/save routines also call some routines defined in the various
+pseudoclient modules, such as <tt>get()</tt>, <tt>first()</tt>, and
+<tt>next()</tt> routines for the various data structures.  Since the
+database may be (and generally is) loaded before the pseudoclient modules,
+the symbols must be imported appropriately; this is handled by the
+<tt>extsyms.c</tt> and <tt>extsyms.h</tt> auxiliary files, though the
+handling is rather machine-dependent.  See <a href="#s5-2">section
+6-5-2</a> for details.</p>
+
+<p>The routines used for loading and saving tables which do not correspond
+to any of the files listed above, <tt>load_generic_table()</tt> and
+<tt>save_generic_table()</tt>, are actually renamed versions of the
+<tt>standard_load_table()</tt> and <tt>standard_save_table()</tt> routines
+defined in the <tt>database/standard</tt> module.  To avoid the
+difficulties involved in trying to load two database modules at once, this
+module simply includes the <tt>standard.c</tt> source file directly, after
+setting up <tt>#define</tt> directives to rename the load and save
+routines; a <tt>#ifndef INCLUDED_IN_VERSION4</tt> protects the parts of the
+<tt>database/standard</tt> module not related to loading and saving,
+avoiding multiple definitions of module-related symbols.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s5">6-5. Auxiliary source files</h3>
+
+<h4 class="subsubsection-title" id="s5-1">6-5-1. <tt>fileutil.c</tt>, <tt>fileutil.h</tt></h4>
+
+<p><tt>fileutil.c</tt> (and its corresponding header, <tt>fileutil.h</tt>)
+provide utility functions used by both the <tt>database/standard</tt> and
+<tt>database/version4</tt> modules for reading and writing binary data
+files.  The functions use a <tt>dbFILE</tt> structure to indicate the file
+to be read from or written to; this is analagous to the <tt>FILE</tt>
+structure used by stdio-style functions, but includes extra fields used by
+the open and close functions to ensure that a valid copy of the file is
+retained even if a write error occurs (see the function descriptions below
+for details).  The actual file pointer is also available in the structure's
+<tt>fp</tt> field for direct use with the stdio functions.</p>
+
+<p>There are several preprocessor conditionals on <tt>CONVERT_DB</tt>
+scattered throughout the code.  These are used to prevent unneeded portions
+of code, particularly log- and module-related functions, from being seen
+when the source file is compiled for the <tt>convert-db</tt> tool.</p>
+
+<p>The following functions are available.  Note that all of the read/write
+functions (except <tt>get_file_version()</tt> and the raw read/write
+functions <tt>read_db()</tt>, <tt>write_db()</tt>, and <tt>getc_db()</tt>)
+share the property that they return 0 on success and -1 on error.</p>
+
+<dl>
+<dt><tt>int32 <b>get_file_version</b>(dbFILE *<i>f</i>)</tt></dt>
+    <dd>Retrieves the file version number from the given file.  Returns -1
+	if the file version could not be read.</dd>
+
+<dt><tt>int <b>write_file_version</b>(dbFILE *<i>f</i>, int32 <i>filever</i>)</tt></dt>
+    <dd>Writes the specified file version number to the file.  Returns 0
+	on success, -1 on failure.</dd>
+
+<dt><tt>dbFILE *<b>open_db</b>(const char *<i>filename</i>, const char *<i>mode</i>, int32 <i>version</i>)</tt></dt>
+    <dd>Opens the given file for reading (<tt><i>mode</i>=="r"</tt>) or
+	writing (<tt><i>mode</i>=="w"</tt>), returning the <tt>dbFILE</tt>
+	structure pointer on success, <tt>NULL</tt> on failure.  When
+	opening a file for writing, the actual file created is a temporary
+	file whose name is the given filename with "<tt>.new</tt>"
+	appended; when <tt>close_db()</tt> is called, the <tt>rename()</tt>
+	system call is used to overwrite any existing file with this
+	temporary file.  This ensures that a valid copy of the file will
+	remain on disk even if the writing process is interrupted for some
+	reason.  The <tt><i>version</i></tt> parameter is used only when
+	opening a file for writing, and is automatically written to the
+	file using <tt><i>write_file_version()</i></tt>.</dd>
+
+<dt><tt>int <b>close_db</b>(dbFILE *<i>f</i>)</tt></dt>
+    <dd>Closes the given file.  If the file was open for writing, the
+	temporary file is renamed over the original (if any exists),
+	generating an error if the rename operation fails.  Returns 0 on
+	success, -1 on failure.</dd>
+
+<dt><tt>void <b>restore_db</b>(dbFILE *<i>f</i>)</tt></dt>
+    <dd>Closes the given file.  If the file was open for writing, removes
+	the temporary file, leaving the original file unchanged.  This
+	function never generates an error (errors returned from
+	<tt>fclose()</tt> are ignored), and preserves the value of
+	<tt>errno</tt>.</dd>
+
+<dt><tt>int <b>read_db</b>(dbFILE *<i>f</i>, void *<i>buf</i>, size_t <i>len</i>)</tt></dt>
+    <dd>Reads the specified number of bytes from the file into
+	<tt><i>buf</i></tt>, returning the number of bytes successfully
+	read or -1 on error.  Implemented as a macro in <tt>fileutil.h</tt>.</dd>
+
+<dt><tt>int <b>write_db</b>(dbFILE *<i>f</i>, const void *<i>buf</i>, size_t <i>len</i>)</tt></dt>
+    <dd>Writes the specified number of bytes from <tt><i>buf</i></tt> into
+	the file, returning the number of bytes successfully written or -1
+	on error.  Implemented as a macro in <tt>fileutil.h</tt>.</dd>
+
+<dt><tt>int <b>getc_db</b>(dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads a single byte from the file, returning the byte's value on
+	success, -1 on error.  Implemented as a macro in
+	<tt>fileutil.h</tt>.</dd>
+
+<dt><tt>int <b>read_int8</b>(int8 *ret, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads an 8-bit integer from the file, storing it in the location
+	pointed to by <tt><i>ret</i></tt>.  Returns 0 on success, -1 on
+	failure.</dd>
+
+<dt><tt>int <b>read_uint8</b>(uint8 *ret, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads an unsigned 8-bit integer from the file.  Identical in
+	behavior to <tt>read_int8()</tt>; this function is provided to
+	avoid signed/unsigned type conversion warnings when compiling.</dd>
+
+<dt><tt>int <b>write_int8</b>(int8 val, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Writes the given 8-bit integer to the file.  Returns 0 on success,
+	-1 on failure.</dd>
+
+<dt><tt>int <b>read_int16</b>(int16 *ret, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads a 16-bit integer from the file, storing it in the location
+	pointed to by <tt><i>ret</i></tt>.  Returns 0 on success, -1 on
+	failure.</dd>
+
+<dt><tt>int <b>read_uint16</b>(uint16 *ret, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads an unsigned 16-bit integer from the file.  Identical in
+	behavior to <tt>read_int16()</tt>.</dd>
+
+<dt><tt>int <b>write_int16</b>(int16 val, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Writes the given 16-bit integer to the file.  Returns 0 on success,
+	-1 on failure.</dd>
+
+<dt><tt>int <b>read_int32</b>(int32 *ret, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads a 32-bit integer from the file, storing it in the location
+	pointed to by <tt><i>ret</i></tt>.  Returns 0 on success, -1 on
+	failure.</dd>
+
+<dt><tt>int <b>read_uint32</b>(uint32 *ret, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads an unsigned 32-bit integer from the file.  Identical in
+	behavior to <tt>read_int32()</tt>.</dd>
+
+<dt><tt>int <b>write_int32</b>(int32 val, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Writes the given 32-bit integer to the file.  Returns 0 on success,
+	-1 on failure.</dd>
+
+<dt><tt>int <b>read_time</b>(time_t *ret, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads a timestamp value from the file, storing it in the location
+	pointed to by <tt><i>ret</i></tt>.  Returns 0 on success, -1 on
+	failure.  Timestamp values are always stored using 64 bits,
+	regardless of the size of the <tt>time_t</tt> type.</dd>
+
+<dt><tt>int <b>write_time</b>(time_t val, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Writes the given timestamp value to the file.  Returns 0 on
+	success, -1 on failure.</dd>
+
+<dt><tt>int <b>read_ptr</b>(void **ret, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads a pointer value from the file, storing it in the location
+	pointed to by <tt><i>ret</i></tt>.  The value will be either
+	<tt>NULL</tt> or an arbitrary non-<tt>NULL</tt> value.  Returns 0
+	on success, -1 on failure.  <i>Implementation note: This function
+	and its complement, <tt>write_ptr()</tt>, are included only for use
+	by the <tt>database/version4</tt> module and the <tt>convert-db</tt>
+	tool, which actually do have to deal with pointers written in this
+	way.</i></dd>
+
+<dt><tt>int <b>write_ptr</b>(const void *ptr, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Writes the given pointer value to the file.  The actual pointer
+	itself is not stored, only a flag indicating whether the pointer is
+	<tt>NULL</tt> or not.  Returns 0 on success, -1 on failure.</dd>
+
+<dt><tt>int <b>read_string</b>(char **ret, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads a string from the file, allocating memory for the string
+	using <tt>malloc()</tt> and storing a pointer to the string in the
+	location pointed to by <tt><i>ret</i></tt>.  Note that the value
+	stored may be <tt>NULL</tt>.  Returns 0 on success, -1 on
+	failure.</dd>
+
+<dt><tt>int <b>write_string</b>(const char *s, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Writes the given string (which may be <tt>NULL</tt>) to the file.
+	The string must be no longer than 65,534 bytes (if longer, the
+	value written will be silently truncated).  Returns 0 on success,
+	-1 on failure.</dd>
+
+<dt><tt>int <b>read_buffer</b>(<i>buf</i>, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Reads the given buffer (assumed to be declared as, <i>e.g.</i>,
+	a <tt>char</tt> array) from the file.  Returns 0 on success, -1 on
+	failure.  Implemented as a macro in <tt>fileutil.h</tt>.</dd>
+
+<dt><tt>int <b>write_buffer</b>(<i>buf</i>, dbFILE *<i>f</i>)</tt></dt>
+    <dd>Writes the given buffer (assumed to be declared as, <i>e.g.</i>,
+	a <tt>char</tt> array) to the file.  Returns 0 on success, -1 on
+	failure.  Implemented as a macro in <tt>fileutil.h</tt>.</dd>
+</dl>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+
+<h4 class="subsubsection-title" id="s5-2">6-5-2. <tt>extsyms.c</tt>, <tt>extsyms.h</tt></h4>
+
+<p><tt>extsyms.c</tt> and <tt>extsyms.h</tt> are used by the
+<tt>database/version4</tt> module to import external symbols from other
+modules which may not be loaded when the <tt>version4</tt> module is
+initialized.  The <tt>version4</tt> module makes use of a number of
+functions and variables from the various pseudoclient modules, and adding
+code at every use to check whether the appropriate module is loaded and
+look up the symbol would only further complicate already complex code.  For
+this reason, the actual work of looking up the symbols is done in
+<tt>extsyms.c</tt>, and <tt>extsyms.h</tt> provides redefinition macros to
+allow the <tt>version4</tt> module to be written as if the functions and
+variables were already present.</p>
+
+<p>The actual work of looking up and accessing (for values) or calling (for
+functions) the external symbols is implemented by the <tt>IMPORT_FUNC()</tt>,
+<tt>IMPORT_VAR()</tt>, and <tt>IMPORT_VAR_MAYBE()</tt> macros defined in
+<tt>extsyms.c</tt>.  These macros all have the same basic format: they
+define a variable of the form <tt>__dblocal_<i>symbol</i>_ptr</tt> to hold
+the value of the symbol (the address of the function or variable), followed
+by a function which looks up the symbol's value if it is not yet known,
+then accesses or calls it.  (Module pointers are likewise cached in
+file-local variables, declared separately.)  If the symbol or its module
+cannot be found, the local routine <tt>fatal_no_symbol()</tt> is called to
+abort the program, except for <tt>IMPORT_VAR_MAYBE()</tt>, in which case a
+default value is returned from the accessing function if the symbol is not
+available.</p>
+
+<p>The logic for accessing an external variable is simple; a reference to
+the variable is translated by macros in <tt>extsyms.h</tt> into a call to
+the function defined by <tt>IMPORT_VAR()</tt> or <tt>IMPORT_VAR_MAYBE()</tt>
+(whose name has the format <tt>__dblocal_get_<i>variable</i>()</tt>), which
+accesses the variable's value through the pointer obtained from looking up
+the symbol and returns it.  The function's declaration uses the GCC
+<tt>typeof()</tt> built-in operator to give the function's return value, as
+well as the cache variable for the symbol value, the same type as the
+variable itself.</p>
+
+<p>Calling an external function is a more complex task, due to the fact
+that functions can take parameters or not and can return or not return a
+value.  Rather than explicitly writing out the symbol access functions for
+each external function accessed, <tt>extsyms.c</tt> makes use of a GCC
+feature which allows a function to call another function, passing along
+the same parameters passed to the parent function, and return its return
+value without knowing anything about either the parameters or the type of
+return value.  This feature is the builtin apply/return code, which takes
+the general form:</p>
+
+<div class="code">__builtin_return(__builtin_apply(
+        <i>function_pointer</i>,
+        __builtin_apply_args(),
+        <i>parameter_buffer_size</i>))</div>
+
+<p>where <tt><i>function_pointer</i></tt> is a pointer to the function to
+be called, and <tt><i>parameter_buffer_size</i></tt> is the maximum amount
+of stack space expected to be used by the parameters to the function, if
+any.  If this feature is not available, for example because a compiler
+other than GCC is in use, then the code tries to use another
+(assembly-based) algorithm to accomplish the same thing if possible, or
+generates a compilation error if no such substitute algorithm is
+available.</p>
+
+<p>However, the use of the <tt>__builtin_apply()</tt> GCC feature in
+Services has, over the course of Services' development, revealed a few bugs
+in the implementation of that feature; as such, Services must sometimes
+resort to an assembly-based algorithm even when using GCC.  The necessity
+of this is indicated by the preprocessor macro <tt>NEED_GCC3_HACK</tt>,
+which is set by the <tt>configure</tt> script if it detects that this
+workaround is required.  The bugs which have been discovered are:</p>
+
+<ul>
+<li class="spaced">The generated code can access the wrong area of memory
+	when setting up the stack for the called function
+	(<a href="http://gcc.gnu.org/bugzilla/show_bug.cgi?id=8028">GCC
+	Bugzilla bug 8028</a>
+	<span class="remotehost">[gcc.gnu.org]</span>).</li>
+<li class="spaced">The generated code can fail to pass through the called
+	function's return value
+	(<a href="http://gcc.gnu.org/bugzilla/show_bug.cgi?id=11151">GCC
+	Bugzilla bug 11151</a>
+	<span class="remotehost">[gcc.gnu.org]</span>).</li>
+<li class="spaced">A function calling <tt>__builtin_apply()</tt> can
+	behave incorrectly if inlined in another function.
+	(<a href="http://gcc.gnu.org/bugzilla/show_bug.cgi?id=20076">GCC
+	Bugzilla bug 20076</a>
+	<span class="remotehost">[gcc.gnu.org]</span>).  This is not
+	directly relevant to <tt>extsyms.c</tt>, but caused problems at
+	one time in the <tt>configure</tt> script.</li>
+</ul>
+
+<p>Finally, in order to avoid cached pointers going stale when a module is
+unloaded, <tt>extsyms.c</tt> includes a callback function for the
+"<tt>unload&nbsp;module</tt>" callback, which clears out all cached
+pointers for a module when the module is unloaded.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="5.html">Previous section: IRC server interface</a> | 
+<a href="index.html">Table of Contents</a> |
+<a href="7.html">Next section: Services pseudoclients</a></p>
+
+</body>
+</html>

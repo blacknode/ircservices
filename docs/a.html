@@ -1,0 +1,2549 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services Manual - Appendix A. List of all configuration directives</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>Appendix A. List of all configuration directives</h2>
+
+<p>A-1. <a href="#1">Core configuration directives
+	(<tt>ircservices.conf</tt>)</a>
+<br>A-2. <a href="#2">Module configuration directives
+	(<tt>modules.conf</tt>)</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#protocol/(insert_protocol_name_here)">protocol/*</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#encryption/md5">encryption/md5</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#mail/main">mail/main</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#mail/sendmail">mail/sendmail</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#mail/smtp">mail/smtp</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#operserv/main">operserv/main</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#operserv/akill">operserv/akill</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#operserv/news">operserv/news</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#operserv/sessions">operserv/sessions</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#operserv/sline">operserv/sline</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#nickserv/main">nickserv/main</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#nickserv/access">nickserv/access</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#nickserv/autojoin">nickserv/autojoin</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#nickserv/link">nickserv/link</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#nickserv/mail-auth">nickserv/mail-auth</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#chanserv/main">chanserv/main</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#memoserv/main">memoserv/main</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#memoserv/forward">memoserv/forward</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#memoserv/ignore">memoserv/ignore</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#statserv/main">statserv/main</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#httpd/main">httpd/main</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#httpd/auth-ip">httpd/auth-ip</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#httpd/auth-password">httpd/auth-password</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#httpd/dbaccess">httpd/dbaccess</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#httpd/debug">httpd/debug</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#httpd/redirect">httpd/redirect</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#httpd/top-page">httpd/top-page</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#misc/devnull">misc/devnull</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#misc/helpserv">misc/helpserv</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#misc/xml-export">misc/xml-export</a>
+<br>&nbsp;&nbsp;&nbsp;&nbsp;<a href="#misc/xml-import">misc/xml-import</a>
+<p align=right><font size=-1><a href=index.html>Table of Contents</a></font>
+
+
+<p><hr>
+
+<a name=1></a>
+<h2 align=center>Core configuration directives
+	(<tt>ircservices.conf</tt>)</h2>
+
+
+<p><hr width="60%">
+
+<h3 align=center>Configuration file control</h3>
+
+<p><hr width="60%">
+
+<a name="IncludeFile"></a>
+<p><ul><li>
+<tt><b>IncludeFile</b> <i>filename</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Specifies another file from which to read configuration directives.
+The file is processed as if its contents were included in place of
+the IncludeFile directive.  If a relative pathname is given, it is
+relative to the Services data directory.  This directive may be used
+in both ircservices.conf and modules.conf.
+
+<p>Note that IncludeFile directives may only be nested to a depth of
+100 levels, in order to prevent infinite loops.
+
+<p>Example: <tt>IncludeFile     "local.conf"</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Remote server configuration</h3>
+
+<p><hr width="60%">
+
+<a name="RemoteServer"></a>
+<p><ul><li>
+<tt><b>RemoteServer</b> <i>hostname</i> <i>port</i> <i>password</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the remote server hostname and port.  The hostname may be
+either a standard Internet hostname or dotted-quad numeric address;
+the port number must be an integer between 1 and 65535 inclusive.
+The password is a string which should be enclosed in double quotes
+if it contains any spaces (or just for clarity).  Make sure to
+uncomment the directive (remove the leading "#") before running
+Services.
+
+<p>The remote server and port may be overridden at runtime with the
+-remote command-line option.  The password may not be set at runtime.
+
+<p>Example: <tt>RemoteServer    127.0.0.1 6667 "password"</tt>
+</ul>
+
+<a name="LocalAddress"></a>
+<p><ul><li>
+<tt><b>LocalAddress</b> <i>hostname</i> [<i>port</i>]</tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Specifies the local address to bind to before connecting to the
+remote server.  This may be useful on multihomed hosts.  The hostname
+and port number are specified the same way as with the RemoteServer
+directive.  If this is not specified, Services will let the operating
+system choose the local address.  If only a hostname is specified,
+Services will bind to that address but let the operating system
+choose the local port number.
+
+<p>If you don't know what this means or don't need to use it, just leave
+the directive commented out.
+
+<p>Example: <tt>LocalAddress    host.name.here</tt>
+<br>Example: <tt>LocalAddress    host.name.here 6677</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Services identification</h3>
+
+<p><hr width="60%">
+
+<a name="ServerName"></a>
+<p><ul><li>
+<tt><b>ServerName</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the IRC server name which Services should use when it
+connects to the network.
+
+<p>Example: <tt>ServerName      "services.example.net"</tt>
+</ul>
+
+<a name="ServerDesc"></a>
+<p><ul><li>
+<tt><b>ServerDesc</b> <i>text</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the text which should appear as the server's information in
+/whois and similar queries.
+
+<p>Example: <tt>ServerDesc      "Services for IRC Networks"</tt>
+</ul>
+
+<a name="ServiceUser"></a>
+<p><ul><li>
+<tt><b>ServiceUser</b> <i>usermask</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the user@host mask which should be used by the Services
+pseudoclients.
+
+<p>Example: <tt>ServiceUser     "services@example.net"</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Unix group and umask to use</h3>
+
+<p><hr width="60%">
+
+<a name="RunGroup"></a>
+<p><ul><li>
+<tt><b>RunGroup</b> <i>group</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Specify the group which Services should run as.  <tt><i>group</i></tt> can be
+either a group name or an equals sign ("=") followed by a group ID.
+If not specified, Services will use the group ID it is started with.
+Note that Unix setgid permission on the executable file will do the
+same thing, but the setgid permission bit is cleared whenever the
+file is modified, while this setting will always be used (if the
+system permits it) when Services is started.
+
+<p>Example: <tt>RunGroup        services</tt>
+<br>Example: <tt>RunGroup        =65534    # A common value for the "nogroup" group</tt>
+</ul>
+
+<a name="Umask"></a>
+<p><ul><li>
+<tt><b>Umask</b> <i>umask</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the umask (file creation mask) for Services.  This mask is
+applied to all data files created by Services, including database
+files (which are recreated on every database update) and the process
+ID file (PIDFilename, below), and indicates which file permission
+bits are NOT to be set on those files as an octal value.  Common
+values are given in the examples below.  If not specified, the umask
+in place when Services is started will be used.
+
+<p>Example: <tt>Umask           077     # Disallows access to all but file owner
+                        #    (recommended when RunGroup is not set)</tt>
+<br>Example: <tt>Umask           007    # Allows access to members of file group as well
+                        #    (recommended when RunGroup is set)</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Services data filenames</h3>
+
+<p><hr width="60%">
+
+<p>NOTE: All filenames are relative to the Services data directory.
+
+<a name="LogFilename"></a>
+<p><ul><li>
+<tt><b>LogFilename</b> <i>filename</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the name of the file into which Services will log data.
+May be overridden by the -log command-line option.  If this name
+contains "%y", "%m", or "%d", they will be replaced by the current
+year, month, or day, respectively, and the logfile will be
+automatically rotated as needed when the date changes.
+
+<p>Example: <tt>LogFilename     ircservices.log</tt>
+</ul>
+
+<a name="PIDFilename"></a>
+<p><ul><li>
+<tt><b>PIDFilename</b> <i>filename</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the name of the file containing Services' process ID.
+Note that if you change this filename, and you are using the
+"ircservices-chk" crontab script provided with Services, you will
+need to change the filename in that file as well.
+
+<p>Example: <tt>PIDFilename     ircservices.pid</tt>
+</ul>
+
+<a name="MOTDFilename"></a>
+<p><ul><li>
+<tt><b>MOTDFilename</b> <i>filename</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the name of the Message of the Day file.
+
+<p>Example: <tt>MOTDFilename    ircservices.motd</tt>
+</ul>
+
+<a name="LockFilename"></a>
+<p><ul><li>
+<tt><b>LockFilename</b> <i>filename</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the name of the data directory lock file.  This file is
+created in the data directory when Services begins updating
+databases, and is removed after the databases are updated.  If the
+file already exists when Services tries to update the databases,
+Services sends a warning (via wallops) and does not write any data.
+
+<p>Example: <tt>LockFilename    .lock</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Basic functionality</h3>
+
+<p><hr width="60%">
+
+<a name="NoBouncyModes"></a>
+<p><ul><li>
+<tt><b>NoBouncyModes</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Normally, Services will check for the remote IRC server reversing its
+mode changes, and issue a warning (and stop changing modes) if it
+detects such a problem.  However, the detection will sometimes
+trigger even when there is no problem, thus preventing channel
+mode-locks and other features from working.  If you specify this
+directive, Services will not check for mode bouncing, which can avoid
+this problem if you know your servers are set up correctly.
+
+<p>WARNING: setting this option when your servers are incorrectly
+configured can result in flooding!
+
+<p>Example: <tt>NoBouncyModes</tt>
+</ul>
+
+<a name="NoSplitRecovery"></a>
+<p><ul><li>
+<tt><b>NoSplitRecovery</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Disables Services' recognition of users returning from netsplits.
+Normally (on networks with some sort of timestamp support in the IRC
+server), Services will check via the timestamp field whether a user
+is the same as the last user who identified for the nick, and allow
+the user access to that nick without requiring identification again
+if the timestamps match.  Enabling this directive will force all
+users to re-identify after a netsplit.
+
+<p>It's generally easier on users to leave this disabled, but if you
+suspect one of your servers has been hacked to send false timestamps
+(or you suspect a bug in Services itself) enabling this directive
+will eliminate the possibility of one user "stealing" another's nick
+by pretending to have the same timestamp.
+
+<p>You may also want to uncomment this directive if your servers' clocks
+are very far apart; the less synchronized the servers' clocks are,
+the greater the possibility of someone "taking over" another person's
+nick when a server with a fast clock splits.
+
+<p>NOTE: On DALnet 4.4.15+, Dreamforge, Bahamut, Unreal, and compatible
+networks, Services takes advantage of an IRC server feature to assign
+each user a permanent ID number, which significantly enhances the
+security of this check.  On such networks, you should almost always
+leave this directive commented out.  See section 3-1-2 of the manual
+for details.
+
+<p>Example: <tt>NoSplitRecovery</tt>
+</ul>
+
+<a name="StrictPasswords"></a>
+<p><ul><li>
+<tt><b>StrictPasswords</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>When enabled, causes Services to perform more stringent checks on
+passwords.  If this is disabled, Services will only disallow a
+password if it is the same as the entity (nickname or channel name)
+with which it is associated.  When enabled, however, Services will
+also check that the password is at least five characters long, and
+disallow it if not.
+
+<p>Example: <tt>StrictPasswords</tt>
+</ul>
+
+<a name="NoAdminPasswordCheck"></a>
+<p><ul><li>
+<tt><b>NoAdminPasswordCheck</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, allows Services administrators to set any password
+for a nickname or channel (including their own), bypassing all of
+the password checks.  When disabled, Services administrators are
+subject to the same password checks as ordinary users.
+
+<p>Example: <tt>NoAdminPasswordCheck</tt>
+</ul>
+
+<a name="BadPassLimit"></a>
+<p><ul><li>
+<tt><b>BadPassLimit</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the number of invalid password tries before Services removes a
+user from the network.  If a user enters <tt><i>count</i></tt> invalid passwords
+for any Services function or combination of functions during a
+single IRC session (subject to BadPassTimeout, below), Services will
+issue a /KILL for the user.  If not given, Services will ignore
+failed password attempts (though they will be logged in any case).
+Note that entering a correct password will <i>not</i> reset this count.
+
+<p>Example: <tt>BadPassLimit    5</tt>
+</ul>
+
+<a name="BadPassTimeout"></a>
+<p><ul><li>
+<tt><b>BadPassTimeout</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the time after which invalid passwords are forgotten about.  If
+a user does not enter any incorrect passwords in this amount of time,
+the incorrect password count will reset to zero.  If not given, the
+timeout will be disabled, and the incorrect password count will never
+be reset until the user disconnects.
+
+<p>Example: <tt>BadPassTimeout  1h</tt>
+</ul>
+
+<a name="BadPassWarning"></a>
+<p><ul><li>
+<tt><b>BadPassWarning</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the number of bad passwords <i>for a single nick or channel</i> that
+will be accepted before a warning is sent using WALLOPS/GLOBOPS.  If
+not given, no warnings will be sent.
+
+<p>Example: <tt>BadPassWarning  5</tt>
+</ul>
+
+<a name="IgnoreDecay"></a>
+<p><ul><li>
+<tt><b>IgnoreDecay</b> <i>rate</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Services keeps track of an "ignore level" for each user, based on how
+often the user sends commands to Services and how long those commands
+take to execute; this directive specifies how quickly that level
+returns to zero when the user idles.  The parameter is the number of
+seconds (possibly including a fractional part, like "0.5") it takes
+for the ignore level to drop by half.
+
+<p>If either this directive or IgnoreThreshold is not given, the ignore
+code is disabled.
+
+<p>Example: <tt>IgnoreDecay     5</tt>
+</ul>
+
+<a name="IgnoreThreshold"></a>
+<p><ul><li>
+<tt><b>IgnoreThreshold</b> <i>level</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>This directive specifies the ignore level at which Services decides
+that a user is flooding Services and ignores that user.
+
+<p>If either this directive or IgnoreDecay is not given, the ignore code
+is disabled.
+
+<p>Example: <tt>IgnoreThreshold 0.1</tt>
+</ul>
+
+<a name="UpdateTimeout"></a>
+<p><ul><li>
+<tt><b>UpdateTimeout</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the delay between automatic database updates.  This timer is
+reset by the OperServ UPDATE command.
+
+<p>Example: <tt>UpdateTimeout   5m</tt>
+</ul>
+
+<a name="WarningTimeout"></a>
+<p><ul><li>
+<tt><b>WarningTimeout</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the interval between sending warning messages for program
+errors via WALLOPS/GLOBOPS.
+
+<p>Example: <tt>WarningTimeout  4h</tt>
+</ul>
+
+<a name="ReadTimeout"></a>
+<p><ul><li>
+<tt><b>ReadTimeout</b> <i>seconds</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the timeout period for reading from the network; this is the
+length of time Services will wait to receive data from an external
+source if none is available before proceeding with other actions,
+such as timeout checking.  Note that the parameter is a number of
+seconds, not a "time"; it may also include a fractional part, such as
+"0.5".
+
+<p>This value also influences the period between timeout checks; see the
+TimeoutCheck directive below.
+
+<p>Example: <tt>ReadTimeout     3</tt>
+</ul>
+
+<a name="TimeoutCheck"></a>
+<p><ul><li>
+<tt><b>TimeoutCheck</b> <i>seconds</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the (maximum) frequency at which the timeout list is checked.
+This, combined with ReadTimeout above, determine how accurately timed
+events, such as nick kills, occur; it also determines how much CPU
+time Services will use doing this.  Higher values will cause less
+accurate timing but less CPU usage.  Note that the parameter is a
+number of seconds, not a "time", and may include a fractional part.
+
+<p>This shouldn't be set any higher than 10 seconds, and 1 second or
+less is best if your system is powerful enough (or your network small
+enough) to handle it.  0 will cause the timeout list to be checked
+every time through the main loop, which provides the most accurate
+timeout response but may require too much processing on large
+networks.
+
+<p>Note that if this value is smaller than ReadTimeout (above), then the
+delay between checks of the timeout list may exceed the value given
+here during periods of little or no network activity.
+
+<p>Example: <tt>TimeoutCheck    1.0</tt>
+</ul>
+
+<a name="PingFrequency"></a>
+<p><ul><li>
+<tt><b>PingFrequency</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the time after which Services sends a PING message to its uplink
+if no other network activity has occurred.  This can be useful if you
+have a low-activity network and your server keeps dropping Services'
+connection with "Ping timeout".  If not set, Services will not send
+PING messages.
+
+<p>Example: <tt>PingFrequency   30s</tt>
+</ul>
+
+<a name="MergeChannelModes"></a>
+<p><ul><li>
+<tt><b>MergeChannelModes</b> <i>seconds</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>WARNING:  This directive can have security implications; read
+carefully before enabling.
+
+<p>If this directive is given, it causes Services to not send out
+channel mode changes immediately, but to wait for the given number of
+seconds (which may be fractional) and collect all channel modes to
+send in a single command.  For example, if two users enter a channel
+at nearly the same time and both of them are to be opped, instead of
+sending two MODE +o commands, Services will send a single MODE +oo
+command.  This option can help with large channels in reducing mode
+floods, particularly when Services first connects or a server
+reconnects after a split; however, the sending of the mode command
+will be slightly delayed, so that the users will have to wait a short
+time before getting chanop privileges.  Furthermore, since this
+increases the time before deops, etc. occur, users can take advantage
+of netsplits to "steal ops" for a short time before Services responds.
+
+<p>Services will never send out more than six parameters with each MODE
+command (this limit is part of the IRC protocol specification).  If
+more than six +o, +v, etc. modes are to be sent, Services will send
+them out six at a time without waiting for the timeout given with
+this directive.  Also, if more than MERGE_CHANMODE_SLOTS (defined in
+defs.h; default 3) channels receive modes before the timeout expires,
+those modes will similarly be sent out at that time.
+
+<p>Note that the actual sending of the MODE command may be delayed by as
+much as the TimeoutCheck value; if you use this option, then in
+general you should set TimeoutCheck to the same (or a smaller) value.
+Also, on networks with little traffic there may be an additional
+delay up to the value of ReadTimeout before the modes are sent.
+
+<p>If this option is not set, Services will still collect all mode changes
+resulting from a single event (such as a user joining a channel) and
+send them in a single message as soon as the event processing finishes.
+
+<p>Example: <tt>MergeChannelModes 0.5</tt>
+</ul>
+
+<a name="NetBufferSize"></a>
+<p><ul><li>
+<tt><b>NetBufferSize</b> <i>total-size</i> [<i>per-connection-size</i>]</tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the maximum amount of memory used by network connection buffers.
+If a second parameter is given, it sets the maximum amount of memory
+used by a single connection; if not given, this defaults to the same
+as the total limit.
+
+<p>Example: <tt>NetBufferSize   4194304 1048576  # 4MB and 1MB</tt>
+</ul>
+
+<a name="NetBufferLimit"></a>
+<p><ul><li>
+<tt><b>NetBufferLimit</b> <i>inactive-limit</i> [<i>ignore-limit</i>]</tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the threshold at which Services sends a "busy" reply to PRIVMSGs
+(<tt><i>inactive-limit</i></tt>) and at which Services ignores PRIVMSGs entirely
+(<tt><i>ignore-limit</i></tt>).  Both thresholds apply to non-operator users only;
+PRIVMSGs from IRC operators will always be processed normally.  A
+WALLOPS/GLOBOPS message will be sent when Services exceeds or drops
+below either of the thresholds.  If the thresholds are set to the
+same value, "busy" messages will never be sent.
+
+<p>The thresholds are expressed as percentages of the value(s) given for
+NetBufferSize above.  If both a total size limit and a per-connection
+size limit are specified, the higher of the two percentages is
+checked against these thresholds.
+
+<p>If NetBufferSize is not specified, NetBufferLimit has no effect.
+
+<p>Example: <tt>NetBufferLimit  80 95</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Miscellaneous settings</h3>
+
+<p><hr width="60%">
+
+<p>These are settings which don't belong anywhere else, or which would
+be module settings but apply to multiple modules.
+
+<a name="EncryptionType"></a>
+<p><ul><li>
+<tt><b>EncryptionType</b> <i>type</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Specifies the type of encryption to be used when storing new
+passwords.  Changing this has no effect on passwords previously set.
+If not specified, new passwords will not be encrypted.
+
+<p>Example: <tt>EncryptionType  md5</tt>
+</ul>
+
+<a name="GuestNickPrefix"></a>
+<p><ul><li>
+<tt><b>GuestNickPrefix</b> <i>value</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the nickname prefix used when Services changes a user's
+nickname (for example, from the "NSForceNickChange" NickServ option).
+A unique series of digits will be appended to this string to form the
+new nickname.  This option is ignored for IRC servers which do not
+allow remote clients' nicknames to be forcibly changed, but it must
+be set to something anyway.
+
+<p>Example: <tt>GuestNickPrefix "Guest"</tt>
+</ul>
+
+<a name="RejectEmail"></a>
+<p><ul><li>
+<tt><b>RejectEmail</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Specifies E-mail addresses (which may include wildcards) which are
+not allowed to be used in nickname or channel registration.  This
+directive can be given multiple times to disallow multiple addresses
+or address masks.
+
+<p>Example: <tt>RejectEmail     *@example.com</tt>
+</ul>
+
+<a name="DefTimeZone"></a>
+<p><ul><li>
+<tt><b>DefTimeZone</b> <i>time-zone</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the time zone to be used for displaying the time of day with
+certain commands, such as NickServ INFO.  If not given, the system's
+default time zone (the value of the TZ environment variable) is used.
+<tt><i>time-zone</i></tt> is the name of the time zone to be used; consult your
+system manual for how time zone names are specified on your system.
+Note that users can set time zones for their own nicknames
+independently; this setting is only used as a default.  The
+following example will cause Services to use United States Pacific
+time on most systems:
+
+<p>Example: <tt>DefTimeZone     PST8PDT</tt>
+</ul>
+
+<a name="ListMax"></a>
+<p><ul><li>
+<tt><b>ListMax</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the maximum number of nicks to be returned for commands
+that return a list of items, such as NickServ LIST and LISTEMAIL
+or OperServ AKILL LIST.
+
+<p>Example: <tt>ListMax         50</tt>
+</ul>
+
+<a name="LogMaxUsers"></a>
+<p><ul><li>
+<tt><b>LogMaxUsers</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes Services to write a message to the log every time a new
+user maximum is reached.
+
+<p>Example: <tt>LogMaxUsers</tt>
+</ul>
+
+<a name="EnableGetpass"></a>
+<p><ul><li>
+<tt><b>EnableGetpass</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Allows use of the NickServ and ChanServ GETPASS commands.
+
+<p>Example: <tt>EnableGetpass</tt>
+</ul>
+
+<a name="WallAdminPrivs"></a>
+<p><ul><li>
+<tt><b>WallAdminPrivs</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes Services to send a WALLOPS/GLOBOPS whenever a Services
+administrator uses those privileges to perform a NickServ or
+ChanServ operation (such as setting a nickname or channel
+password).
+
+<p>Example: <tt>WallAdminPrivs</tt>
+</ul>
+
+<a name="LoadLanguageText"></a>
+<p><ul><li>
+<tt><b>LoadLanguageText</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Loads replacement text for language-specific strings from the given
+file.  Relative pathnames are relative to the Services data
+directory.  See <a href="3.html#9">section 3-9</a> of the manual for
+the file format.
+
+<p>Example: <tt>LoadLanguageText mytext.l</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Modules to load</h3>
+
+<p><hr width="60%">
+
+<a name="LoadModule"></a>
+<p><ul><li>
+<tt><b>LoadModule</b> module-name</tt>
+
+<p>Causes Services to load the specified module.
+
+<p>Example: <tt>LoadModule nickserv/main</tt>
+</ul>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=2></a>
+<h2 align=center>Module configuration directives
+	(<tt>modules.conf</tt>)</h2>
+
+<p><hr width="60%">
+
+<h3 align=center>Protocol module settings</h3>
+
+<p><hr width="60%">
+
+<p>Enter the protocol name here, then uncomment the appropriate directives.
+<a name="protocol/(insert_protocol_name_here)"></a>
+<p><font size="+1"><b>protocol/(insert protocol name here)</b></font>
+
+<a name="protocol/(insert_protocol_name_here).NetworkDomain"></a>
+<p><ul><li>
+<tt><b>NetworkDomain</b> domain</tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Protocols: bahamut, dalnet, dreamforge, monkey, ptlink, rfc1459,
+           trircd, ts8, undernet-p9
+
+<p>Specifies the common domain, if any, shared by all servers on
+your IRC network; this is required for global notices to function
+properly.  Make sure you do not include a "." before the domain
+name.  If you do not specify this, some or all users may not
+receive global notices.
+
+<p>Example: <tt>NetworkDomain   "example.net"</tt>
+</ul>
+
+<a name="protocol/(insert_protocol_name_here).ServerNumeric"></a>
+<p><ul><li>
+<tt><b>ServerNumeric</b> <i>numeric</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Protocols: unreal
+
+<p>Makes Services send a numeric to the remote server on connect.
+This must be a value between 1 and 254, and must not be in use by
+any other IRC server on the network.  If you do not want to use a
+numeric for Services, comment the directive out.
+
+<p>Example: <tt>ServerNumeric   1</tt>
+</ul>
+
+<a name="protocol/(insert_protocol_name_here).SetServerTimes"></a>
+<p><ul><li>
+<tt><b>SetServerTimes</b> [<i>time</i>]</tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Protocols: unreal
+
+<p>Causes Services to synchronize all servers' internal clocks with
+its own; this can help avoid potential problems with users
+improperly gaining chanops, particularly during netsplits.  If a
+time parameter is given, Services will repeatedly synchronize the
+servers clocks at that interval, otherwise synchronization will
+only be performed at startup.
+
+<p>Example: <tt>SetServerTimes</tt>
+<br>Example: <tt>SetServerTimes  12h</tt>
+</ul>
+
+<a name="protocol/(insert_protocol_name_here).CSSetChannelTime"></a>
+<p><ul><li>
+<tt><b>CSSetChannelTime</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Protocols: bahamut, monkey, trircd, unreal
+
+<p>When enabled, causes Services to set the "creation time" (the
+time at which the first user joined the channel) of a registered
+channel to the time at which the channel was registered.  This
+can help prevent spurious mode changes and "op hacking" when a
+split server reconnects to the network.  When using Unreal,
+however, the first user to join the channel when it is empty gets
+set -o and +o in quick succession due to limitations of the IRC
+server; if this bothers you, do not enable this option.  Also, some
+servers (such as Bahamut) generate server notices each time a
+channel's timestamp is changed, which can be safely ignored.
+
+<p>Example: <tt>CSSetChannelTime</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Database module configuration</h3>
+
+<p><hr width="60%">
+<a name="database/standard"></a>
+<p><font size="+1"><b>database/standard</b></font>
+
+<p>This module has no configurable settings.
+<a name="database/version4"></a>
+<p><font size="+1"><b>database/version4</b></font>
+
+<a name="database/version4.NickServDB"></a>
+<p><ul><li>
+<tt><b>NickServDB</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the filename used for the registered nickname databases.
+
+<p>Example: <tt>NickServDB      "nick.db"</tt>
+</ul>
+
+<a name="database/version4.ChanServDB"></a>
+<p><ul><li>
+<tt><b>ChanServDB</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the filename used for the registered channel databases.
+
+<p>Example: <tt>ChanServDB      "chan.db"</tt>
+</ul>
+
+<a name="database/version4.OperServDB"></a>
+<p><ul><li>
+<tt><b>OperServDB</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the filename used for the OperServ database.
+
+<p>Example: <tt>OperServDB      "oper.db"</tt>
+</ul>
+
+<a name="database/version4.NewsDB"></a>
+<p><ul><li>
+<tt><b>NewsDB</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the filename used for the news database.
+
+<p>Example: <tt>NewsDB          "news.db"</tt>
+</ul>
+
+<a name="database/version4.AutokillDB"></a>
+<p><ul><li>
+<tt><b>AutokillDB</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the filename used for the autokill and autokill
+exclusion databases.
+
+<p>Example: <tt>AutokillDB      "akill.db"</tt>
+</ul>
+
+<a name="database/version4.ExceptionDB"></a>
+<p><ul><li>
+<tt><b>ExceptionDB</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the filename used for the session exception database.
+
+<p>Example: <tt>ExceptionDB     "exception.db"</tt>
+</ul>
+
+<a name="database/version4.SlineDB"></a>
+<p><ul><li>
+<tt><b>SlineDB</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the filename used for the SGline, SQline, and SZline
+databases.
+
+<p>Example: <tt>SlineDB         "sline.db"</tt>
+</ul>
+
+<a name="database/version4.StatServDB"></a>
+<p><ul><li>
+<tt><b>StatServDB</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the filename used for the StatServ server statistics
+database.
+
+<p>Example: <tt>StatServDB      "stats.db"</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Encryption module configuration</h3>
+
+<p><hr width="60%">
+
+<p>No encryption modules have any configurable settings.
+
+<p><hr width="60%">
+
+<h3 align=center>Encryption module configuration</h3>
+
+<p><hr width="60%">
+<a name="encryption/md5"></a>
+<p><font size="+1"><b>encryption/md5</b></font>
+
+<a name="encryption/md5.EnableAnopeWorkaround"></a>
+<p><ul><li>
+<tt><b>EnableAnopeWorkaround</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Enables a workaround for encrypted passwords imported from the
+Anope or Epona programs, which have a bug (inherited from an old
+version of Services) causing passwords to be incorrectly
+encrypted.
+
+<p>WARNING: Enabling this option may reduce the security of
+encrypted passwords!  If you need this option for importing an
+Anope or Epona database, it is recommended that you enable this
+only long enough to ensure that all users have used SET PASSWORD
+to reset their passwords (possibly to the same password).
+
+<p>Example: <tt>EnableAnopeWorkaround</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Mail module configuration</h3>
+
+<p><hr width="60%">
+<a name="mail/main"></a>
+<p><font size="+1"><b>mail/main</b></font>
+
+<a name="mail/main.FromAddress"></a>
+<p><ul><li>
+<tt><b>FromAddress</b> <i>email</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the E-mail address to be used on outgoing mail.  Make
+sure you enter the correct address here before uncommenting the
+directive.
+
+<p>Example: <tt>FromAddress     services@example.net</tt>
+</ul>
+
+<a name="mail/main.FromName"></a>
+<p><ul><li>
+<tt><b>FromName</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Specifies the "real name" to be used on outgoing mail.  Make sure
+to include quotes if this is a multi-word string.
+
+<p>Example: <tt>FromName        "ExampleNet Services"</tt>
+</ul>
+
+<a name="mail/main.MaxMessages"></a>
+<p><ul><li>
+<tt><b>MaxMessages</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Specifies the maximum number of messages that are permitted to be
+in transit simultaneously.  Attempts to send messages above this
+limit will be rejected with a "no resources" error.  If not
+given, no limit is enforced.
+
+<p>Example: <tt>MaxMessages     100</tt>
+</ul>
+
+<a name="mail/main.SendTimeout"></a>
+<p><ul><li>
+<tt><b>SendTimeout</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Specifies the amount of time Services will wait before aborting a
+mail message in the process of being sent.  If not specified,
+message sends will not time out.
+
+<p>Example: <tt>SendTimeout     1m</tt>
+</ul>
+<a name="mail/sendmail"></a>
+<p><font size="+1"><b>mail/sendmail</b> (Sendmail-based low-level module)</font>
+
+<a name="mail/sendmail.SendmailPath"></a>
+<p><ul><li>
+<tt><b>SendmailPath</b> <i>path</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the full path to the "sendmail" program to be used to
+send mail.  This program must accept a command-line option "-t"
+to extract recipient addresses from a mail message given on
+standard input (the standard "sendmail" program does this).
+The program will be executed with the same environment as
+Services itself is run with.
+
+<p>Example: <tt>SendmailPath    /usr/lib/sendmail</tt>
+</ul>
+<a name="mail/smtp"></a>
+<p><font size="+1"><b>mail/smtp</b> (SMTP-based low-level module)</font>
+
+<a name="mail/smtp.RelayHost"></a>
+<p><ul><li>
+<tt><b>RelayHost</b> <i>hostname</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the host to which all mail will be sent, e.g. your
+local mail server.  This directive may be given multiple times to
+specify backup servers; the servers will be tried in the order
+listed.
+
+<p>Example: <tt>RelayHost       mail.example.net</tt>
+</ul>
+
+<a name="mail/smtp.SMTPName"></a>
+<p><ul><li>
+<tt><b>SMTPName</b> <i>hostname</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the hostname Services will use in the HELO command to
+the remote server.  Normally, this should be set to the same as
+the hostname of the machine Services runs on.
+
+<p>Example: <tt>SMTPName        services.example.net</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>OperServ configuration</h3>
+
+<p><hr width="60%">
+<a name="operserv/main"></a>
+<p><font size="+1"><b>operserv/main</b></font>
+
+<a name="operserv/main.OperServName"></a>
+<p><ul><li>
+<tt><b>OperServName</b> <i>nick</i> <i>string</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the nickname (first parameter) and "real" name (second
+parameter) used by the OperServ pseudoclient.
+
+<p>Example: <tt>OperServName    "OperServ" "Operator Server"</tt>
+</ul>
+
+<a name="operserv/main.GlobalName"></a>
+<p><ul><li>
+<tt><b>GlobalName</b> <i>nick</i> <i>string</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the nickname (first parameter) and "real" name (second
+parameter) used by the global-noticer pseudoclient.  This client
+is used to send messages from the OperServ GLOBAL command and
+news messages.
+
+<p>Example: <tt>GlobalName      "Global" "Global Noticer"</tt>
+</ul>
+
+<a name="operserv/main.ServicesRoot"></a>
+<p><ul><li>
+<tt><b>ServicesRoot</b> <i>nick</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the Services "super-user".  The super-user, or "root" as
+in Unix terminology, is the only user who can add or delete
+Services admins.
+
+<p>This is commented out by default; make sure you insert the correct
+nick before uncommenting it.
+
+<p>Example: <tt>ServicesRoot    SuperUser</tt>
+</ul>
+
+<a name="operserv/main.KillClonesAutokill"></a>
+<p><ul><li>
+<tt><b>KillClonesAutokill</b> <i>expiry-time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Causes Services to add an autokill for hosts killed using the
+KILLCLONES command, to prevent the clients from immediately
+reconnecting.  The expiry-time parameter sets the expiry time for
+the autokill.
+
+<p>If the autokill module (operserv/akill) is not loaded, this
+directive has no effect.
+
+<p>Example: <tt>KillClonesAutokill 30m</tt>
+</ul>
+
+<a name="operserv/main.AllowRaw"></a>
+<p><ul><li>
+<tt><b>AllowRaw</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[DISCOURAGED]
+<p>Enables use of the OperServ RAW command.  This command can be
+used for testing IRC server features and other limited uses, but
+can also wreak havoc on a network if used improperly; use with
+extreme caution.
+
+<p>Example: <tt>AllowRaw</tt>
+</ul>
+
+<a name="operserv/main.WallOper"></a>
+<p><ul><li>
+<tt><b>WallOper</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes Services to send a WALLOPS/GLOBOPS when a user becomes an
+IRC operator.  Note that this can cause WALLOPS floods when
+Services first connects to the network.
+
+<p>Example: <tt>WallOper</tt>
+</ul>
+
+<a name="operserv/main.WallBadOS"></a>
+<p><ul><li>
+<tt><b>WallBadOS</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes Services to send a WALLOPS/GLOBOPS if a non-IRC-operator
+tries to use OperServ.
+
+<p>Example: <tt>WallBadOS</tt>
+</ul>
+
+<a name="operserv/main.WallOSChannel"></a>
+<p><ul><li>
+<tt><b>WallOSChannel</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Cause Services to send a WALLOPS/GLOBOPS on use of any of the
+MODE, KICK, CLEARMODES, and CLEARCHAN commands.
+
+<p>Example: <tt>WallOSChannel</tt>
+</ul>
+
+<a name="operserv/main.WallSU"></a>
+<p><ul><li>
+<tt><b>WallSU</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes Services to send a WALLOPS/GLOBOPS whenever a Services
+admin successfully obtains Services super-user privileges with
+the SU command.  Note that Services will always send a
+WALLOPS/GLOBOPS when an incorrect password is given to the SU
+command or a user without Services admin privileges attempts to
+use the SU command.
+
+<p>Example: <tt>WallSU</tt>
+</ul>
+<a name="operserv/akill"></a>
+<p><font size="+1"><b>operserv/akill</b> (Autokill module settings)</font>
+
+<a name="operserv/akill.AutokillReason"></a>
+<p><ul><li>
+<tt><b>AutokillReason</b> <i>reason</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>The reason to use when sending out KILLs for autokills and with
+the actual AKILL/GLINE commands.  Some servers show this reason
+to users if their connection is rejected because they match an
+autokill.  If you include a "%s" in the reason, it will be
+replaced by the reason given with the autokill itself.
+
+<p>Example: <tt>AutokillReason  "You are banned from this network"</tt>
+<br>Example: <tt>AutokillReason  "Autokilled: %s"</tt>
+</ul>
+
+<a name="operserv/akill.AutokillExpiry"></a>
+<p><ul><li>
+<tt><b>AutokillExpiry</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the default expiry time for autokills.  If not defined,
+autokills will not expire by default.
+
+<p>Example: <tt>AutokillExpiry  30d</tt>
+</ul>
+
+<a name="operserv/akill.AkillChanExpiry"></a>
+<p><ul><li>
+<tt><b>AkillChanExpiry</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the default expiry time for autokills added by an AKILLCHAN
+command.
+
+<p>Example: <tt>AkillChanExpiry 7d</tt>
+</ul>
+
+<a name="operserv/akill.OperMaxExpiry"></a>
+<p><ul><li>
+<tt><b>OperMaxExpiry</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the maximum expiry time usable by Services operators.  If
+not defined, Services operators can set any expiry time, just as
+Services administrators can.  If this is set to a value lower
+than AutokillExpiry or AkillChanExpiry, autokills entered without
+an expiry time will use this setting instead of the relevant
+default.
+
+<p>Example: <tt>OperMaxExpiry   7d</tt>
+</ul>
+
+<a name="operserv/akill.EnableExclude"></a>
+<p><ul><li>
+<tt><b>EnableExclude</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes autokill exclusions to be usable.  If not given, the
+EXCLUDE command will be unavailable, and any autokill
+exclusions previously added will be ignored.
+
+<p>NOTICE: On IRC servers without autokill exclusion functionality
+(such as that in trircd version 5), this will cause autokills to
+not be sent to the server; instead, Services will issue a KILL
+for each user that matches an autokill and does not match any
+autokill exclusions.  This is necessary to allow Services to
+apply exclusions to users before they are disconnected.
+
+<p>Example: <tt>EnableExclude</tt>
+</ul>
+
+<a name="operserv/akill.ExcludeReason"></a>
+<p><ul><li>
+<tt><b>ExcludeReason</b> <i>reason</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED if EnableExclude set]
+<p>The reason to use when sending out EXCLUDE commands on servers
+which support them.  If you include a "%s" in the reason, it will
+be replaced by the reason given with the exclusion itself.
+
+<p>Example: <tt>ExcludeReason  "IRC operator host"</tt>
+<br>Example: <tt>ExcludeReason  "Excluded from autokills: %s"</tt>
+</ul>
+
+<a name="operserv/akill.ExcludeExpiry"></a>
+<p><ul><li>
+<tt><b>ExcludeExpiry</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the default expiry time for autokill exclusions.  If not
+defined, autokill exclusions will not expire by default.
+
+<p>Example: <tt>ExcludeExpiry   30d</tt>
+</ul>
+
+<a name="operserv/akill.ImmediatelySendAutokill"></a>
+<p><ul><li>
+<tt><b>ImmediatelySendAutokill</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes OperServ to inform all servers of a new autokill the
+moment it is added, rather than waiting for someone to match it
+first.  (Note that autokill exclusions are always sent to the
+server immediately; this is to avoid an autokill being triggered
+by a non-excluded match before the exclusion has been sent,
+resulting in the excluded users being autokilled as well.)
+
+<p>Example: <tt>ImmediatelySendAutokill</tt>
+</ul>
+
+<a name="operserv/akill.WallOSAkill"></a>
+<p><ul><li>
+<tt><b>WallOSAkill</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Cause Services to send a WALLOPS/GLOBOPS on use of the AKILL or
+EXCLUDE command to add or delete autokills or exclusions.
+
+<p>Example: <tt>WallOSAkill</tt>
+</ul>
+
+<a name="operserv/akill.WallAutokillExpire"></a>
+<p><ul><li>
+<tt><b>WallAutokillExpire</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes Services to send a WALLOPS/GLOBOPS whenever an autokill
+or autokill exclusion expires.
+
+<p>Example: <tt>WallAutokillExpire</tt>
+</ul>
+<a name="operserv/news"></a>
+<p><font size="+1"><b>operserv/news</b> (News module settings)</font>
+
+<p>This module has no configurable settings.
+<a name="operserv/sessions"></a>
+<p><font size="+1"><b>operserv/sessions</b> (Sessions module settings)</font>
+
+<a name="operserv/sessions.DefSessionLimit"></a>
+<p><ul><li>
+<tt><b>DefSessionLimit</b> <i>limit</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Default session limit per host.  Once a host reaches its session
+limit, all clients attempting to connect from that host will be
+killed. A value of zero (or omitting the option entirely) means
+an unlimited session limit.
+
+<p>Example: <tt>DefSessionLimit 3</tt>
+</ul>
+
+<a name="operserv/sessions.MaxSessionLimit"></a>
+<p><ul><li>
+<tt><b>MaxSessionLimit</b> <i>limit</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>The maximum session limit that may be set for a host in an
+exception.
+
+<p>Example: <tt>MaxSessionLimit 100</tt>
+</ul>
+
+<a name="operserv/sessions.ExceptionExpiry"></a>
+<p><ul><li>
+<tt><b>ExceptionExpiry</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the default expiry time for exceptions.  If not set,
+exceptions will not expire by default.
+
+<p>Example: <tt>ExceptionExpiry 1d</tt>
+</ul>
+
+<a name="operserv/sessions.SessionLimitExceeded"></a>
+<p><ul><li>
+<tt><b>SessionLimitExceeded</b> <i>message</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>The message that will be NOTICE'd to a user just before they are
+removed from the network because their host's session limit has
+been exceeded.  It may be used to give a slightly more
+descriptive reason for the impending kill as opposed to simply
+"Session limit exceeded".  If this is commented out, nothing will
+be sent.
+
+<p>Example: <tt>SessionLimitExceeded "The session limit for your host <b>%s</b> has been exceeded."</tt>
+</ul>
+
+<a name="operserv/sessions.SessionLimitDetailsLoc"></a>
+<p><ul><li>
+<tt><b>SessionLimitDetailsLoc</b> <i>message</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Same as above, but should be used to provide a website address
+where users can find out more about session limits and how to go
+about applying for an exception.  If this is commented out,
+nothing will be sent.
+
+<p>This option has been intentionally commented out in an effort to
+remind you to change the URL it contains.  It is recommended that
+you supply an address/URL where people can get help regarding
+session limits.
+
+<p>Example: <tt>SessionLimitDetailsLoc "Please visit <b>http://your.website.url/</b> for more information about session limits."</tt>
+</ul>
+
+<a name="operserv/sessions.SessionLimitAutokill"></a>
+<p><ul><li>
+<tt><b>SessionLimitAutokill</b> <i>max-kill-interval</i> <i>num-kills</i> <i>expiry</i> <i>reason</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>With this option, Services will add an automatic autokill when
+the same host's session limit is exceeded repeatedly in a short
+period of time.  If not given, autokills will not be
+automatically added (Services will just keep killing users from
+the host as they come on).  Note that the autokill module
+(operserv/akill) must be loaded for this to work.
+
+<p><tt><i>max-kill-interval</i></tt> sets the maximum interval which can elapse
+between kills before the kill counter is reset.
+
+<p><tt><i>num-kills</i></tt> sets the number of kills before an autokill is added.
+
+<p><tt><i>expiry</i></tt> sets the expiration time for the autokill.
+
+<p><tt><i>reason</i></tt> sets the reason for the autokill.
+
+<p>Example: <tt>SessionLimitAutokill 10s 5 30m "Exceeding session limit"</tt>
+</ul>
+
+<a name="operserv/sessions.WallOSException"></a>
+<p><ul><li>
+<tt><b>WallOSException</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Cause Services to send a WALLOPS/GLOBOPS on use of the EXCEPTION
+command to add or delete a session exception.
+
+<p>Example: <tt>WallOSException</tt>
+</ul>
+
+<a name="operserv/sessions.WallExceptionExpire"></a>
+<p><ul><li>
+<tt><b>WallExceptionExpire</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes Services to send a WALLOPS/GLOBOPS whenever a session
+limit exception expires.
+
+<p>Example: <tt>WallExceptionExpire</tt>
+</ul>
+<a name="operserv/sline"></a>
+<p><font size="+1"><b>operserv/sline</b> (S-line module settings)</font>
+
+<a name="operserv/sline.SGlineReason"></a>
+<p><ul><li>
+<tt><b>SGlineReason</b> <i>reason</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>The reason to use when sending out KILLs and SGLINE commands.
+Some servers show this reason to users if their connection is
+rejected because they match an SGline.  If you include a "%s"
+in the reason, it will be replaced by the reason given with the
+SGline entry itself.
+
+<p>Example: <tt>SGlineReason    "Invalid real name"
+#SGlineReason    "Invalid real name: %s"</tt>
+</ul>
+
+<a name="operserv/sline.SQlineReason"></a>
+<p><ul><li>
+<tt><b>SQlineReason</b> <i>reason</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>The reason to use when sending out KILLs and SQLINE commands.
+Some servers show this reason to users if their connection is
+rejected because they match an SQline.  If you include a "%s"
+in the reason, it will be replaced by the reason given with the
+SQline entry itself.
+
+<p>Example: <tt>SQlineReason    "Reserved nickname"
+#SQlineReason    "Reserved nickname: %s"</tt>
+</ul>
+
+<a name="operserv/sline.SZlineReason"></a>
+<p><ul><li>
+<tt><b>SZlineReason</b> <i>reason</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>The reason to use when sending out KILLs and SZLINE commands.
+Some servers show this reason to users if their connection is
+rejected because they match an SZline.  If you include a "%s"
+in the reason, it will be replaced by the reason given with the
+SZline entry itself.
+
+<p>Example: <tt>SZlineReason    "You are banned from this network"</tt>
+<br>Example: <tt>SZlineReason    "Z-lined: %s"</tt>
+</ul>
+
+<a name="operserv/sline.ImmediatelySendSline"></a>
+<p><ul><li>
+<tt><b>ImmediatelySendSline</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes OperServ to inform all servers of a new S-line the moment
+it is added, rather than waiting for someone to match it first.
+
+<p>Example: <tt>ImmediatelySendSline</tt>
+</ul>
+
+<a name="operserv/sline.SGlineExpiry"></a>
+<p><ul><li>
+<tt><b>SGlineExpiry</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the default expiry time for SGlines.  If not defined,
+SGlines of that type will not expire by default.
+
+<p>Example: <tt>SGlineExpiry    30d</tt>
+</ul>
+
+<a name="operserv/sline.SQlineExpiry"></a>
+<p><ul><li>
+<tt><b>SQlineExpiry</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the default expiry time for SQlines.  If not defined,
+SQlines of that type will not expire by default.
+
+<p>Example: <tt>SQlineExpiry    30d</tt>
+</ul>
+
+<a name="operserv/sline.SZlineExpiry"></a>
+<p><ul><li>
+<tt><b>SZlineExpiry</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the default expiry time for SZlines.  If not defined,
+SZlines of that type will not expire by default.
+
+<p>Example: <tt>SZlineExpiry    30d</tt>
+</ul>
+
+<a name="operserv/sline.WallOSSline"></a>
+<p><ul><li>
+<tt><b>WallOSSline</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Cause Services to send a WALLOPS/GLOBOPS on use of the SGLINE,
+SQLINE, or SZLINE commands to add or delete S-lines.
+
+<p>Example: <tt>WallOSSline</tt>
+</ul>
+
+<a name="operserv/sline.WallSlineExpire"></a>
+<p><ul><li>
+<tt><b>WallSlineExpire</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes Services to send a WALLOPS/GLOBOPS whenever an autokill
+expires.
+
+<p>Example: <tt>WallSlineExpire</tt>
+</ul>
+
+<a name="operserv/sline.SQlineIgnoreOpers"></a>
+<p><ul><li>
+<tt><b>SQlineIgnoreOpers</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Allows IRC operators to use nicknames that match an SQline.
+(Note that this may not function properly if the IRC server does
+not allow IRC operators to use such nicknames.)
+
+<p>Example: <tt>SQlineIgnoreOpers</tt>
+</ul>
+
+<a name="operserv/sline.SQlineKill"></a>
+<p><ul><li>
+<tt><b>SQlineKill</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Normally, users whose nickname matches an SQline will have their
+nickname changed (on servers which support forced nickname
+changing) instead of being killed.  Setting this option causes
+such users to be killed even on such servers, which may be
+helpful for dealing with clone attacks.
+
+<p>Note that if this option is set, Services will not send SQlines
+to the IRC network; if it did, the IRC servers would step in and
+send the user an "invalid nickname" message before Services had a
+chance to kill the user.
+
+<p>Example: <tt>SQlineKill</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>NickServ configuration</h3>
+
+<p><hr width="60%">
+<a name="nickserv/main"></a>
+<p><font size="+1"><b>nickserv/main</b></font>
+
+<a name="nickserv/main.NickServName"></a>
+<p><ul><li>
+<tt><b>NickServName</b> <i>nick</i> <i>string</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the nickname (first parameter) and "real" name (second
+parameter) used by the NickServ pseudoclient.
+
+<p>Example: <tt>NickServName    "NickServ" "Nickname Server"</tt>
+</ul>
+
+<a name="nickserv/main.NSEnableRegister"></a>
+<p><ul><li>
+<tt><b>NSEnableRegister</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Allows the REGISTER command to be used.  This is usually a good
+thing, but if you don't want your users to be able to register
+nicknames, remove (or comment out) this directive.  Note that you
+will need to at least enable this to register the Services
+super-user nick (defined in the operserv/main ServicesRoot
+directive), or you will not be able to use any privileged
+OperServ functions!
+
+<p>Example: <tt>NSEnableRegister</tt>
+</ul>
+
+<a name="nickserv/main.NSRegEmailMax"></a>
+<p><ul><li>
+<tt><b>NSRegEmailMax</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the maximum number of nicknames that can be registered to a
+single E-mail address; this affects both ordinary registration as
+well as changing the address using SET EMAIL, and also nickname
+linking (if the appropriate module is loaded).  If not given,
+there is no limit.
+
+<p>This option is most useful in combination with NSRequireEmail,
+below.
+
+<p>Example: <tt>NSRegEmailMax   20</tt>
+</ul>
+
+<a name="nickserv/main.NSRequireEmail"></a>
+<p><ul><li>
+<tt><b>NSRequireEmail</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Makes an E-mail address required at registration time.  Users
+also will not be able to clear the address once registered,
+though they can change it.  If not set, an E-mail address is not
+required (but may still be given), and the address may be cleared
+later on.
+
+<p>Example: <tt>NSRequireEmail</tt>
+</ul>
+
+<a name="nickserv/main.NSRegDenyIfSuspended"></a>
+<p><ul><li>
+<tt><b>NSRegDenyIfSuspended</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Disallows the use of REGISTER if the E-mail address given with
+the command is associated with a suspended nickname.  This can
+help prevent users from getting around nickname suspensions by
+registering a new nickname.
+
+<p>Example: <tt>NSRegDenyIfSuspended</tt>
+</ul>
+
+<a name="nickserv/main.NSRegDelay"></a>
+<p><ul><li>
+<tt><b>NSRegDelay</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the minimum length of time between consecutive uses of the
+REGISTER command.  If not given, this restriction is disabled.
+
+<p>WARNING: Not setting NSRegDelay, or setting it too low, will not
+         only allow "registration flooding" but, if the mail-auth
+         module is also loaded, will also allow users to abuse
+         this command to send large quantities of mail (mailbombs)
+         to arbitrary users!
+
+<p>Example: <tt>NSRegDelay      5m</tt>
+</ul>
+
+<a name="nickserv/main.NSInitialRegDelay"></a>
+<p><ul><li>
+<tt><b>NSInitialRegDelay</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the minimum length of time the user must be connected before
+using the REGISTER command for the first time.  If not given,
+this restriction is disabled.  This option can be helpful in
+preventing malicious bots from flooding your network with
+registrations.
+
+<p>Example: <tt>NSInitialRegDelay 30s</tt>
+</ul>
+
+<a name="nickserv/main.NSSetEmailDelay"></a>
+<p><ul><li>
+<tt><b>NSSetEmailDelay</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the minimum length of time between consecutive uses of the
+SET EMAIL command.  If not given, this restriction is disabled.
+
+<p>WARNING: If you use the mail-auth module, then not setting
+         NSSetEmailDelay, or setting it too low, will allow users
+         to abuse this command to send large quantities of mail
+         (mailbombs) to arbitrary users!
+
+<p>Example: <tt>NSSetEmailDelay 5m</tt>
+</ul>
+
+<a name="nickserv/main.NSDef..."></a>
+<p><ul><li>
+<tt><b>NSDef...</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the default options for newly registered nicks.  Note that
+changing these options will have no effect on nicks which are
+already registered.  Options not listed here will be unset on new
+nicks.
+
+<p>If both NSDefKill and NSDefKillQuick are given, NSDefKillQuick
+takes precedence.  KILL IMMED cannot be specified as a default.
+
+<p>Example: <tt>NSDefKill</tt>
+<br>Example: <tt>NSDefKillQuick</tt>
+<br>Example: <tt>NSDefSecure</tt>
+<br>Example: <tt>NSDefPrivate</tt>
+<br>Example: <tt>NSDefNoOp</tt>
+<br>Example: <tt>NSDefHideEmail</tt>
+<br>Example: <tt>NSDefHideUsermask</tt>
+<br>Example: <tt>NSDefHideQuit</tt>
+<br>Example: <tt>NSDefMemoSignon</tt>
+<br>Example: <tt>NSDefMemoReceive</tt>
+</ul>
+
+<a name="nickserv/main.NSExpire"></a>
+<p><ul><li>
+<tt><b>NSExpire</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the length of time before a nick registration expires.  If
+not set, nicknames will not expire.
+
+<p>Example: <tt>NSExpire        30d</tt>
+</ul>
+
+<a name="nickserv/main.NSExpireWarning"></a>
+<p><ul><li>
+<tt><b>NSExpireWarning</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the length of time before nick expiration during which
+warnings are sent to the user when the user is online (and not
+identified).  If not set, no warnings will be sent; however, a
+message will still be sent when the nickname actually expires.
+
+<p>Example: <tt>NSExpireWarning 3d</tt>
+</ul>
+
+<a name="nickserv/main.NSSuspendExpire"></a>
+<p><ul><li>
+<tt><b>NSSuspendExpire</b> <i>time</i> <i>grace-period</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the default expiry time and recovery grace period for
+nickname suspensions.  (The expiry time can be set individually
+for each suspension; the grace period cannot.)
+
+<p>The recovery grace period is the length of time a nick must exist
+for, after being unsuspended, before it is allowed to expire.
+This gives the owner a chance to reclaim the nick.  It is
+enforced, if necessary, by adjusting the "last seen time" value,
+as well as the AUTH timeout when the mail-auth module is in use,
+when the nick is unsuspended.  If set to zero, nicknames that are
+suspended for longer than "NSExpire" will be expired (dropped)
+during the next check for nickname expiration, giving the owners
+very little time to identify for their nicknames and prevent
+their expiry.
+
+<p>If not specified, nickname suspensions will not expire by
+default, and there will be no grace period for recovering the nick.
+
+<p>Example: <tt>NSSuspendExpire 25d 5d</tt>
+</ul>
+
+<a name="nickserv/main.NSShowPassword"></a>
+<p><ul><li>
+<tt><b>NSShowPassword</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes the user's password to be sent back to them in a NOTICE at
+registration time, as a reminder.
+
+<p>Example: <tt>NSShowPassword</tt>
+</ul>
+
+<a name="nickserv/main.NSEnforcerUser"></a>
+<p><ul><li>
+<tt><b>NSEnforcerUser</b> <i>user</i>[@<i>host</i>]</tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the username (and possibly hostname) used for the fake user
+created when NickServ collides a user.  Should be in user@host
+format.  If the host is not given, the one from ServicesUser is
+used.
+
+<p>Example: <tt>NSEnforcerUser  enforcer</tt>
+<br>Example: <tt>NSEnforcerUser  enforcer@localhost.net</tt>
+</ul>
+
+<a name="nickserv/main.NSForceNickChange"></a>
+<p><ul><li>
+<tt><b>NSForceNickChange</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, makes NickServ change a user's nick to a
+"Guest######" nick instead of killing them when enforcing a
+"nick kill".  (The actual nickname used is determined by the
+GuestNickPrefix setting in ircservices.conf.)
+
+<p>This setting has no effect with IRC servers that do not support
+forcibly changing a client's nickname, and a warning will be
+written to the log file if this option is used in such a case.
+
+<p>Example: <tt>NSForceNickChange</tt>
+</ul>
+
+<a name="nickserv/main.NSReleaseTimeout"></a>
+<p><ul><li>
+<tt><b>NSReleaseTimeout</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the delay before a NickServ-collided nick is released.
+
+<p>Example: <tt>NSReleaseTimeout 1m</tt>
+</ul>
+
+<a name="nickserv/main.NSAllowKillImmed"></a>
+<p><ul><li>
+<tt><b>NSAllowKillImmed</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When given, allows the use of the IMMED option with the NickServ
+SET KILL command.
+
+<p>Example: <tt>NSAllowKillImmed</tt>
+</ul>
+
+<a name="nickserv/main.NSListOpersOnly"></a>
+<p><ul><li>
+<tt><b>NSListOpersOnly</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, limits use of the NickServ LIST and LISTEMAIL
+commands to IRC operators.
+
+<p>Example: <tt>NSListOpersOnly</tt>
+</ul>
+
+<a name="nickserv/main.NSSecureAdmins"></a>
+<p><ul><li>
+<tt><b>NSSecureAdmins</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>When enabled, prevents the use of the DROPNICK, GETPASS, FORBID,
+SUSPEND, and SET PASSWORD commands by Services admins on other
+Services admins or the Services root.  (These restrictions do not
+apply to the Services root.)
+
+<p>Example: <tt>NSSecureAdmins</tt>
+</ul>
+
+<a name="nickserv/main.NSEnableDropEmail"></a>
+<p><ul><li>
+<tt><b>NSEnableDropEmail</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Allows the DROPEMAIL command to be used.  This command can help
+recover from mass-registration attacks, but can also destroy your
+database if used improperly.
+
+<p>Example: <tt>NSEnableDropEmail</tt>
+</ul>
+
+<a name="nickserv/main.NSDropEmailExpire"></a>
+<p><ul><li>
+<tt><b>NSDropEmailExpire</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the maximum length of time allowed between a DROPEMAIL
+command and the corresponding DROPEMAIL-CONFIRM command.
+
+<p>Example: <tt>NSDropEmailExpire 10m</tt>
+</ul>
+
+<a name="nickserv/main.NSHelpWarning"></a>
+<p><ul><li>
+<tt><b>NSHelpWarning</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, displays a "do not abuse NickServ" warning at the
+end of the NickServ HELP output similar to previous versions of
+Services.  Otherwise, the warning is not displayed.
+
+<p>Example: <tt>NSHelpWarning</tt>
+</ul>
+
+<a name="nickserv/main.NSAlias"></a>
+<p><ul><li>
+<tt><b>NSAlias</b> <i>alias</i>=<i>command</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Creates an alias for a command.  "alias" is the name of the
+alias, and "command" is the command which should be executed for
+that alias; the two are joined by an equals sign ("=") with no
+intervening whitespace.  The alias and command names are
+case-insensitive.
+
+<p>Any number of aliases can be created by adding more NSAlias
+directives, but recursive aliases are not allowed; "command" must
+be a valid (unaliased) command name.
+
+<p>Example: <tt>NSAlias         ID=IDENTIFY</tt>
+</ul>
+<a name="nickserv/access"></a>
+<p><font size="+1"><b>nickserv/access</b> (Access list module)</font>
+
+<a name="nickserv/access.NSAccessMax"></a>
+<p><ul><li>
+<tt><b>NSAccessMax</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the maximum number of entries allowed on a nickname access
+list.
+
+<p>Example: <tt>NSAccessMax     32</tt>
+</ul>
+
+<a name="nickserv/access.NSFirstAccessEnable"></a>
+<p><ul><li>
+<tt><b>NSFirstAccessEnable</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, causes an access entry based on the registering
+user's username and hostname to be automatically added to the
+access list of a newly-registered nickname.  When disabled,
+newly-registered nicknames will have an empty access list.
+
+<p>Example: <tt>NSFirstAccessEnable</tt>
+</ul>
+
+<a name="nickserv/access.NSFirstAccessWild"></a>
+<p><ul><li>
+<tt><b>NSFirstAccessWild</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, causes the first access list entry added to a newly
+registered nickname to use a wildcard in the hostname when
+appropriate.  When disabled, the first access list entry consists
+of the registering user's username and hostname as-is, without
+wildcards.  This directive has no effect if NSFirstAccessEnable
+is disabled.
+
+<p>Example: <tt>NSFirstAccessWild</tt>
+</ul>
+<a name="nickserv/autojoin"></a>
+<p><font size="+1"><b>nickserv/autojoin</b> (Autojoin module)</font>
+
+<a name="nickserv/autojoin.NSAutojoinMax"></a>
+<p><ul><li>
+<tt><b>NSAutojoinMax</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the maximum number of entries allowed on an autojoin list.
+There is little point in setting this higher than the maximum
+number of channels a client is allowed to join by the server
+(usually 10).
+
+<p>Example: <tt>NSAutojoinMax   10</tt>
+</ul>
+<a name="nickserv/link"></a>
+<p><font size="+1"><b>nickserv/link</b> (Link module)</font>
+
+<a name="nickserv/link.NSLinkMax"></a>
+<p><ul><li>
+<tt><b>NSLinkMax</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the maximum number of links allowed for a single nickname
+group.
+
+<p>Example: <tt>NSLinkMax       20</tt>
+</ul>
+<a name="nickserv/mail-auth"></a>
+<p><font size="+1"><b>nickserv/mail-auth</b> (Authentication module)</font>
+
+<a name="nickserv/mail-auth.NSNoAuthExpire"></a>
+<p><ul><li>
+<tt><b>NSNoAuthExpire</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the period of time after which a newly registered nickname
+will expire if it is not authenticated.  If not specified, the
+standard nickname expiration time (NSExpire) is used.
+
+<p>Example: <tt>NSNoAuthExpire  12h</tt>
+</ul>
+
+<a name="nickserv/mail-auth.NSSendauthDelay"></a>
+<p><ul><li>
+<tt><b>NSSendauthDelay</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the minimum length of time between consecutive uses of the
+SENDAUTH command for the same nick group.  If not specified, this
+restriction is disabled.
+
+<p>WARNING: Not setting NSSendauthDelay, or setting it too low, will
+         allow users to abuse this command to send large
+         quantities of mail (mailbombs) to arbitrary users!
+
+<p>Example: <tt>NSSendauthDelay 1d</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>ChanServ configuration</h3>
+
+<p><hr width="60%">
+<a name="chanserv/main"></a>
+<p><font size="+1"><b>chanserv/main</b></font>
+
+<a name="chanserv/main.ChanServName"></a>
+<p><ul><li>
+<tt><b>ChanServName</b> <i>nick</i> <i>string</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the nickname (first parameter) and "real" name (second
+parameter) used by the ChanServ pseudoclient.
+
+<p>Example: <tt>ChanServName    "ChanServ" "Channel Server"</tt>
+</ul>
+
+<a name="chanserv/main.CSEnableRegister"></a>
+<p><ul><li>
+<tt><b>CSEnableRegister</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Allows the REGISTER command to be used.  This is usually a good
+thing, but if you don't want your users to be able to register
+channels, remove (or comment out) this directive.  Note, however,
+that Services administrators and the Services super-user will
+still be able to use the REGISTER command regardless of whether
+this directive is given or not.
+
+<p>Example: <tt>CSEnableRegister</tt>
+</ul>
+
+<a name="chanserv/main.CSRegisteredOnly"></a>
+<p><ul><li>
+<tt><b>CSRegisteredOnly</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Treats unregistered channels as if they were forbidden,
+disallowing access by ordinary users to any channels not
+explicitly registered with ChanServ.  IRC operators will be
+allowed to enter such channels, as they are for ordinary
+forbidden channels.  Note that this directive operates
+independently from the CSEnableRegister directive; if
+CSEnableRegister is commented out, non-Services-admin IRC
+operators will be able to join unregistered channels but will
+not be permitted to register them.
+
+<p>Example: <tt>CSRegisteredOnly</tt>
+</ul>
+
+<a name="chanserv/main.CSMaxReg"></a>
+<p><ul><li>
+<tt><b>CSMaxReg</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Limits the number of channels which may be registered to a single
+nickname.  In the case of linked nicks, this limit applies to the
+entire set of linked nicks.
+
+<p>Example: <tt>CSMaxReg        20</tt>
+</ul>
+
+<a name="chanserv/main.CSDef..."></a>
+<p><ul><li>
+<tt><b>CSDef...</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the default options for newly registered channels.  Note
+that changing these options will have no effect on channels which
+are already registered.  Options not listed here will be unset on
+new channels.
+
+<p>Example: <tt>CSDefKeepTopic</tt>
+<br>Example: <tt>CSDefSecureOps</tt>
+<br>Example: <tt>CSDefPrivate</tt>
+<br>Example: <tt>CSDefTopicLock</tt>
+<br>Example: <tt>CSDefLeaveOps</tt>
+<br>Example: <tt>CSDefSecure</tt>
+<br>Example: <tt>CSDefOpNotice</tt>
+<br>Example: <tt>CSDefEnforce</tt>
+<br>Example: <tt>CSDefMemoRestricted</tt>
+<br>Example: <tt>CSDefHideEmail</tt>
+<br>Example: <tt>CSDefHideTopic</tt>
+<br>Example: <tt>CSDefHideMlock</tt>
+</ul>
+
+<a name="chanserv/main.CSDefModeLock"></a>
+<p><ul><li>
+<tt><b>CSDefModeLock</b> <i>mode-string</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the default mode lock for newly registered channels, in the
+same format as the SET MLOCK command.  If not set, the default is
+"+nt".  Note that only binary modes (modes which take no
+parameters) can be used with this directive.
+
+<p>Example: <tt>CSDefModeLock   +nt</tt>
+</ul>
+
+<a name="chanserv/main.CSExpire"></a>
+<p><ul><li>
+<tt><b>CSExpire</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the length of time before a channel expires.  If not set,
+channels will not expire.
+
+<p>Example: <tt>CSExpire        14d</tt>
+</ul>
+
+<a name="chanserv/main.CSSuspendExpire"></a>
+<p><ul><li>
+<tt><b>CSSuspendExpire</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the default expiry time and recovery grace period for channel
+suspensions.  If not set, channel suspensions will not expire by
+default and there will be no recovery grace period.
+
+<p>Example: <tt>CSSuspendExpire 12d 2d</tt>
+</ul>
+
+<a name="chanserv/main.CSShowPassword"></a>
+<p><ul><li>
+<tt><b>CSShowPassword</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>If specified, causes the user's password to be sent back to them
+in a NOTICE at registration time, as a reminder.
+
+<p>Example: <tt>CSShowPassword</tt>
+</ul>
+
+<a name="chanserv/main.CSAccessMax"></a>
+<p><ul><li>
+<tt><b>CSAccessMax</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the maximum number of entries on a channel's access list.
+Channel access lists may contain only registered nicknames;
+therefore, checking each entry on the list requires only a single
+scalar comparison instead of a wildcard match, and this limit may
+be safely set much higher than (for example) the autokick list
+size limit without impacting performance significantly.
+
+<p>Example: <tt>CSAccessMax     1024</tt>
+</ul>
+
+<a name="chanserv/main.CSAutokickMax"></a>
+<p><ul><li>
+<tt><b>CSAutokickMax</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the maximum number of entries on a channel's autokick list.
+
+<p>Example: <tt>CSAutokickMax   32</tt>
+</ul>
+
+<a name="chanserv/main.CSInhabit"></a>
+<p><ul><li>
+<tt><b>CSInhabit</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the length of time ChanServ stays in a channel after kicking
+a user from a channel s/he is not permitted to be in.  This only
+occurs when the user is the only one in the channel.
+
+<p>Example: <tt>CSInhabit       15s</tt>
+</ul>
+
+<a name="chanserv/main.CSRestrictDelay"></a>
+<p><ul><li>
+<tt><b>CSRestrictDelay</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, causes ChanServ to permit users to join channels
+with the RESTRICTED option set if they would be permitted to join
+after identifying for their nick, and to not remove mode +o (ops)
+from users who would be auto-opped if identified for their nick,
+for the given period of time after Services starts up.  This gives
+such users time to identify to NickServ before being kicked out of
+restricted channels or getting deopped.
+
+<p>Example: <tt>CSRestrictDelay 15s</tt>
+</ul>
+
+<a name="chanserv/main.CSListOpersOnly"></a>
+<p><ul><li>
+<tt><b>CSListOpersOnly</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, limits use of the ChanServ LIST command to IRC
+operators.
+
+<p>Example: <tt>CSListOpersOnly</tt>
+</ul>
+
+<a name="chanserv/main.CSForbidShortChannel"></a>
+<p><ul><li>
+<tt><b>CSForbidShortChannel</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, treats the channel "#" as a forbidden channel, not
+allowing any users to join it.  When not enabled, the channel "#"
+can be used normally, although ChanServ functions cannot be used
+with it.  If CSRegisteredOnly is enabled, this directive has no
+effect (the "#" channel will be treated as forbidden along with
+all other unregistered channel).
+
+<p>Example: <tt>CSForbidShortChannel</tt>
+</ul>
+
+<a name="chanserv/main.CSSkipModeRCheck"></a>
+<p><ul><li>
+<tt><b>CSSkipModeRCheck</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>When enabled, causes ChanServ to not kick users with unregistered
+nicknames who try to join <tt><i>tt</i></tt>+R<tt><i>/tt</i></tt> channels (on networks
+supporting <tt><i>tt</i></tt>+R<tt><i>/tt</i></tt> or another mode restricting channels to
+registered nicknames only).
+
+<p>Example: <tt>CSSkipModeRCheck</tt>
+</ul>
+
+<a name="chanserv/main.CSAlias"></a>
+<p><ul><li>
+<tt><b>CSAlias</b> <i>alias</i>=<i>command</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Creates an alias for a command.  The parameter format is the same
+as for the NSAlias directive.
+
+<p>Example: <tt>CSAlias         ID=IDENTIFY</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>MemoServ configuration</h3>
+
+<p><hr width="60%">
+<a name="memoserv/main"></a>
+<p><font size="+1"><b>memoserv/main</b></font>
+
+<a name="memoserv/main.MemoServName"></a>
+<p><ul><li>
+<tt><b>MemoServName</b> <i>nick</i> <i>string</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the nickname (first parameter) and "real" name (second
+parameter) used by the MemoServ pseudoclient.
+
+<p>Example: <tt>MemoServName    "MemoServ" "Memo Server"</tt>
+</ul>
+
+<a name="memoserv/main.MSMaxMemos"></a>
+<p><ul><li>
+<tt><b>MSMaxMemos</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the maximum number of memos a user is allowed to keep by
+default.  Normal users may set the limit anywhere between zero
+and this value; Services admins can change it to any value or
+disable it.  If not given, the limit is disabled by default, and
+normal users can set any limit they want.
+
+<p>Example: <tt>MSMaxMemos      20</tt>
+</ul>
+
+<a name="memoserv/main.MSExpire"></a>
+<p><ul><li>
+<tt><b>MSExpire</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the length of time after a memo is sent until it expires and
+is automatically deleted.  If not set, memos will not expire.
+Note that memos sent while MSExpire is disabled will not expire
+even if MSExpire is later enabled.
+
+<p>Example: <tt>MSExpire        3d</tt>
+</ul>
+
+<a name="memoserv/main.MSExpireDelay"></a>
+<p><ul><li>
+<tt><b>MSExpireDelay</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the length of time after first being read a memo's
+expiration will be delayed.  Even if a memo reaches the age given
+in the MSExpire directive, it will not be deleted until at least
+the length of time given in this directive has passed since the
+memo was first read.  If not set, memo expiration will not be
+delayed, and unread memos which have expired will be deleted
+immediately upon being read.
+
+<p>If MSExpire is not set, this directive is ignored.
+
+<p>Example: <tt>MSExpireDelay   1d</tt>
+</ul>
+
+<a name="memoserv/main.MSSendDelay"></a>
+<p><ul><li>
+<tt><b>MSSendDelay</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Sets the delay between consecutive uses of the MemoServ SEND
+command.  This can help prevent spam as well as denial-of-service
+attacks from sending large numbers of memos and filling up disk
+space (and memory).  A 3-second wait means a maximum average of
+150 bytes of memo per second per user under the current IRC
+protocol.
+
+<p>Example: <tt>MSSendDelay     3s</tt>
+</ul>
+
+<a name="memoserv/main.MSAlias"></a>
+<p><ul><li>
+<tt><b>MSAlias</b> <i>alias</i>=<i>command</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Creates an alias for a command.  The parameter format is the same
+as for the NSAlias directive.
+
+<p>Example: <tt>MSAlias         R=READ</tt>
+</ul>
+<a name="memoserv/forward"></a>
+<p><font size="+1"><b>memoserv/forward</b> (FORWARD module)</font>
+
+<a name="memoserv/forward.MSAllowForward"></a>
+<p><ul><li>
+<tt><b>MSAllowForward</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>If given, allows the FORWARD command to be used (the SET FORWARD
+command is always available).  While the FORWARD command can be
+useful particularly for users first setting the FORWARD option
+on, a large number of users using the FORWARD ALL command can
+place a significant load on Services.
+
+<p>Example: <tt>MSAllowForward</tt>
+</ul>
+
+<a name="memoserv/forward.MSForwardDelay"></a>
+<p><ul><li>
+<tt><b>MSForwardDelay</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED if MSAllowForward is set]
+<p>Sets the minimum length of time between consecutive uses of the
+FORWARD command.  If not given, this restriction is disabled.
+(Note that this can allow users to place a significant load on
+Services and/or your mail server!)
+
+<p>If MSAllowForward is not set, this directive is ignored.
+
+<p>Example: <tt>MSForwardDelay  10s</tt>
+</ul>
+<a name="memoserv/ignore"></a>
+<p><font size="+1"><b>memoserv/ignore</b> (IGNORE module)</font>
+
+<a name="memoserv/ignore.MSIgnoreMax"></a>
+<p><ul><li>
+<tt><b>MSIgnoreMax</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the maximum number of entries a user can have for their
+nickname group's memo ignore list.
+
+<p>Example: <tt>MSIgnoreMax     32</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>StatServ configuration</h3>
+
+<p><hr width="60%">
+<a name="statserv/main"></a>
+<p><font size="+1"><b>statserv/main</b></font>
+
+<a name="statserv/main.StatServName"></a>
+<p><ul><li>
+<tt><b>StatServName</b> <i>nick</i> <i>string</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the nickname (first parameter) and "real" name (second
+parameter) used by the StatServ pseudoclient.
+
+<p>Example: <tt>StatServName    "StatServ" "Statistics Server"</tt>
+</ul>
+
+<a name="statserv/main.SSOpersOnly"></a>
+<p><ul><li>
+<tt><b>SSOpersOnly</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Limits the use of StatServ to IRC operators only.
+
+<p>Example: <tt>SSOpersOnly</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>HTTP server modules</h3>
+
+<p><hr width="60%">
+<a name="httpd/main"></a>
+<p><font size="+1"><b>httpd/main</b></font>
+
+<a name="httpd/main.ListenTo"></a>
+<p><ul><li>
+<tt><b>ListenTo</b> <i>address</i>:<i>port</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the address and port number on which the HTTP server
+will listen for incoming requests.  <tt><i>address</i></tt> may be specified as
+an IP address (first example below), a hostname (second example),
+or the special string "*", which means "any IP address" (third
+example).
+
+<p>When a hostname is given, as in the second example below,
+Services will look up the address(es) associated with the
+hostname at startup time, and bind to every IP address found.
+This can be useful, for example, with dynamic DNS, in which
+the server's IP address changes periodically; however, the
+hostname lookup can take time&mdash;especially if there is no DNS
+server on the local network&mdash;and is susceptible to network or
+DNS server outages, so IP addresses or "*" should be used
+whenever possible.
+
+<p>Note that many systems restrict low port numbers to the system
+administrator; in particular, Unix-like systems allow only the
+root user (UID 0) to use ports less than 1024.
+
+<p>Example: <tt>ListenTo        127.0.0.1:12701</tt>
+<br>Example: <tt>ListenTo        services.example.net:8080</tt>
+<br>Example: <tt>ListenTo        *:80</tt>
+</ul>
+
+<a name="httpd/main.ListenBacklog"></a>
+<p><ul><li>
+<tt><b>ListenBacklog</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the maximum number of connections that can be received
+by the operating system without being accepted by Services (the
+second parameter, `backlog', to the listen() system call).  If
+you start seeing refused or delayed connections on a busy server,
+try increasing this value.
+
+<p>If you don't understand the above, leave this setting alone.
+
+<p>Example: <tt>ListenBacklog   5</tt>
+</ul>
+
+<a name="httpd/main.RequestBufferSize"></a>
+<p><ul><li>
+<tt><b>RequestBufferSize</b> <i>bytes</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the size of the buffer allocated for each HTTP request.
+Note that this buffer is allocated for every connection, and an
+additional amount of memory will be allocated for header pointers
+(in the pathological case this extra amount could reach 4/3 of
+the value given for this directive).  If a client sends a request
+(including POST data) exceeding this value, an error will be
+returned and the connection terminated.
+
+<p>If you don't understand the above, leave this setting alone.
+
+<p>Example: <tt>RequestBufferSize 4096</tt>
+</ul>
+
+<a name="httpd/main.MaxConnections"></a>
+<p><ul><li>
+<tt><b>MaxConnections</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Specifies the maximum number of simultaneous connections allowed.
+If not given, no limit is placed on the number of connections;
+however, the operating system may impose its own limits, which
+are not under the control of Services.
+
+<p>Example: <tt>MaxConnections  10</tt>
+</ul>
+
+<a name="httpd/main.MaxRequests"></a>
+<p><ul><li>
+<tt><b>MaxRequests</b> <i>count</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Specifies the maximum number of requests that can be made over a
+single connection before the server disconnects it.  If not
+given, no limit is placed on the number of requests per
+connection; note that this may allow malicious users to interfere
+with Services' normal operations by sending large numbers of
+requests over a single connection.
+
+<p>Example: <tt>MaxRequests     20</tt>
+</ul>
+
+<a name="httpd/main.IdleTimeout"></a>
+<p><ul><li>
+<tt><b>IdleTimeout</b> <i>time</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[RECOMMENDED]
+<p>Specifies the length of time a connection can be idle (not
+sending data) before it will be automatically closed.  If not
+given, connections will never be closed automatically.
+
+<p>Example: <tt>IdleTimeout     30s</tt>
+</ul>
+
+<a name="httpd/main.LogConnections"></a>
+<p><ul><li>
+<tt><b>LogConnections</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>If given, a log message will be written for each connection to
+the server.
+
+<p>Example: <tt>LogConnections</tt>
+</ul>
+<a name="httpd/auth-ip"></a>
+<p><font size="+1"><b>httpd/auth-ip</b> (IP address authorization module)</font>
+
+<a name="httpd/auth-ip.AllowHost"></a>
+<p><ul><li>
+<tt><b>AllowHost</b> <i>path</i> <i>address</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<br><tt><b>DenyHost</b> <i>path</i> <i>address</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Specifies which hosts will be allowed (or not allowed) to access
+resources provided by the HTTP server.  The <tt><i>path</i></tt> parameter is a
+URL path (not including the "<tt>http://host.name</tt>"), and matches any
+URL which begins with the same string; for example, "<tt>/dir</tt>"
+matches both "<tt>/dir/file</tt>" and "<tt>/dirty</tt>".  The <tt><i>address</i></tt> can be an
+IP address, a hostname (as with <a href="#httpd/main.ListenTo"><tt>ListenTo</tt></a> in the main server
+module, all addresses associated with the hostname will be
+allowed or denied), the string "<tt>*</tt>" (which means all addresses),
+or the special format "<tt><i>IP-address</i>/<i>mask</i></tt>", where <tt><i>mask</i></tt> is an
+integer from 1 to 31 giving the number of bits in the subnet
+address, which indicates that the entire subnet of addressess
+specified should be allowed or denied; for example,
+"<tt>192.168.1.64/26</tt>" represents the range of addresses from
+192.168.1.64 to 192.168.1.127.
+<p>
+Examples:
+<div align=center><p><table border=1 cellpadding=1 cellspacing=1>
+<tr><th>Directive<th>Meaning
+<tr><td><tt>AllowHost /debug 127.0.0.1</tt>
+    <td>Allow all requests from <tt>localhost</tt> to the debug page
+<tr><td><tt>AllowHost / 192.168.0.0/24</tt>
+    <td>Allow any host in the <tt>192.168.0.*</tt> network access to the entire server
+<tr><td><tt>DenyHost / shell.example.org</tt>
+    <td>Deny connections from any address associated with <tt>shell.example.org</tt>
+</table></div>
+<p>
+Multiple <tt>AllowHost</tt> or <tt>DenyHost</tt> directives for the same path may
+be used to specify multiple addresses to allow or deny.  Each
+condition will be checked in the order they are listed here, and
+the first matching one will be used.  For example, these lines:
+<blockquote>
+       <tt>AllowHost / 192.168.0.1</tt>
+   <br><tt>DenyHost&nbsp;&nbsp;/ 192.168.0.0/24</tt>
+</blockquote>
+deny access to all hosts in the <tt>192.168.0.*</tt> network <i>except</i>
+<tt>192.168.0.1</tt>.  However, the reverse:
+<blockquote>
+       <tt>DenyHost&nbsp;&nbsp;/ 192.168.0.0/24</tt>
+   <br><tt>AllowHost / 192.168.0.1</tt>
+</blockquote>
+simply blocks all hosts in the <tt>192.168.0.*</tt> network, since the
+first rule matches <tt>192.168.0.1</tt> and the second is never checked.
+<p>
+Access to the entire server can be allowed or denied by using the
+path "<tt>/</tt>", which matches every URL (since all URLs begin with a
+slash).  Such a rule should always be included at the end of the
+rule list to explicitly indicate what should be done with
+requests that do not match any other rule; the behavior of the
+module for requests without a matching rule is undefined.  For
+example:
+<blockquote>
+   <tt>AllowHost / *</tt>
+</blockquote>
+or:
+<blockquote>
+   <tt>DenyHost / *</tt>
+</blockquote>
+<p>
+<b>WARNING: Hostnames are resolved only once at startup; any changes
+         in a host's IP address will not be seen by Services.</b>
+<p>
+Note: These directives are listed as "optional" only because the
+      module will still load even if no directives are listed;
+      however, unless <tt>AllowHost</tt>/<tt>DenyHost</tt> directives are given,
+      the module will not have any effect.
+
+<p>Example: <tt>AllowHost       / *</tt>
+</ul>
+<a name="httpd/auth-password"></a>
+<p><font size="+1"><b>httpd/auth-password</b> (Password authorization module)</font>
+
+<a name="httpd/auth-password.AuthName"></a>
+<p><ul><li>
+<tt><b>AuthName</b> <i>name</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the name to be used by the user's browser when asking
+for a password (as in "Enter username and password for <tt><i>name</i></tt>:").
+
+<p>Example: <tt>AuthName        "IRC Services"</tt>
+</ul>
+
+<a name="httpd/auth-password.Protect"></a>
+<p><ul><li>
+<tt><b>Protect</b> <i>path</i> <i>user</i>:<i>pass</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the URLs (paths) which will be protected by password
+authorization, and the username and password for each path.  The
+username and password can be different for each path.  The path
+given will match any URL beginning with that string, as with the
+<tt>auth-ip</tt> module.
+<p>
+Examples:
+<blockquote>
+    <tt>Protect /debug "debug:debug"</tt>
+<br><tt>Protect /~&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"nickuser:nickpass"</tt>
+</blockquote>
+<p>
+Note: This directive is listed as "optional" only because the
+      module will still load even if no directives are listed;
+      however, unless <tt>Protect</tt> directives are given, the module
+      will not have any effect.  Use a path of "<tt>/</tt>" to apply
+      password protection to the entire server.
+</ul>
+<a name="httpd/dbaccess"></a>
+<p><font size="+1"><b>httpd/dbaccess</b> (Database access module)</font>
+
+<p>NOTICE: This module allows complete access to all Services data;
+        be certain to protect it from unauthorized access using
+        authorization modules or other means.
+
+<a name="httpd/dbaccess.Prefix"></a>
+<p><ul><li>
+<tt><b>Prefix</b> <i>path</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the URL (path) at which database access will be accessible.
+If this does not end with a slash, one will be appended
+automatically.  Access is provided using the following directory
+tree:
+<div align=center><p><table border=0 cellspacing=2>
+<tr><td><tt><i>path</i>/</tt>
+    <td>Main menu
+<tr><td><tt><i>path</i>/operserv/</tt>
+    <td>OperServ data and menu
+<tr><td><tt><i>path</i>/operserv/akill/</tt>
+    <td>Autokill list
+<tr><td><tt><i>path</i>/operserv/news/</tt>
+    <td>News item list
+<tr><td><tt><i>path</i>/operserv/sessions/&nbsp;&nbsp;</tt>
+    <td>Session and exception lists
+<tr><td><tt><i>path</i>/operserv/sline/</tt>
+    <td>S-line lists
+<tr><td><tt><i>path</i>/nickserv/</tt>
+    <td>Nickname list and information
+<tr><td><tt><i>path</i>/chanserv/</tt>
+    <td>Channel list and information
+<tr><td><tt><i>path</i>/statserv/</tt>
+    <td>Network statistics
+<tr><td><tt><i>path</i>/xml-export/</tt>
+    <td>XML-format database download
+</table></div>
+Categories for which the relevant module is not loaded will not
+be accessible.
+<p>
+<b>WARNING: These functions, particularly the XML export function,
+         can cause Services to stop for a significant period of
+         time while they are processed!</b>
+<p>
+This is commented out by default; make sure you implement proper
+access protection (see above) before uncommenting it.
+
+<p>Example: <tt>Prefix          "/dbaccess"</tt>
+</ul>
+<a name="httpd/debug"></a>
+<p><font size="+1"><b>httpd/debug</b> (Debug page module)</font>
+
+<a name="httpd/debug.DebugURL"></a>
+<p><ul><li>
+<tt><b>DebugURL</b> <i>path</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Sets the URL (path) at which the debug page will be accessible.
+This must begin with a slash.
+
+<p>Example: <tt>DebugURL        "/debug"</tt>
+</ul>
+<a name="httpd/redirect"></a>
+<p><font size="+1"><b>httpd/redirect</b> (Nick/channel redirect module)</font>
+
+<a name="httpd/redirect.NicknamePrefix"></a>
+<p><ul><li>
+<tt><b>NicknamePrefix</b> <i>path</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the URL (path) at which nickname redirects will be
+accessible; all characters after this prefix, up to the next
+slash, will be taken as the nickname.  This must begin with a
+slash.  The default value, "/~", emulates the traditional home
+page URL of "http://www.example.net/~username/".  If you use a
+directory name instead, it must end with a slash, for example:
+"/nickname/".  See also ChannelPrefix, below.
+
+<p>If not set, nickname redirects will not be done.
+
+<p>Example: <tt>NicknamePrefix  "/~"</tt>
+</ul>
+
+<a name="httpd/redirect.ChannelPrefix"></a>
+<p><ul><li>
+<tt><b>ChannelPrefix</b> <i>path</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the URL (path) at which channel redirects will be
+accessible; all characters after this prefix, up to the next
+slash, will be taken as the channel name (without the leading
+"#", which cannot be used in URLs).  The path must begin with
+a slash.  The default value, "/channel/", gives URLs like
+"http://services.example.net/channels/channelname/" for channel
+"#channelname".
+
+<p>If not set, channel redirects will not be done.
+
+<p>Note: If a URL could be interpreted as both a nickname URL and a
+      channel URL, the nickname will take precedence, even if it
+      is not registered or does not have a URL associated with it.
+
+<p>Example: <tt>ChannelPrefix   "/channel/"</tt>
+</ul>
+<a name="httpd/top-page"></a>
+<p><font size="+1"><b>httpd/top-page</b> (Top page module)</font>
+
+<a name="httpd/top-page.Filename"></a>
+<p><ul><li>
+<tt><b>Filename</b> <i>path</i> [<i>content-type</i>]</tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets the name of a file to be delivered as the server's top page.
+If this does not begin with a slash, then it is taken as relative
+to the Services data directory.  The second parameter specifies
+the MIME content type of the file; if not given, it defaults to
+text/html.
+
+<p>Example: <tt>Filename        "Top Page.txt" text/plain</tt>
+<br>Example: <tt>Filename        /var/www/html/ircservices/top-page.html</tt>
+</ul>
+
+<a name="httpd/top-page.Redirect"></a>
+<p><ul><li>
+<tt><b>Redirect</b> <i>URL</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Sets a URL to be provided as a redirect to a client accessing the
+top page.  This must be a full URL, beginning with "http://" (or
+some other protocol specifier).  If both Filename and Redirect
+are given, Redirect takes precedence.
+
+<p>Example: <tt>Redirect        http://www.example.net/ircservices/</tt>
+</ul>
+
+<p><hr width="60%">
+
+<h3 align=center>Miscellaneous modules</h3>
+
+<p><hr width="60%">
+<a name="misc/devnull"></a>
+<p><font size="+1"><b>misc/devnull</b> (DevNull settings)</font>
+
+<a name="misc/devnull.DevNullName"></a>
+<p><ul><li>
+<tt><b>DevNullName</b> <i>nick</i> <i>string</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the nickname (first parameter) and "real" name (second
+parameter) used by the DevNull pseudoclient.
+
+<p>Example: <tt>DevNullName     "DevNull" "/dev/null -- message sink"</tt>
+</ul>
+<a name="misc/helpserv"></a>
+<p><font size="+1"><b>misc/helpserv</b> (HelpServ settings)</font>
+
+<a name="misc/helpserv.HelpServName"></a>
+<p><ul><li>
+<tt><b>HelpServName</b> <i>nick</i> <i>string</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the nickname (first parameter) and "real" name (second
+parameter) used by the HelpServ pseudoclient.
+
+<p>Example: <tt>HelpServName    "HelpServ" "Help Server"</tt>
+</ul>
+
+<a name="misc/helpserv.HelpDir"></a>
+<p><ul><li>
+<tt><b>HelpDir</b> <i>dirname</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[REQUIRED]
+<p>Specifies the name of the subdirectory containing help files for
+HelpServ.
+
+<p>Example: <tt>HelpDir         helpfiles</tt>
+</ul>
+<a name="misc/xml-export"></a>
+<p><font size="+1"><b>misc/xml-export</b> (XML export settings)</font>
+
+<p>This module has no configurable settings.
+<a name="misc/xml-import"></a>
+<p><font size="+1"><b>misc/xml-import</b> (XML import settings)</font>
+
+<a name="misc/xml-import.OnNicknameCollision"></a>
+<p><ul><li>
+<tt><b>OnNicknameCollision</b> <i>action</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Specifies the action to be taken when a nickname in the data to
+import is already registered.  The string must be one of either
+"skipgroup" (skip over the nickname group containing the nickname
+in the imported data), "skipnick" (skip only the colliding
+nickname), "overwrite" (drop the existing nickname), or "abort"
+(do not import any data).  Note that when "abort" is selected,
+the entire XML input is still checked for errors, but Services
+will abort before actually merging any data.
+
+<p>When using "overwrite", if a nickname group has only one nickname
+and that nickname is overwritten, the nickname group will be
+dropped as well.  As a consequence, any channels owned by such a
+nickname will be dropped (or shifted to their successors) as
+well.  All nicknames and channels overwritten or dropped in this
+manner will be displayed on standard error.
+
+<p>If not specified, defaults to "skipgroup".
+
+<p>Example: <tt>OnNicknameCollision skipgroup</tt>
+</ul>
+
+<a name="misc/xml-import.OnChannelCollision"></a>
+<p><ul><li>
+<tt><b>OnChannelCollision</b> <i>action</i></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Specifies the action to be taken when a channel in the data to
+import is already registered.  The string must be one of either
+"skip" (skip over the channel in the imported data), "overwrite"
+(drop the existing channel), or "abort" (do not import any data).
+Note that when "abort" is selected, the entire XML input is still
+checked for errors, but Services will abort before actually
+merging any data.  If not specified, defaults to "skip".
+
+<p>Example: <tt>OnChannelCollision skip</tt>
+</ul>
+
+<a name="misc/xml-import.ImportNews"></a>
+<p><ul><li>
+<tt><b>ImportNews</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes news items in the XML data to be imported into the
+database (normally, news items are skipped).
+
+<p>Example: <tt>ImportNews</tt>
+</ul>
+
+<a name="misc/xml-import.VerboseImport"></a>
+<p><ul><li>
+<tt><b>VerboseImport</b></tt>&nbsp;&nbsp;&nbsp;&nbsp;[OPTIONAL]
+<p>Causes a detailed list of imported nicknames, channels, and other
+data to be printed to standard output.
+
+<p>Example: <tt>VerboseImport</tt>
+</ul>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<p align=right><font size=-1><a href=index.html>Table of Contents</a></font>
+
+</body>
+</html>

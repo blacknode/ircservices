@@ -1,0 +1,190 @@
+# Makefile rules for modules.
+#
+# IRC Services is copyright (c) 1996-2009 Andrew Church.
+#     E-mail: <achurch@achurch.org>
+# Parts written by Andrew Kempe and others.
+# This program is free but copyrighted software; see the file GPL.txt for
+# details.
+
+###########################################################################
+
+# The following variables must be set by the caller (the Makefile which
+# includes this file).  See operserv/Makefile for examples of using all the
+# variables listed below.
+#
+# MODULES	List of modules, each with the extension ".so".  Each
+#		   module is compiled from a source file of the same name
+#		   name ending in ".c" which must contain the required
+#		   module symbol definitions (init_module, etc.), and
+#		   possibly other files as defined by the appropriate
+#		   OBJECTS variable.
+# OBJECTS-...	List of additional objects for a particular module.  The
+#		   "..." is replaced by the name of the module; for
+#		   example, if the module name is "main.so", the OBJECTS
+#		   variable name is "OBJECTS-main.so".
+# INCLUDES	List of include files every source file in the directory
+#		   depends on.
+# INCLUDES-...	List of include files a particular source file depends on.
+#		   The "..." is replaced by the _object_ file name of the
+#		   source file; for example, if the filename is "main.c",
+#		   then the INCLUDES variable name is "INCLUDES-main.o".
+#
+# The following variables are set by this file:
+#
+# DIRNAME	Name of this directory (set by modules/Makefile).
+# TOPDIR	Top Services directory.
+# DEPS		Files which every source file should depend on.
+
+# This makefile is complex because there's no way to say something like
+# "%.so: %.o $(OBJECTS-%)".  Instead, we recursively call ourselves for
+# each module, settings OBJECTS to the appropriate target-dependent value.
+# We then recursively call ourselves _again_ for each source file, defining
+# INCLUDES to the appropriate value.
+
+###########################################################################
+
+TOPDIR=../..
+DEPS = Makefile ../Makerules $(TOPDIR)/Makefile.inc $(TOPDIR)/Makefile \
+       $(TOPDIR)/services.h $(TOPDIR)/modules.h $(TOPDIR)/conffile.h \
+       $(INCLUDES)
+.PHONY: all-dynamic all-static install clean spotless
+
+all-dynamic: $(MODULES)
+all-static: $(MODULES:.so=.a)
+	@set -e ; \
+	if $(TEST_NT) ! -f $(DIRNAME).o -o .stamp -nt $(DIRNAME).o ; then \
+		rm -f .$(DIRNAME).lst2 ; \
+		sort -u .$(DIRNAME).lst >.$(DIRNAME).lst2 ; \
+		mv -f .$(DIRNAME).lst2 .$(DIRNAME).lst ; \
+		echo 'ld -r -o $(DIRNAME).o' `cat .$(DIRNAME).lst` ; \
+		ld -r -o $(DIRNAME).o `cat .$(DIRNAME).lst` ; \
+		echo 'ar -cr ../modules.a $(DIRNAME).o' ; \
+		ar -cr ../modules.a $(DIRNAME).o ; \
+		echo 'touch .stamp' ; \
+		touch .stamp ; \
+	fi
+
+ifeq ($(MODULES),)
+install:
+	$(MKDIR) "$(INSTALL_PREFIX)$(DATDEST)/modules/$(DIRNAME)"
+clean:
+else
+install:
+	$(MKDIR) "$(INSTALL_PREFIX)$(DATDEST)/modules/$(DIRNAME)"
+	$(INSTALL_DAT) $(MODULES) "$(INSTALL_PREFIX)$(DATDEST)/modules/$(DIRNAME)"
+clean:
+	rm -f $(MODULES) $(MODULES:.so=.a) .$(DIRNAME).lst* *.o .mod* .compiled*
+endif
+
+spotless: clean
+
+###########################################################################
+
+.PHONY: FRC
+FRC:
+
+ifeq ($(REALLY_COMPILE),)
+
+%_static.so %_static.a:
+	@echo >&2 '*** Module names must not end in "_static".  Compile aborted.'
+	@false
+.%.so .%.a:
+	@echo >&2 '*** Module names must not begin with ".".  Compile aborted.'
+	@false
+
+# We include FRC as a prerequisite here since we can't check the real
+# prerequisites until the sub-make, which won't get executed if the target
+# exists and there are no prerequisites listed.
+%.so: FRC
+	@$(MAKE) --no-print-directory $@ TARGET=$(@:.so=) OBJECTS="$(OBJECTS-$@)" REALLY_COMPILE=1
+%.a: FRC
+	@$(MAKE) --no-print-directory $@ TARGET=$(@:.a=) OBJECTS="$(OBJECTS-$(@:.a=.so))" REALLY_COMPILE=1
+
+else
+
+# Compile one or more objects into a dynamic module.
+$(TARGET).so: $(TARGET).o $(OBJECTS)
+	$(CC_SHARED) $^ -o $@
+
+# Compile one or more objects into a static module and generate a symbol
+# list.  The .a file we create here is just a placeholder to show that
+# we've compiled the module; the objects themselves go into ../modules.a
+# (via $(DIRNAME).o).
+$(TARGET).a: $(TARGET)_static.o $(OBJECTS)
+	@for i in $^ ; do echo $$i >>.$(DIRNAME).lst ; done
+	@set -e ; \
+	FILENAME=$(@:.a=) ; \
+	MODNAME=`echo $(DIRNAME)_$$FILENAME | sed -e 'y/-/_/' -e 's/_$$//'` ; \
+	rm -f .modext-$$FILENAME.h .modlist-$$FILENAME.c .modsyms-$$FILENAME.c ; \
+	echo >>.modext-$$FILENAME.h 'extern void *_this_module_ptr_'$$MODNAME';' ; \
+	echo >>.modext-$$FILENAME.h 'extern uint32 module_version_'$$MODNAME';' ; \
+	echo >>.modext-$$FILENAME.h 'extern char module_config_'$$MODNAME'[];' ; \
+	echo >>.modext-$$FILENAME.h 'extern int init_module_'$$MODNAME'();' ; \
+	echo >>.modext-$$FILENAME.h 'extern int exit_module_'$$MODNAME'();' ; \
+	echo >>.modlist-$$FILENAME.c '{ "$(DIRNAME)/'$$FILENAME'", modsyms_'$$MODNAME' },' ; \
+	echo >>.modsyms-$$FILENAME.c 'struct {const char *name; void *value; } modsyms_'$$MODNAME'[] = {' ; \
+ 	echo >>.modsyms-$$FILENAME.c '{"_this_module_ptr",&_this_module_ptr_'$$MODNAME'},' ; \
+ 	echo >>.modsyms-$$FILENAME.c '{"module_version",&module_version_'$$MODNAME'},' ; \
+	echo >>.modsyms-$$FILENAME.c '{"module_config",module_config_'$$MODNAME'},' ; \
+	echo >>.modsyms-$$FILENAME.c '{"init_module",init_module_'$$MODNAME'},' ; \
+	echo >>.modsyms-$$FILENAME.c '{"exit_module",exit_module_'$$MODNAME'},' ; \
+	rm -f .modsyms-$$FILENAME.tmp ; \
+	for file in $(@:.a=.c) $(OBJECTS-$(@:.a=.so):.o=.c) ; do \
+		grep '^EXPORT_' $$file \
+			| sed -e 's/^EXPORT_VAR[ 	]*([ 	]*\([^,]*\),[ 	]*\([A-Za-z0-9_]*\)[ 	]*)[ 	]*$$/\&\2:\1 \2/' \
+			      -e 's/^EXPORT_ARRAY[ 	]*([ 	]*\([A-Za-z0-9_]*\)[ 	]*)[ 	]*$$/ \1:char \1[]/' \
+			      -e 's/^EXPORT_FUNC[ 	]*([ 	]*\([A-Za-z0-9_]*\)[ 	]*)[ 	]*$$/ \1:void \1()/' ; \
+	done >.modsyms-$$FILENAME.tmp ; \
+	if grep >/dev/null 2>&1 '^EXPORT_' .modsyms-$$FILENAME.tmp ; then \
+		echo >&2 "$$file: invalid use of EXPORT_xxx" ; \
+		exit 1 ; \
+	fi ; \
+	sed 's/\(.\)\([^:]*\):.*/{"\2",\1\2},/' <.modsyms-$$FILENAME.tmp >>.modsyms-$$FILENAME.c ; \
+	sed 's/[^:]*:\(.*\)/extern \1;/' <.modsyms-$$FILENAME.tmp >>.modext-$$FILENAME.h;\
+	rm -f .modsyms-$$FILENAME.tmp ; \
+	echo '{0}};' >>.modsyms-$$FILENAME.c
+	@touch $@
+
+
+ifneq ($(REALLY_COMPILE),2)
+
+MODULE_ID = $(shell echo $(DIRNAME)_$(TARGET) | sed -e 'y/-/_/' -e 's/_$$//')
+MODULE_CFLAGS = -DMODULE -DMODULE_ID=$(MODULE_ID)
+$(TARGET).o $(TARGET)_static.o: MODULE_CFLAGS += -DMODULE_MAIN_FILE
+$(TARGET)_static.o: MODULE_CFLAGS += -D_this_module_ptr=_this_module_ptr_$(MODULE_ID) -Dmodule_version=module_version_$(MODULE_ID) -Dmodule_config=module_config_$(MODULE_ID) -Dinit_module=init_module_$(MODULE_ID) -Dexit_module=exit_module_$(MODULE_ID)
+$(TARGET)_static.o: FRC
+	@$(MAKE) --no-print-directory $@ TARGET=$(@:_static.o=) INCLUDES2="$(INCLUDES-$(@:_static.o=.o))" CFLAGS="$(CFLAGS) $(MODULE_CFLAGS)" REALLY_COMPILE=2
+	@if $(TEST_NT) ! -f .stamp -o "$@" -nt .stamp ; then \
+		echo "touch .stamp" ; \
+		touch .stamp ; \
+	fi
+$(TARGET).o $(OBJECTS): FRC
+	@$(MAKE) --no-print-directory $@ TARGET=$(@:.o=) INCLUDES2="$(INCLUDES-$@)" CFLAGS="$(CFLAGS) $(MODULE_CFLAGS)" REALLY_COMPILE=2
+	@if $(TEST_NT) ! -f .stamp -o "$@" -nt .stamp ; then \
+		echo "touch .stamp" ; \
+		touch .stamp ; \
+	fi
+
+else
+
+# Compile a source file into an object file.  This construct is used to
+# suppress the "target is up to date" message that would otherwise appear.
+$(TARGET).o: .compiled-$(TARGET).o FRC
+	@echo >/dev/null
+.compiled-$(TARGET).o: $(TARGET).c $(DEPS) $(INCLUDES2)
+	cd $(TOPDIR) && $(CC) $(CFLAGS) -I. -c modules/$(DIRNAME)/$< -o modules/$(DIRNAME)/$(TARGET).o
+	@rm -f $@
+	@ln -s $(TARGET).o $@
+
+# Compile a source file into an object file suitable for use in a static
+# module.  This is used with the main object file of a module to generate
+# unique names for exported module symbols (init_module and the like).
+$(TARGET)_static.o: .compiled-$(TARGET)_static.o FRC
+	@echo >/dev/null
+.compiled-$(TARGET)_static.o: $(TARGET).c $(DEPS) $(INCLUDES2)
+	cd $(TOPDIR) && $(CC) $(CFLAGS) -I. -c modules/$(DIRNAME)/$< -o modules/$(DIRNAME)/$(TARGET)_static.o
+	@touch $@
+
+endif  # REALLY_COMPILE == 2
+
+endif  # REALLY_COMPILE != ""

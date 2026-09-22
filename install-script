@@ -1,0 +1,41 @@
+#!/bin/sh
+
+SRC=""; DEST=""; MODE=""; USER=""; GROUP=""; ISDIR=""
+export SRC DEST MODE USER GROUP ISDIR
+while [ $# -gt 0 ]; do
+    case $1 in
+        -m) MODE=$2; shift; shift;;
+        -u) USER=$2; shift; shift;;
+        -g) GROUP=$2; shift; shift;;
+        -d) ISDIR=1; shift;;
+        -c) shift;;
+         *) SRC="$DEST"; DEST="$1"; shift;;
+    esac
+done
+if [ ! "$DEST" ]; then
+    echo >&2 "Usage: $0 [-c] [-m mode] [-u user] [-g group] source dest"
+    exit 1
+fi
+if [ "$ISDIR" ]; then
+    mkdir -p "$DEST"
+else
+    if [ -d "$DEST" ]; then
+        DEST="$DEST/$SRC"
+    fi
+    /bin/cp -p "$SRC" "$DEST"
+fi
+if [ "$USER" ]; then
+    /bin/chown "$USER" "$DEST"
+fi
+if [ "$GROUP" ]; then
+    /bin/chgrp "$GROUP" "$DEST"
+fi
+if [ "$MODE" ]; then
+    /bin/chmod "$MODE" "$DEST"
+fi
+
+# Local variables:
+#   indent-tabs-mode: nil
+# End:
+#
+# vim: expandtab shiftwidth=4:

@@ -1,0 +1,682 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services Manual - 2. Installing and using Services</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>2. Installing and using Services</h2>
+
+<br>2-1. <a href="#1">System and network requirements</a>
+<br>2-2. <a href="#2">Installing Services from a binary distribution</a>
+<br>2-3. <a href="#3">Installing Services from source code</a>
+<br>2-4. <a href="#4">Configuring Services</a>
+<br>2-5. <a href="#5">Configuring your IRC server</a>
+<br>2-6. <a href="#6">Starting, stopping and controlling Services</a>
+
+<p align=right><font size=-1><a href="1.html">Previous section: About IRC Services</a> |
+<a href="index.html">Table of Contents</a> |
+<a href="3.html">Next section: Overview of Services features</a></font>
+
+<p><hr>
+
+<a name=1></a>
+<h3>2-1. System and network requirements</h3>
+
+<p>In order to run Services, you will need the following:</p>
+
+<p><ul>
+<li><b>A POSIX-compliant operating system.</b>  Services is designed
+for the Linux operating system, but should function on any POSIX-compliant
+(or nearly so) operating system; it is known to work on FreeBSD, OpenBSD,
+and Solaris, and has been reported to work on MacOS X and AmigaOS as well.
+(On AmigaOS, you will need to increase the program stack size using the
+CLI command <tt>STACK</tt>; a stack size of 512k, 524288 bytes, should be
+sufficient.  Services is not supported on Windows, but some users have
+reported success in running it; see <a href="faq.html#A3">FAQ A.3</a>.)
+
+<p><li><b>A supported IRC server</b> (IRCD).  Services supports several
+different types of IRC servers, as listed in Table 2-1 below.  Your IRC
+network must be using one of these servers in order to use Services (the
+"Services module" column indicates which protocol module is used with that
+server; see <a href="#4">section 2-4</a> for details).
+</ul>
+
+<p>Additionally, if you plan to compile Services from the source code, you
+will also need the following (note that these are not necessary if you
+install from a binary package):</p>
+
+<p><ul>
+<li><b><a href="http://www.gnu.org/software/gcc/gcc.html">GCC</a>
+<font size=-1>[<tt>www.gnu.org</tt>]</font> (the GNU C compiler),</b>
+version 3.2 or later.  Services uses some extensions to the C language
+provided by GCC, and is unlikely to compile on other compilers; Services
+also takes advantage of recent additions to the C standard (often referred
+to as "C99") which are not supported by older versions of GCC.
+
+<p><i>Notice: (1)</i> Services will not work with the
+<a href="http://www.trl.ibm.com/projects/security/ssp/">SSP (stack-smashing
+protector)</a> <font size=-1>[<tt>www.trl.ibm.com</tt>]</font> patch to GCC,
+due to a bug in SSP triggered by Services that causes crashes.  The
+<tt>configure</tt> script (see below) will automatically detect the
+presence of this patch and deactivate the stack-protection feature, or
+refuse to compile if it cannot be deactivated.
+
+<p><i>(2)</i> Versions of GCC before 3.4 have bugs which cause Services to
+crash.  Services has workarounds for the Intel x86, SPARC, and PowerPC
+platforms, but you will need to use GCC 3.4 or later on other systems.  See
+<a href="faq.html#B1.5">FAQ B.1.5</a> for details.
+
+<p><li><b><a href="http://www.gnu.org/software/make/make.html">GNU
+make</a> [<font size=-1><tt>www.gnu.org</tt></font>], version 3.79 or
+later.</b>  Services uses complex Makefiles which may or may not work with
+other "make" programs, and are known not to work with earlier versions of
+GNU make.  Note that GNU make may be installed on your system as either
+<tt>make</tt> or <tt>gmake</tt>; if you're not sure, type <tt>make -v</tt>
+or <tt>gmake -v</tt> in your shell, and if you get output that looks like
+"<tt>GNU Make version 3.79.1, by Richard Stallman and Roland McGrath</tt>",
+then it's installed.
+
+<p><li><b>The Bourne shell</b> or a compatible shell.  This is installed on
+most Unix-like systems as <tt>/bin/sh</tt>.  If by any chance the
+<tt>configure</tt> script fails (see <a href="#3">section 2-3</a>), try
+installing <a href="http://www.gnu.org/software/bash/bash.html">Bash</a>
+<font size=-1>[<tt>www.gnu.org</tt>]</font> and using it to run the
+<tt>configure</tt> script.
+
+<p><li><b><a href="http://www.perl.com/">Perl</a>
+<font size=-1>[<tt>www.perl.com</tt>]</font></b> may also be needed if you
+modify certain files (the language data files in particular).
+</ul>
+
+<div align=center>
+<a name=table1></a>
+<b>Table 2-1.</b>  Supported IRC server types<br><br>
+<table border=1>
+<tr><th>IRC server (IRCD) name<th>Services module
+<tr><td><a href="http://bahamut.dal.net/">Bahamut</a>
+	<font size=-1>[<tt>bahamut.dal.net</tt>]</font> 1.8.0 and later
+	<font color=red>(*)</font>
+    <td align=center><tt>bahamut</tt>
+<tr><td>Chunky Monkey IRCD 1.0 and later
+    <td align=center><tt>monkey</tt>
+<tr><td>DALnet (ircd.dal) 4.4.13 and earlier
+    <td align=center><tt>dalnet</tt>
+<tr><td>DALnet (ircd.dal) 4.4.15 and latre
+    <td align=center><tt>dreamforge</tt>
+<tr><td>Dreamforge (ircd.dal 4.6.x)
+    <td align=center><tt>dreamforge</tt>
+<tr><td><a href="http://www.inspircd.org/">InspIRCd</a>
+	<font size=-1>[<tt>www.inspircd.org</tt>]</font> 1.1 and later
+    <td align=center><tt>inspircd</tt>
+<tr><td><a href="http://ircd-hybrid.com/">IRCD-Hybrid</a>
+	<font size=-1>[<tt>ircd-hybrid.com</tt>]</font> 7.0 and later
+	<font color=red>(**)</font>
+    <td align=center><tt>hybrid</tt>
+<tr><td>ircd-2.8.x
+    <td align=center><tt>rfc1459</tt>
+<tr><td>ircd-2.8.x+TS8
+    <td align=center><tt>ts8</tt>
+<tr><td><a href="http://coder-com.undernet.org/">ircu (Undernet)</a>
+	<font size=-1>[<tt>coder-com.undernet.org</tt>]</font> 2.9.x
+    <td align=center><tt>undernet-p9</tt>
+<tr><td><a href="http://www.ptlink.net/Coders/">PTlink IRCd</a>
+	<font size=-1>[<tt>www.ptlink.net</tt>]</font> 6.10.0 and later
+    <td align=center><tt>ptlink</tt>
+<tr><td><a href="http://www.ircd-ratbox.org/">ircd-ratbox</a>
+	<font size=-2>[<tt>www.ircd-ratbox.org</tt>]</font>2.1.x and later
+	<font color=red>(***)</font>
+    <td align=center><tt>ratbox</tt>
+<tr><td><a href="http://www.solid-ircd.com/">solid-ircd</a>
+	<font size=-2>[<tt>www.solid-ircd.com</tt>]</font>, all versions
+	<font color=red>(*)</font>
+    <td align=center><tt>ratbox</tt>
+<tr><td><a href="http://tr-ircd.sourceforge.net/">tr-ircd</a>
+	<font size=-1>[<tt>tr-ircd.sourceforge.net</tt>]</font> 5.7 and
+	later<br>
+    <td align=center><tt>trircd</tt>
+<tr><td><i>UltimateIRCD 2.8.1</i>
+    <td align=center><tt>dreamforge</tt>
+<tr><td><i>UltimateIRCD 3.0.0</i>
+    <td align=center><tt>bahamut</tt>
+<tr><td><a href="http://www.unrealircd.com/">UnrealIRCd</a>
+	<font size=-1>[<tt>www.unrealircd.com</tt>]</font> 3.1.1 and later
+    <td align=center><tt>unreal</tt>
+</table>
+(servers listed in <i>italics</i> are listed based on user reports, but are <b>not supported</b>)
+</div>
+
+<p><font color=red>(*)</font> When using Bahamut or solid-ircd, <b>do
+not</b> configure your server as a "services hub" ("<tt>servtype
+serviceshub</tt>" in the <tt>ircd.conf</tt> file); this setting causes
+Bahamut and solid-ircd to not send certain information needed by Services
+to work correctly.  If Services detects that your server is configured as a
+services hub, it will log a message to that effect and abort.
+
+<p><font color=red>(**)</font> To use Hybrid with Services, you must load
+the <tt>m_tburst.so</tt> module in your server's configuration.  In recent
+versions of Hybrid (at least 7.2.3), this module is compiled automatically;
+in earlier versions, you may need to locate and compile it yourself.  If
+the module is not loaded, Services will refuse to connect to the server.
+
+<p><font color=red>(***)</font> When using ircd-ratbox, make sure to
+include the "<tt>topicburst</tt>" server flag in the <tt>connect</tt> block
+for Services on the remote server; if topic burst support is not enabled,
+Services will refuse to connect to the server.  Also, forced nickname
+changing will be unavailable unless all servers are compiled with the
+"<tt>--enable-services</tt>" option.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=2></a>
+<h3>2-2. Installing Services from a binary distribution</h3>
+
+<p>Binary distributions of Services are provided for Linux systems in the
+popular RPM and .deb formats.  See the <a href="1.html#3">Services home
+page</a> to download the latest binary distribution, then install or
+upgrade it the same way you would for any other package.
+
+<p>Note that executable files in the binary distributions are compiled
+statically; this means that they will work on any modern system regardless
+of version, at the cost of requiring slightly more disk space and runtime
+memory, and requiring an upgrade (or recompile from source) if a bug is
+found in any of the system libraries used by Services.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=3></a>
+<h3>2-3. Installing Services from the source code</h3>
+
+<p>If no binary distribution is available for your platform or you prefer to
+compile Services yourself, you will need to install from the source code.
+Once you have <a href="1.html#3">downloaded the source</a>, you need to:
+
+<p><ol>
+   <li><b>Run the <tt>configure</tt> script.</b>  This script checks what
+type of system you are running and determines what adjustments to the base
+source code are necessary in order to compile.  Certain compile-time
+settings can be set by passing command-line options to the script; the most
+common ones are:
+<ul><li><tt>-ignore-cache</tt> (ignore the results of any previous
+	configuration; use this if your system configuration has changed)
+    <li><tt>-prefix <i>pathname</i></tt> (set default installation location)
+    <li><tt>-use-static-modules</tt> (compile using statically-linked
+	modules, even if dynamic linking is available)
+    <li><tt>-[no-]sorted-lists</tt> (select between sorted nickname/channel
+	lists and unsorted ones; <tt>-sorted-lists</tt> is the default, but
+	on large networks, keeping the lists sorted can slow down Services
+	significantly)
+</ul>
+See Table 2-2 below for a full list of options, which can also be obtained
+with <tt>./configure -help</tt>.  (If you prefer the GNU autoconf
+"<tt>--<i>option</i>[=<i>value</i>]</tt>" format, <tt>configure</tt> will
+accept that as well, <i>e.g.</i> "<tt>--prefix=/usr</tt>".)  Note that
+<tt>configure</tt> will ignore environment variables like <tt>CC</tt> and
+<tt>CFLAGS</tt>; use the appropriate command-line options instead if you
+need to set these yourself.
+
+<p><b>Note on using alternate C compilers:</b> If you specify a particular
+C compiler using the <tt>-cc</tt> option, or if GCC is not installed on
+your system, you will also need to specify any necessary options using the
+<tt>-cflags</tt> option.  In particular, Services uses a feature of C known
+as "pointer aliasing", which is technically forbidden by the C standard but
+necessary for clean programming.  Some compilers attempt to optimize based
+on the assumption that pointer aliasing is not used; if your compiler does
+this, you will need to tell it not to.
+
+<a name="table2-2"></a>
+<div align=center>
+<b>Table 2-2.</b>  Options to the <tt>configure</tt> script<br><br>
+<table border=1>
+<tr><th>Option<th>Description
+
+<tr><th colspan=2>Controlling the <tt>configure</tt> script
+<tr><td><tt>-help</tt>
+    <td>Displays a list of command-line options and their meanings, then
+	exits.
+<tr><td><tt>-ignore-cache</tt>
+    <td>Prevents the cache file from being read.  (The cache file,
+	<tt>config.cache</tt>, is created the first time you run the
+	<tt>configure</tt> script, and saves the results of configuration
+	to speed up the script the next time you run it.)
+
+<tr><th colspan=2>Controlling compilation
+<tr><td><tt>-cc <i>PROGRAM</i></tt>
+    <td>Specifies the C compiler to use, such as <tt>cc</tt> or <tt>gcc</tt>.
+	If this option is given, the ordinary check for a compiler is
+	skipped, and the given compiler is used.  This option also causes
+	the cached values of <tt>CFLAGS</tt> (compiler options) and
+	<tt>LFLAGS</tt> (linker options) to be ignored; these options will
+	revert to the defaults, unless the <tt>-cflags</tt> or
+	<tt>-lflags</tt> options are also given.
+<tr><td><tt>-cflags <i>CFLAGS</i></tt>
+    <td>Specifies command-line options to pass to the compiler when
+	compiling source files.  The default depends on the compiler, but
+	typically includes standard optimization flags, such as <tt>-O2</tt>
+	for GCC.
+<tr><td><tt>-lflags <i>LFLAGS</i></tt>
+    <td>Specifies command-line options to pass to the compiler when linking
+	executable files.  The default is no flags.
+<tr><td><tt>-libs <i>LIBS</i></tt>
+    <td>Specifies any extra libraries to be used when linking the main
+	Services executable, using the linker library options <tt>-L</tt>
+	and <tt>-l</tt>.  Normally there is no need to use this option.
+<tr><td><tt>-os2</tt>
+    <td>Specifies that the system on which Services is being compiled is
+	an OS/2 system.  On such systems, Services may not compile
+	correctly without this switch.
+
+<tr><th colspan=2>Controlling installation
+<tr><td><tt>-program <i>NAME</i></tt>
+    <td>Specifies the name to be used for the executable file (default:
+	<tt>ircservices</tt>).  The configuration file
+	<tt>ircservices.conf</tt> and the <tt>ircservices-chk</tt> script (see
+	<a href="#6-ircservices-chk">section 2-6</a>) will also be renamed
+	to <tt><i>NAME</i>.conf</tt> and <tt><i>NAME</i>-chk</tt>; the
+	installation directories selected by the <tt>-prefix</tt> option
+	(see below) will be changed to match; and the example configuration
+	files will use the given name in the default log, PID, and MOTD
+	files.
+<tr><td><tt>-bindest <i>DIR</i></tt>
+    <td>Specifies the directory to be used for program file installation.
+	The main <tt>ircservices</tt> executable file and the
+	<tt>ircservices-chk</tt> script will be installed in this directory.
+<tr><td><tt>-datdest <i>DIR</i></tt>
+    <td>Specifies the directory to be used for data file installation.  All
+	Services files and subdirectories except the two program files
+	listed above will be installed in this directory.
+<tr><td><tt>-prefix <i>DIR</i></tt>
+    <td>Specifies the directory to be used for installation as a GNU-style
+	installation prefix.  Program files will be installed in
+	<tt><i>DIR</i>/sbin</tt>, and data files will be installed in
+	<tt><i>DIR</i>/lib/ircservices</tt> (or
+	<tt><i>DIR</i>/lib/<i>NAME</i></tt>, where <tt><i>NAME</i></tt> is
+	the executable name given to the <tt>-program</tt> option).  If
+	this option is given, the <tt>-bindest</tt> and <tt>-datdest</tt>
+	options are ignored.
+
+<tr><th colspan=2>Controlling Services features (use <tt>-no-<i>option</i></tt>
+	to disable)
+<tr><td><tt>-use-local-funcs</tt>
+    <td>Forces the use of compatibility functions over system library
+	functions.  Normally, Services will use all system library
+	functions available, except when a bug is detected in one of the
+	functions; if this option is given, Services will instead make use
+	of its own versions of these functions.  This can be useful when
+	debugging Services, or if you suspect a bug in the system libraries.
+<tr><td><tt>-use-static-modules</tt>
+    <td>Forces modules to be compiled statically, even if dynamic modules
+	could be used.  Using static modules results in a larger executable
+	file and more memory usage than using dynamic modules, but may be
+	marginally faster.  On some systems, dynamic modules are not
+	supported, and modules will be compiled statically even if
+	<tt>-no-use-static-modules</tt> is given.
+<tr><td><tt>-sorted-lists</tt>
+    <td>Causes Services to keep the nickname and channel lists sorted; this
+	can cause a performance penalty on large networks.  <b>Enabled by
+	default</b> (use <tt>-no-sorted-lists</tt> to disable).
+<tr><td><tt>-clean-compile</tt>
+    <td>Attempts to compile Services with no compiler warnings; this may
+	cause a slight performance penalty.  <b>Enabled by default</b> (use
+	<tt>-no-clean-compile</tt> to disable).
+<tr><td><tt>-memchecks</tt>
+    <td>Performs extra checks on memory allocation.  This option is
+	intended for debugging only, and causes a significant performance
+	penalty.
+<tr><td><tt>-showallocs</tt>
+    <td>Causes all memory allocation activity to be logged to the Services
+	logfile.  This option is intended for debugging only, and will
+	generate extremely large log files.  This option is ignored unless
+	<tt>-memchecks</tt> is enabled.
+<tr><td><tt>-dumpcore</tt>
+    <td>Causes Services to attempt to write a core file if it crashes.
+	This option can be useful in obtaining a backtrace to aid
+	debugging; however, it prevents Services from shutting down
+	cleanly, so you will not see a "shutting down" notice from Services
+	when it detects a crash.
+
+<tr><th colspan=2>Other options
+<tr><td><tt>-check</tt>
+    <td>Checks whether this script has already been run and whether the
+	cache is up-to-date.  Exits with status 0 if up-to-date, 1 if not.
+	This option is used by the Makefile to ensure that the
+	<tt>configure</tt> script is run before compilation.
+
+</table>
+</div>
+
+<p>When the script starts up, it will first determine the directories in
+which Services should be installed.  These can be specified either through
+the <tt>-bindest</tt>/<tt>-datdest</tt> options or the <tt>-prefix</tt>
+option; if none of these are present, the script will use the same
+directories as when you last ran the script (if you have not run the script
+before or you use the <tt>-ignore-cache</tt> option, the defaults are
+<tt>/usr/local/sbin</tt> for the executable program and
+<tt>/usr/local/lib/ircservices</tt> for the data files).
+
+<p>After setting the installation directories, <tt>configure</tt> will
+check your system and print out status messages as it proceeds.  At the
+end, if no errors occur, it will print out a message telling you to
+proceed with compilation.
+
+<p><li><b>Edit <tt>defs.h</tt> and the <tt>Makefile</tt>, if necessary</b>.
+There are a few settings at the top of these files which can be changed as
+needed.  Usually, however, there is no need to change them, and you can
+proceed directly to compilation.
+
+<p>One case in which you may want to modify a setting is if you run a
+regional network which uses a language other than English as its primary
+language; in this case, you can change the <tt>DEF_LANGUAGE</tt> setting in
+<tt>defs.h</tt> to your local langauge.
+
+<p><li><b>Compile the program.</b>  Run the command <tt>make</tt> (or
+<tt>gmake</tt>, depending on your system) from the top-level directory.
+Compilation time will vary depending on your system; on the author's system
+(Athlon64X2 4400+, 2GB RAM), compiling the entire program takes
+approximately one minute.  If you have a multiple-processor system, you can
+use <tt>make -j<i>N</i></tt> (or <tt>gmake -j<i>N</i></tt>) to compile in
+parallel using <tt><i>N</i></tt> threads, which will significantly reduce
+compilation time.  Parallel compilation is also useful if your system has
+slow I/O (such as disk access), since it lets one compilation run while
+another is waiting for a disk access to complete.
+
+<p><li><b>Install the program and data files.</b>  Run the command <tt>make
+install</tt> (or <tt>gmake install</tt>) and the program and data files
+will be copied to their destinations.  The program file is installed as
+<tt>ircservices</tt> in the program installation directory; the data
+installation directory will contain sample configuration files (see
+<a href="#4">section 2-4</a>), language data files, the
+<a href="5.html#3"><tt>convert-db</tt></a> utility, and (if you compiled
+modules with dynamic linking, which is the default on systems which support
+it) module files.
+
+<p>Note that if you are compiling the program as the same user you will
+install as, you can just use the single command <tt>make install</tt> to
+compile and install in one step.
+
+<p>If you need to install Services to a separate subtree, for example when
+setting up Services in a chroot'd environment, set the
+<tt>INSTALL_PREFIX</tt> variable on the <tt>make</tt> command line.  For
+example, if the installation prefix is set as <tt>/usr/local</tt>, then:
+<br><tt>&nbsp;&nbsp;&nbsp;&nbsp;make install INSTALL_PREFIX=/usr/local/chroot/</tt>
+<br>will install files into <tt>/usr/local/chroot/usr/local/bin</tt> and
+<tt>/usr/local/chroot/usr/local/lib/ircservices</tt>.  (The path given <i>must</i> include a trailing slash.)
+
+</ol>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=4></a>
+<h3>2-4. Configuring Services</h3>
+
+<p>Once Services has been installed, it must be configured for your
+network.  Services uses two text files to control its behavior:
+<tt>ircservices.conf</tt> and <tt>modules.conf</tt>.  (If Services is
+configured with a different program name, the first file's name will
+change to <tt><i>program-name</i>.conf</tt> as well; however, in this
+manual, the default of <tt>ircservices.conf</tt> is assumed.)
+<tt>ircservices.conf</tt> contains settings that affect Services as a
+whole, such as the remote server to connect to; <tt>modules.conf</tt>
+contains settings that apply to individual modules, such as NickServ and
+ChanServ.  These files are stored in the Services data directory (the
+directory you gave when running the <tt>configure</tt> script; this is
+<tt>/var/opt/ircservices</tt> for the binary distributions).
+
+<p>When Services is installed, two sample files,
+<tt>example-ircservices.conf</tt> and <tt>example-modules.conf</tt>, are
+installed in the data directory.  If you are installing Services for the
+first time, you should start out by copying or renaming these files to
+<tt>ircservices.conf</tt> and <tt>modules.conf</tt> respectively.  Each file
+contains detailed information about all possible settings, which can also
+be found in <a href=a.html>Appendix A</a>.  When setting up Services for
+the first time, you should at least check these settings:
+
+<div align=center>
+<b>Table 2-3.</b>  Commonly used configuration directives<br><br>
+<table border=1>
+<tr><th>File<th>Setting and syntax<th>Description
+<tr><td><tt>ircservices.conf</tt>
+    <td><tt>RemoteServer <i>host</i>[:<i>port</i>] <i>password</i></tt>
+    <td>Sets the server to which Services connects and the password used to
+	connect.
+<tr><td><tt>ircservices.conf</tt>
+    <td><tt>ServerName <i>name</i></tt>
+    <td>Sets the server name Services will use on the IRC network.
+<tr><td><tt>ircservices.conf</tt>
+    <td><tt>ServerDesc <i>description</i></tt>
+    <td>Sets the server description provided by Services.
+<tr><td><tt>ircservices.conf</tt>
+    <td><tt>ServiceUser <i>user</i>@<i>host</i></tt>
+    <td>Sets the username and hostname used by Services clients.  You may
+	want to set this to an E-mail address at which users can ask
+	questions about Services or your IRC network.
+<tr><td><tt>ircservices.conf</tt>
+    <td><tt>LoadModule <i>module-name</i></tt>
+    <td>Loads the specified module.  The example configuration file lists
+	all of the possible modules; select which ones you want to load or
+	not load.  In particular, make sure you select the correct protocol
+	module and enter its name in the line which reads
+	"<tt>LoadModule protocol/(insert protocol name here)</tt>"
+	or Services will not be able to start.
+<tr><td height=3>
+<tr><td><tt>modules.conf</tt>
+    <td><tt>Module protocol/<i>protocol-name</i></tt>
+    <td>Change this line (the first <tt>Module</tt> line in the file) so it
+	contains the same protocol module you specified in
+	<tt>ircservices.conf</tt>.
+<tr><td><tt>modules.conf</tt>
+    <td><tt>FromAddress <i>user</i>@<i>host</i></tt>
+    <td><tt>mail/main</tt> module:  Sets the E-mail address used as the
+	sender on outgoing mail.  Set this to an address at which users can
+	contact you with questions about Services.
+<tr><td><tt>modules.conf</tt>
+    <td><tt>FromName "<i>name</i>"</tt>
+    <td><tt>mail/main</tt> module:  Set this to the "name" you want to use
+	as the sender on outgoing mail.  If you don't want a name (just the
+	E-mail address), leave this setting commented out.
+<tr><td><tt>modules.conf</tt>
+    <td><tt>ServicesRoot <i>nick</i></tt>
+    <td><tt>operserv/main</tt> module:  Set this to the nickname which
+	should be granted Services root (super-user) privileges.
+<tr><td><tt>modules.conf</tt>
+    <td><tt>ListenTo <i>address</i>:<i>port</i></tt>
+    <td><tt>httpd/main</tt> module:  Sets the ports to which the Services
+	HTTP server will listen.  See <a href="3.html#6">section 3-6</a>
+	for details.
+</table>
+</div>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<a name=5></a>
+<h3>2-5. Configuring your IRC server</h3>
+
+<p>The IRC server to which Services will connect must be configured to
+allow Services to connect as a server.  For traditional irc2-based servers,
+this involves adding appropriate <tt>C:</tt> and <tt>N:</tt> lines to the
+server's configuration file; consult your IRC server program's
+documentation for details.
+
+<p>Some IRC server programs, including traditional irc2-based ones, do not
+allow servers to introduce other servers, <i>i.e.</i> act as hubs, without
+a special configuration setting (an <tt>H:</tt> line in irc2-based
+servers).  If this setting is missing from any server in your network,
+Services may be disconnected when you use the
+<a href="4.html#oper.jupe"><tt>JUPE</tt></a> command.
+
+<p>In addition, some server programs support a "U-line" or similar concept,
+allowing servers named in a <tt>U:</tt> line or other configuration
+directive to override normal privilege checks (and consequently preventing
+other servers from overriding those checks).  If your server program has
+such an option, ensure that it is set on all servers in your network, or
+you may encounter problems such as ChanServ being unable to change channel
+modes.
+
+<p>Also see the notes in <a href="#table1">table 2-1</a> above for special
+considerations when configuring particular types of IRC servers.
+
+<p><hr>
+
+<a name=6></a>
+<h3>2-6. Starting, stopping and controlling Services</h3>
+
+<p>Services can be started by simply running the <tt>ircservices</tt>
+program from a shell prompt.  Upon starting, Services will parse its
+command-line arguments and the <tt>ircservices.conf</tt> file, then open
+the log file; if there are no errors, it will then print a short message to
+the terminal, put itself in the background and return control to the shell.
+If an error does occur, Services will print an error message and exit.
+
+<p>Several command-line options can be used to modify Services' behavior or
+override settings in the <tt>ircservices.conf</tt> configuration file; these
+are summarized in table 2-4 below.  The command-line option <tt>-help</tt>
+can be used to get a list of all available options.
+
+<div align=center>
+<b>Table 2-4.</b>  <tt>ircservices</tt> command-line options<br><br>
+<table border=1>
+<tr><th>Option<th>Meaning
+<tr><td><tt>-help</tt>
+    <td>Prints a list of available options.
+<tr><td><tt>-dir=<i>pathname</i></tt>
+    <td>Uses <tt><i>pathname</i></tt> as the data directory instead of the
+	compiled-in default.
+<tr><td><tt>-remote=<i>host</i>[:<i>port</i>]</tt>
+    <td>Connects to the specified server, overriding the
+	<tt>RemoteServer</tt> setting in <tt>ircservices.conf</tt>.
+<tr><td><tt>-log=<i>filename</i></tt>
+    <td>Writes logging information to <tt><i>filename</i></tt>, overriding
+	the <tt>LogFilename</tt> setting in <tt>ircservices.conf</tt>.
+<tr><td><tt>-debug</tt>
+    <td>Starts Services in debug mode; using this option multiple times
+	will produce more debugging output.
+<tr><td><tt>-readonly</tt>
+    <td>Starts Services in read-only mode; database and log files will not
+	be written to, and online data modification will be limited to
+	Services administrators.
+<tr><td><tt>-nofork</tt>
+    <td>Prevents Services from forking (going into the background) after
+	initialization, and causes log messages to be written to the
+	terminal as well as the log file.
+<tr><td><tt>-noexpire</tt>
+    <td>Disables expiration of database entries (nicknames, channels,
+	autokills, and so on).
+<tr><td><tt>-noakill</tt>
+    <td>Disables autokill checking.  (However, the autokill list itself can
+	still be modified.)
+<tr><td><tt>-forceload</tt>
+    <td>When using the <tt>database/version4</tt> module, attempts to load
+	as much data from corrupted databases as possible, rather than
+	aborting when an error is found.
+<tr><td><tt>-encrypt-all</tt>
+    <td>Re-encrypts all passwords on startup using the encryption type
+	selected in <tt>ircservices.conf</tt>.  (Passwords encrypted with
+	one type generally cannot be re-encrypted with a different type, so
+	this is generally useful only to ensure that no passwords are left
+	unencrypted after activating encryption.)
+<tr><td><tt>-import=<i>filename</i></tt>
+    <td>Imports data into Services' databases (see <a href="5.html#2">section
+	5-2</a>).
+</table>
+</div>
+
+<p>Once in the background, Services will load language files and modules,
+then try to connect to the remote server specified in <tt>ircservices.conf</tt>
+(or on the command line).  If any errors occur during these steps, an error
+message will be printed to the log file and Services will terminate.  If
+Services appears to start up correctly but does not connect to your IRC
+network, check the log file for any errors that may have occurred.
+
+<p>Once Services successfully connects to your IRC network, it will
+continue running until either:
+<ul><li>the remote server closes the connection (for example, because of a
+	<tt>/SQUIT</tt> command);
+    <li>an OperServ <a href="4.html#oper.restart"><tt>RESTART</tt></a>,
+	<a href="4.html#oper.shutdown"><tt>SHUTDOWN</tt></a>, or
+	<a href="4.html#oper.quit"><tt>QUIT</tt></a> command is received; or
+    <li>a termination signal (<tt>SIGINT</tt> [<tt>^C</tt>],
+	<tt>SIGQUIT</tt>, <tt>SIGTERM</tt>, or <tt>SIGKILL</tt>, as well as
+	fatal program errors) is received.
+</ul>
+In any of these cases (except in the case of a <tt>SIGKILL</tt> signal,
+which Services cannot detect), an appropriate message will be written to
+the log file describing why Services terminated.
+
+<p>The debug output level and read-only setting can be modified while
+Services is running using the OperServ
+<a href="4.html#oper.set"><tt>SET</tt></a> command as needed, and other
+OperServ commands can be used to monitor the status of Services or (as
+mentioned above) shut down or restart Services.
+
+<p>While it is running, Services will periodically save modified data
+(newly registered nicknames and channels, modified settings, and so on) to
+disk.  This is done in such a way that even if Services crashes while
+writing the data, the previous contents of the databases will remain intact.
+However, should the database files become corrupt (whether because of a bug
+in Services or as the result of hardware failure or tampering), the
+<tt>-forceload</tt> command-line option can be used to recover as much data
+as possible from the corrupted data file.  It is also <b>strongly
+recommended</b> that you make regular backups of your data files, to reduce
+potential damage from such problems.
+
+<p>If the contents of the <tt>ircservices.conf</tt> or <tt>modules.conf</tt>
+configuration files are changed, Services can be instructed to reread the
+files with either the OperServ
+<a href="4.html#oper.rehash"><tt>REHASH</tt></a> command or the
+<tt>SIGHUP</tt> signal.  If no errors are found in the configuration files,
+Services' settings will be updated with the new configuration file
+contents.  Modules can also be loaded and unloaded this way without
+restarting Services by adding or removing <tt>LoadModule</tt> directives in
+<tt>ircservices.conf</tt>; however, modules will not be able to be unloaded
+if other loaded modules depend on them.  (For example, since the ChanServ
+module depends on NickServ being available, you cannot remove the NickServ
+module while leaving the ChanServ module loaded.  You can, however, unload
+both of them at once.)
+
+<a name="6-ircservices-chk"></a>
+<p>If the system Services runs on supports periodic execution of programs,
+such as via the <tt>cron</tt> utility, you can use the supplied script
+<tt>ircservices-chk</tt>, installed in the same directory as the
+<tt>ircservices</tt> executable, to ensure that Services comes back up
+quickly if it should crash or otherwise terminate unexpectedly.  (Of
+course, you will need to disable this check if you ever shut down Services
+intentionally!)  On a typical Unix system, the following line, when added
+using the <tt>crontab</tt> utility, will cause the <tt>ircservices-chk</tt>
+script to be run once every five minutes (here,
+<tt>/path/to/ircservices-chk</tt> represents the full path to the
+<tt>ircservices-chk</tt> script):
+
+<div align=center>
+<blockquote>
+<tt>0,5,10,15,20,25,30,35,40,45,50,55 * * * *&nbsp;&nbsp;&nbsp;&nbsp;/path/to/ircservices-chk</tt>
+</blockquote>
+</div>
+
+<p>If you need to pass options to the <tt>ircservices</tt> executable,
+simply add them after <tt>ircservices-chk</tt> in the line above.  You can
+also prevent the script from generating output (which would be sent to you
+by mail) by adding the <tt>-q</tt> option after <tt>ircservices-chk</tt>
+and before any other options.
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<p><hr>
+
+<p align=right><font size=-1><a href="1.html">Previous section: About IRC Services</a> |
+<a href="index.html">Table of Contents</a> |
+<a href="3.html">Next section: Overview of Services features</a></font>
+
+</body>
+</html>

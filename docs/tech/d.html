@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - Appendix D. Coding style guidelines</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">Appendix D. Coding style guidelines</h2>
+
+<p class="section-toc">
+     D-1. <a href="#s1">Formatting</a>
+<br/>D-2. <a href="#s2">Identifier naming</a>
+</p>
+
+<p class="backlink"><a href="index.html">Table of Contents</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p>The following guidelines were observed when writing the Services source
+code.  Note, however, that they were treated as guidelines, not rules, with
+the cardinal rule being "readability first".</p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">D-1. Formatting</h3>
+
+<ul>
+<li class="spaced">Lines must not be longer than 79 columns.</li>
+
+<li class="spaced">The basic indentation unit is four columns.</li>
+
+<li class="spaced">Tab (ASCII <tt>\011</tt>) characters are not permitted
+	in source files; indents should always be done using using spaces
+	(<tt>\040</tt>).  The source files distributed with Services
+	include settings for the Emacs and Vim editors that cause the Tab
+	key to insert spaces rather than a tab character.</li>
+
+<li class="spaced">Only one statement is allowed per line.  Statements
+	(including the empty statement "<tt>;</tt>") may not be written on
+	the same line as a control keyword (<tt>if</tt>, <tt>for</tt>, or
+	<tt>while</tt>).</li>
+
+<li class="spaced">Spaces are placed between binary operators and their
+	operands, except for the member-reference operators "<tt>-&gt;</tt>"
+	and "<tt>.</tt>"; spaces are not placed between unary operators and
+	their operands.  However, spaces may be omitted around binary
+	operators when it would improve readability.  Examples:
+
+	<div class="code">i = j * 2;
+user-&gt;channelcount++;
+result += i*60 + (j+59)/60;</div></li>
+
+<li class="spaced"><tt>NULL</tt>, not <tt>0</tt>, should always be used in
+	pointer comparisons.  For character comparisons, <tt>0</tt> is
+	preferred to <tt>'\0'</tt>, but the latter may also be used if it
+	does not go against the style of the surrounding code.  Do not use
+	<tt>'\0'</tt> with variables declared as type <tt>int8</tt> or
+	<tt>uint8</tt>, even though these types are usually equivalent to
+	<tt>char</tt> and <tt>unsigned char</tt>.</li>
+
+<li class="spaced">The construct "<tt>!!<i>expression</i></tt>" should not
+	be used.  Use "<tt><i>expression</i> != 0</tt>" (for characters or
+	integers) or "<tt><i>expression</i> != NULL</tt>" (for pointers)
+	instead.</li>
+
+<li class="spaced">Parentheses are required when <tt>&&</tt> and
+	<tt>||</tt> are used in the same expression to explicitly indicate
+	order of evaluation; do not rely on the default order of evaluation.
+	(Not using parentheses will generate a warning when using <tt>gcc
+	-Wall</tt>.)</li>
+
+<li class="spaced">Parentheses following the control statements "<tt>if</tt>",
+	"<tt>for</tt>", and "<tt>while</tt>", as well as the macros
+	<tt>LIST_FOREACH</tt>, <tt>LIST_FOREACH_SAFE</tt>, and
+	<tt>ARRAY_FOREACH</tt>, are preceded by a space.  Parentheses
+	following function or macro calls (other than the above) are not
+	preceded by a space.  Example:
+
+	<div class="code">if (flag)
+    function();</div></li>
+
+<li class="spaced">Spaces are placed after the comma of each parameter to a
+	function or macro; however, they may be omitted in function calls
+	which are themselves parameters to a function or macro, or when
+	including them would make the line exceed the length limit.  Spaces
+	are also placed after (but not before) the semicolons in a
+	<tt>for</tt> statement.  Spaces are not placed after the opening
+	parenthesis or before the closing parenthesis of a function/macro
+	call or control statement.  Examples:
+
+	<div class="code">function(param1, param2);
+function(param1, strchr(string,'/'), param3);
+for (i = 0; i < count; i++) ...</div></li>
+
+<li class="spaced">Opening braces of control statement blocks go on the
+	same line as the control statement (<tt>if</tt>, <tt>for</tt>,
+	etc.) associated with the block; function blocks and "naked blocks"
+	(those not associated with any control statement or function) have
+	the opening brace alone on a line, indented to the same level as
+	the surrounding code.  Closing braces are indented to the same
+	level as the line containing the opening brace.  Examples:
+
+        <div class="code">if (flag) {
+    /* indented code goes here */
+    ...
+}
+
+int function(int param1, char *param2)
+{
+    /* indented code goes here */
+    ...
+    /* start of a naked block */
+    {
+        int foo;
+        ...
+    }
+}</div></li>
+
+<li class="spaced">If an <tt>if</tt> statement is longer than one line, it
+	should be broken at logical operators (<tt>&&</tt> or <tt>||</tt>);
+	the operator should be placed at the beginning of the next line,
+	and should be indented to show which term the operator belongs
+	with.  The closing parenthesis for the <tt>if</tt> statement and
+	the subsequent open brace should be alone on a line, aligned with
+	the first line of the <tt>if</tt> statement.  (Braces are required
+	in this case.)  Conditions for <tt>for</tt> and <tt>while</tt>
+	statements should never span multiple lines, though a <tt>for</tt>
+	statement may be broken at the semicolons if necessary.  Examples:
+
+	<div class="code">if (ok && (strcmp(option, "option-name-1") == 0
+           || strcmp(option, "option-name-2") == 0)
+) {
+    ...
+}
+
+if (!init_first()
+ || !init_second()
+ || !init_third()
+ || !init_fourth()
+) {
+    /* This example outdents the || by three spaces to line
+     * up the terms.  Such outdenting is acceptable if it
+     * makes the code easier to read and understand. */
+    ...
+}
+
+for (exception = first_maskdata(MD_EXCEPTION); exception != NULL;
+     exception = next_maskdata(MD_EXCEPTION)
+) {
+    ...
+}</div></li>
+
+<li class="spaced">An <tt>else</tt> followed by an <tt>if</tt> is considered to be a
+	single keyword, "<tt>else if</tt>".  The <tt>if</tt> part should
+	always be placed on the same line as and immediately following the
+	<tt>else</tt>; the <tt>else if</tt> should never be split up onto
+	two lines, nor should braces be used around the <tt>if</tt> block.
+	The exception to this is when the <tt>else</tt> and <tt>if</tt>
+	refer to two conceptually distinct sets of conditions, in which
+	case the <tt>if</tt> block should be enclosed by braces and
+	indented.  Example:
+
+	<div class="code">res = check_password( /* ... */ );
+if (res == 0) {
+    ...
+} else if (res == 1) {
+    /* "else if" on a single line */
+    ...
+} else {
+    if (user-&gt;ni != NULL) {
+        /* "if" condition is different from "else"
+         * condition, thus separate */
+        ...
+    }
+}</div></li>
+
+<li class="spaced">Braces are always placed around the body of a control statement
+	(<tt>if</tt>, <tt>for</tt>, etc.).  The two exceptions are
+	<tt>else</tt> followed by <tt>if</tt>, mentioned above, and
+	statements for which the body, as well as the bodies of any
+	<tt>else if</tt> or <tt>else</tt> statements for an <tt>if</tt>
+	statement, are all one statement in length and do not contain any
+	nested control statements; in this latter case, braces are optional
+	(but recommended if any of the statements span multiple lines).
+	Examples:
+
+	<div class="code">for (i = 0; i < count; i++)
+    function(i);
+
+while (!done) {
+    /* Braces required because of the nested "if" */
+    if (do_stuff())
+        done = 1;
+}
+
+if (state == 0) {
+    a = b;
+} else if (state == 1) {
+    /* Every if/else body gets braces because this body
+     * has two statements */
+    b += a;
+    a = 0;
+} else {
+    state = 0;
+}</div></li>
+
+<li class="spaced">When using multiply-nested control statements, or a single control
+	statement which has a long block, the closing brace of the block
+	should be followed by a comment indicating what control statement
+	the block belongs to.  This should usually be the content of the
+	control statement, but may be abbreviated as long as its meaning is
+	clear.  If a long <tt>if</tt> block is followed by an <tt>else</tt>
+	clause, the <tt>else</tt> should likewise be documented.  Examples:
+
+	<div class="code">while (i < count) {
+    ...
+}  /* while (i < count) */
+
+if (flag) {
+    ...
+} else {  /* !flag */
+    ...
+}  /* if (flag) */
+
+for (node = first; node != NULL; node = node-&gt;next) {
+    ...
+}  /* for all nodes */</div></li>
+
+<li class="spaced"><tt>case</tt> and <tt>default</tt> labels for a <tt>switch</tt>
+	should be indented half of a normal indentation unit (two columns)
+	from the line containing the <tt>switch</tt> with which they are
+	associated; statements associated with a case should be indented a
+	full unit from the line containing the <tt>switch</tt> (half a unit
+	from the <tt>case</tt>).  If a case requires its own block, such as
+	when it declares its own local variables, the opening brace is
+	placed after the colon on the <tt>case</tt> line.  Example:
+
+	<div class="code">switch (variable) {
+  case 123: {
+    int foo;
+    ...
+    break;
+  }  /* case 123 */
+  default:
+    ...
+    return -1;
+}</div></li>
+
+<li class="spaced">When a case in a <tt>switch</tt> block does not contain a
+	<tt>break</tt> (or <tt>return</tt>) statement and deliberately
+	"falls through" to the next case, a comment to this effect should
+	be made at the bottom of the case.  Example:
+
+	<div class="code">switch (state) {
+  case 0:
+    ...
+    /* fall through */
+  case 1:
+    ...
+    break;
+}</div></li>
+
+<li class="spaced">Inline comments (comments placed to the right of a line of code)
+	should be aligned to start on the same column, when this does not
+	place too much space between the comment and the code or cause the
+	line to exceed 79 columns in length.  Inline comments after
+	unusually long lines (such as long field declarations in
+	structures) should be placed alone on the following line, indented
+	the proper amount.</li>
+
+<li class="spaced">The <tt>goto</tt> statement should not be used except in error
+	handling situations where it will help avoid multiple levels of
+	<tt>if</tt> nesting or other awkward code.  Labels for
+	<tt>goto</tt> should be outdented half of an indentation unit
+	from the surrounding code (<i>i.e.</i>, indented two columns less
+	than the surrounding code).</li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">D-2. Identifier naming</h3>
+
+<ul>
+<li class="spaced">Global variables and type names should use mixed upper- and
+	lower-case, with an upper-case letter at the beginning of each
+	distinct word in the name.</li>
+
+<li class="spaced">Preprocessor constants and macros should use all upper-case
+	letters, with an underscore between distinct words in the
+	name.</li>
+
+<li class="spaced">Structure names and local variables should use all lower-case
+	letters, with an underscore between distinct words in the
+	name.</li>
+
+<li class="spaced">Structure names for structures with an associated type name
+	(<i>i.e.</i>, from <tt>typedef</tt>) should be given the same name
+	as the type, except with all letters in lowercase and followed by
+	an underscore.  Example:
+
+	<div class="code">typedef struct mytype_ MyType;
+struct mytype_ {
+    MyType *next, *prev;
+    ...
+};</div></li>
+
+<li class="spaced">Names should be descriptive.  For global variables,
+	preprocessor macros and constants, type names, and structure
+	names, names should generally consist of one or more full words.
+	For local variables, short names and abbreviations are permitted
+	as long as it is clear what the variables are used for.  In
+	general, one-letter local variable names should not be used other
+	than the following:
+	<ul>
+	<li><tt>c</tt>: character</li>
+	<li><tt>f</tt>: file pointer (<tt>FILE *</tt>)</li>
+	<li><tt>i</tt>, <tt>j</tt>, <tt>k</tt>: integers (usually
+		counters)</li>
+	<li><tt>n</tt>, <tt>p</tt>, <tt>q</tt>: integers (<tt>p</tt> may
+		also be a pointer variable)</li>
+	<li><tt>s</tt>: string</li>
+	<li><tt>t</tt>: string or temporary variable</li>
+	<li><tt>x</tt>, <tt>y</tt>, <tt>z</tt>: integers (usually
+		position variables)</li>
+	</ul>
+	Two-letter variable names are often formed from initials of type
+	names, such as <tt>NickInfo *ni</tt>; see the source code for
+	examples.</li>
+</ul>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="index.html">Table of Contents</a></p>
+
+</body>
+</html>

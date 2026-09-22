@@ -1,0 +1,721 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+<title>IRC Services Manual - Appendix B. XML data format description</title>
+</head>
+
+<body>
+<a name=top></a>
+<h1 align=center>IRC Services Manual</h1>
+
+<h2 align=center>Appendix B. XML data format description</h2>
+
+<p>B-1. <a href="#1">Data file structure</a>
+<br>B-2. <a href="#2">Tag index</a>
+
+<p align=right><font size=-1><a href="index.html">Table of Contents</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=1></a>
+<h3>B-1. Data file structure</h3>
+
+<p>The example data below shows the structure of the XML data used by
+Services; click on a tag for information about that tag (from the
+<a href="#2">tag index</a> below).  An ellipsis (<tt>...</tt>) indicates
+where data is entered.
+
+<p>
+<pre>
+&lt;<a href="#ircservices-db">ircservices-db</a>&gt;
+    &lt;<a href="#constants">constants</a>&gt;
+        &lt;<A HREF="#LANG_DEFAULT">LANG_DEFAULT</A>&gt;...&lt;/<A HREF="#LANG_DEFAULT">LANG_DEFAULT</A>&gt;
+        &lt;<A HREF="#CHANMAX_UNLIMITED">CHANMAX_UNLIMITED</A>&gt;...&lt;/<A HREF="#CHANMAX_UNLIMITED">CHANMAX_UNLIMITED</A>&gt;
+        &lt;<A HREF="#CHANMAX_DEFAULT">CHANMAX_DEFAULT</A>&gt;...&lt;/<A HREF="#CHANMAX_DEFAULT">CHANMAX_DEFAULT</A>&gt;
+        &lt;<A HREF="#TIMEZONE_DEFAULT">TIMEZONE_DEFAULT</A>&gt;...&lt;/<A HREF="#TIMEZONE_DEFAULT">TIMEZONE_DEFAULT</A>&gt;
+        &lt;<A HREF="#ACCLEV_FOUNDER">ACCLEV_FOUNDER</A>&gt;...&lt;/<A HREF="#ACCLEV_FOUNDER">ACCLEV_FOUNDER</A>&gt;
+        &lt;<A HREF="#ACCLEV_INVALID">ACCLEV_INVALID</A>&gt;...&lt;/<A HREF="#ACCLEV_INVALID">ACCLEV_INVALID</A>&gt;
+        &lt;<A HREF="#ACCLEV_SOP">ACCLEV_SOP</A>&gt;...&lt;/<A HREF="#ACCLEV_SOP">ACCLEV_SOP</A>&gt;
+        &lt;<A HREF="#ACCLEV_AOP">ACCLEV_AOP</A>&gt;...&lt;/<A HREF="#ACCLEV_AOP">ACCLEV_AOP</A>&gt;
+        &lt;<A HREF="#ACCLEV_HOP">ACCLEV_HOP</A>&gt;...&lt;/<A HREF="#ACCLEV_HOP">ACCLEV_HOP</A>&gt;
+        &lt;<A HREF="#ACCLEV_VOP">ACCLEV_VOP</A>&gt;...&lt;/<A HREF="#ACCLEV_VOP">ACCLEV_VOP</A>&gt;
+        &lt;<A HREF="#ACCLEV_NOP">ACCLEV_NOP</A>&gt;...&lt;/<A HREF="#ACCLEV_NOP">ACCLEV_NOP</A>&gt;
+        &lt;<A HREF="#MEMOMAX_UNLIMITED">MEMOMAX_UNLIMITED</A>&gt;...&lt;/<A HREF="#MEMOMAX_UNLIMITED">MEMOMAX_UNLIMITED</A>&gt;
+        &lt;<A HREF="#MEMOMAX_DEFAULT">MEMOMAX_DEFAULT</A>&gt;...&lt;/<A HREF="#MEMOMAX_DEFAULT">MEMOMAX_DEFAULT</A>&gt;
+        &lt;<A HREF="#NEWS_LOGON">NEWS_LOGON</A>&gt;...&lt;/<A HREF="#NEWS_LOGON">NEWS_LOGON</A>&gt;
+        &lt;<A HREF="#NEWS_OPER">NEWS_OPER</A>&gt;...&lt;/<A HREF="#NEWS_OPER">NEWS_OPER</A>&gt;
+        &lt;<A HREF="#MD_AKILL">MD_AKILL</A>&gt;...&lt;/<A HREF="#MD_AKILL">MD_AKILL</A>&gt;
+        &lt;<A HREF="#MD_EXCLUSION">MD_EXCLUDE</A>&gt;...&lt;/<A HREF="#MD_EXCLUDE">MD_EXCLUDE</A>&gt;
+        &lt;<A HREF="#MD_EXCEPTION">MD_EXCEPTION</A>&gt;...&lt;/<A HREF="#MD_EXCEPTION">MD_EXCEPTION</A>&gt;
+        &lt;<A HREF="#MD_SGLINE">MD_SGLINE</A>&gt;...&lt;/<A HREF="#MD_SGLINE">MD_SGLINE</A>&gt;
+        &lt;<A HREF="#MD_SQLINE">MD_SQLINE</A>&gt;...&lt;/<A HREF="#MD_SQLINE">MD_SQLINE</A>&gt;
+        &lt;<A HREF="#MD_SZLINE">MD_SZLINE</A>&gt;...&lt;/<A HREF="#MD_SZLINE">MD_SZLINE</A>&gt;
+    &lt;/<a href="#constants">constants</a>&gt;
+    &lt;<a href="#maxusercnt">maxusercnt</a>&gt;...&lt;/<a href="#maxusercnt">maxusercnt</a>&gt;
+    &lt;<a href="#maxusertime">maxusertime</a>&gt;...&lt;/<a href="#maxusertime">maxusertime</a>&gt;
+    &lt;<a href="#supass">supass</a> [cipher="..."]&gt;...&lt;/<a href="#supass">supass</a>&gt;
+    &lt;<a href="#nickgroupinfo">nickgroupinfo</a>&gt;
+        &lt;<a href="#id">id</a>&gt;...&lt;/<a href="#id">id</a>&gt;
+        &lt;<a href="#nicks">nicks</a> count='...'&gt;
+            &lt;<a href="#array-element">array-element</a>&gt;...&lt;/<a href="#array-element">array-element</a>&gt;
+        &lt;/<a href="#nicks">nicks</a>&gt;
+        &lt;<a href="#mainnick">mainnick</a>&gt;...&lt;/<a href="#mainnick">mainnick</a>&gt;
+        &lt;<a href="#pass">pass</a> [cipher="..."]&gt;...&lt;/<a href="#pass">pass</a>&gt;
+        &lt;<a href="#url">url</a>&gt;...&lt;/<a href="#url">url</a>&gt;
+        &lt;<a href="#email">email</a>&gt;...&lt;/<a href="#email">email</a>&gt;
+        &lt;<a href="#last_email">last_email</a>&gt;...&lt;/<a href="#last_email">last_email</a>&gt;
+        &lt;<a href="#info">info</a>&gt;...&lt;/<a href="#info">info</a>&gt;
+        &lt;<a href="#flags">flags</a>&gt;...&lt;/<a href="#flags">flags</a>&gt;
+        &lt;<a href="#os_priv">os_priv</a>&gt;...&lt;/<a href="#os_priv">os_priv</a>&gt;
+        &lt;<a href="#authcode">authcode</a>&gt;...&lt;/<a href="#authcode">authcode</a>&gt;
+        &lt;<a href="#authset">authset</a>&gt;...&lt;/<a href="#authset">authset</a>&gt;
+        &lt;<a href="#authreason">authreason</a>&gt;...&lt;/<a href="#authreason">authreason</a>&gt;
+	&lt;<a href="#suspend_who">suspend_who</a>&gt;...&lt;/<a href="#suspend_who">suspend_who</a>&gt;
+	&lt;<a href="#suspend_reason">suspend_reason</a>&gt;...&lt;/<a href="#suspend_reason">suspend_reason</a>&gt;
+	&lt;<a href="#suspend_time">suspend_time</a>&gt;...&lt;/<a href="#suspend_time">suspend_time</a>&gt;
+	&lt;<a href="#suspend_expires">suspend_expires</a>&gt;...&lt;/<a href="#suspend_expires">suspend_expires</a>&gt;
+        &lt;<a href="#language">language</a>&gt;...&lt;/<a href="#language">language</a>&gt;
+        &lt;<a href="#timezone">timezone</a>&gt;...&lt;/<a href="#timezone">timezone</a>&gt;
+        &lt;<a href="#channelmax">channelmax</a>&gt;...&lt;/<a href="#channelmax">channelmax</a>&gt;
+        &lt;<a href="#access">access</a> count='...'&gt;
+            &lt;<a href="#array-element">array-element</a>&gt;...&lt;/<a href="#array-element">array-element</a>&gt;
+        &lt;/<a href="#access">access</a>&gt;
+        &lt;<a href="#ajoin">ajoin</a> count='...'&gt;
+            &lt;<a href="#array-element">array-element</a>&gt;...&lt;/<a href="#array-element">array-element</a>&gt;
+        &lt;/<a href="#ajoin">ajoin</a>&gt;
+        &lt;<a href="#memoinfo">memoinfo</a>&gt;
+            &lt;<a href="#memos">memos</a> count='...'&gt;
+                &lt;<a href="#memo">memo</a>&gt;
+                    &lt;<a href="#number">number</a>&gt;...&lt;/<a href="#number">number</a>&gt;
+                    &lt;<a href="#flags">flags</a>&gt;...&lt;/<a href="#flags">flags</a>&gt;
+                    &lt;<a href="#time">time</a>&gt;...&lt;/<a href="#time">time</a>&gt;
+                    &lt;<a href="#sender">sender</a>&gt;...&lt;/<a href="#sender">sender</a>&gt;
+                    &lt;<a href="#channel">channel</a>&gt;...&lt;/<a href="#channel">channel</a>&gt;
+                    &lt;<a href="#text">text</a>&gt;...&lt;/<a href="#text">text</a>&gt;
+                &lt;/<a href="#memo">memo</a>&gt;
+            &lt;/<a href="#memos">memos</a>&gt;
+            &lt;<a href="#memomax">memomax</a>&gt;...&lt;/<a href="#memomax">memomax</a>&gt;
+        &lt;/<a href="#memoinfo">memoinfo</a>&gt;
+        &lt;<a href="#ignore">ignore</a> count='...'&gt;
+            &lt;<a href="#array-element">array-element</a>&gt;...&lt;/<a href="#array-element">array-element</a>&gt;
+        &lt;/<a href="#ignore">ignore</a>&gt;
+    &lt;/<a href="#nickgroupinfo">nickgroupinfo</a>&gt;
+    &lt;<a href="#nickinfo">nickinfo</a>&gt;
+        &lt;<a href="#nick">nick</a>&gt;...&lt;/<a href="#nick">nick</a>&gt;
+        &lt;<a href="#status">status</a>&gt;...&lt;/<a href="#status">status</a>&gt;
+        &lt;<a href="#last_usermask">last_usermask</a>&gt;...&lt;/<a href="#last_usermask">last_usermask</a>&gt;
+        &lt;<a href="#last_realmask">last_realmask</a>&gt;...&lt;/<a href="#last_realmask">last_realmask</a>&gt;
+        &lt;<a href="#last_realname">last_realname</a>&gt;...&lt;/<a href="#last_realname">last_realname</a>&gt;
+        &lt;<a href="#last_quit">last_quit</a>&gt;...&lt;/<a href="#last_quit">last_quit</a>&gt;
+        &lt;<a href="#time_registered">time_registered</a>&gt;...&lt;/<a href="#time_registered">time_registered</a>&gt;
+        &lt;<a href="#last_seen">last_seen</a>&gt;...&lt;/<a href="#last_seen">last_seen</a>&gt;
+        &lt;<a href="#nickgroup">nickgroup</a>&gt;...&lt;/<a href="#nickgroup">nickgroup</a>&gt;
+    &lt;/<a href="#nickinfo">nickinfo</a>&gt;
+    &lt;<a href="#channelinfo">channelinfo</a>&gt;
+        &lt;<a href="#name">name</a>&gt;...&lt;/<a href="#name">name</a>&gt;
+        &lt;<a href="#founder">founder</a>&gt;...&lt;/<a href="#founder">founder</a>&gt;
+        &lt;<a href="#successor">successor</a>&gt;...&lt;/<a href="#successor">successor</a>&gt;
+        &lt;<a href="#founderpass">founderpass</a> [cipher="..."]&gt;...&lt;/<a href="#founderpass">founderpass</a>&gt;
+        &lt;<a href="#desc">desc</a>&gt;...&lt;/<a href="#desc">desc</a>&gt;
+        &lt;<a href="#url">url</a>&gt;...&lt;/<a href="#url">url</a>&gt;
+        &lt;<a href="#email">email</a>&gt;...&lt;/<a href="#email">email</a>&gt;
+        &lt;<a href="#time_registered">time_registered</a>&gt;...&lt;/<a href="#time_registered">time_registered</a>&gt;
+        &lt;<a href="#last_used">last_used</a>&gt;...&lt;/<a href="#last_used">last_used</a>&gt;
+        &lt;<a href="#last_topic">last_topic</a>&gt;...&lt;/<a href="#last_topic">last_topic</a>&gt;
+        &lt;<a href="#last_topic_setter">last_topic_setter</a>&gt;...&lt;/<a href="#last_topic_setter">last_topic_setter</a>&gt;
+        &lt;<a href="#last_topic_time">last_topic_time</a>&gt;...&lt;/<a href="#last_topic_time">last_topic_time</a>&gt;
+        &lt;<a href="#flags">flags</a>&gt;...&lt;/<a href="#flags">flags</a>&gt;
+	&lt;<a href="#suspend_who">suspend_who</a>&gt;...&lt;/<a href="#suspend_who">suspend_who</a>&gt;
+	&lt;<a href="#suspend_reason">suspend_reason</a>&gt;...&lt;/<a href="#suspend_reason">suspend_reason</a>&gt;
+	&lt;<a href="#suspend_time">suspend_time</a>&gt;...&lt;/<a href="#suspend_time">suspend_time</a>&gt;
+	&lt;<a href="#suspend_expires">suspend_expires</a>&gt;...&lt;/<a href="#suspend_expires">suspend_expires</a>&gt;
+        &lt;<a href="#levels">levels</a>&gt;
+            &lt;<A HREF="#CA_INVITE">CA_INVITE</A>&gt;...&lt;/<A HREF="#CA_INVITE">CA_INVITE</A>&gt;
+            &lt;<A HREF="#CA_AKICK">CA_AKICK</A>&gt;...&lt;/<A HREF="#CA_AKICK">CA_AKICK</A>&gt;
+            &lt;<A HREF="#CA_SET">CA_SET</A>&gt;...&lt;/<A HREF="#CA_SET">CA_SET</A>&gt;
+            &lt;<A HREF="#CA_UNBAN">CA_UNBAN</A>&gt;...&lt;/<A HREF="#CA_UNBAN">CA_UNBAN</A>&gt;
+            &lt;<A HREF="#CA_AUTOOP">CA_AUTOOP</A>&gt;...&lt;/<A HREF="#CA_AUTOOP">CA_AUTOOP</A>&gt;
+            &lt;<A HREF="#CA_AUTODEOP">CA_AUTODEOP</A>&gt;...&lt;/<A HREF="#CA_AUTODEOP">CA_AUTODEOP</A>&gt;
+            &lt;<A HREF="#CA_AUTOVOICE">CA_AUTOVOICE</A>&gt;...&lt;/<A HREF="#CA_AUTOVOICE">CA_AUTOVOICE</A>&gt;
+            &lt;<A HREF="#CA_OPDEOP">CA_OPDEOP</A>&gt;...&lt;/<A HREF="#CA_OPDEOP">CA_OPDEOP</A>&gt;
+            &lt;<A HREF="#CA_ACCESS_LIST">CA_ACCESS_LIST</A>&gt;...&lt;/<A HREF="#CA_ACCESS_LIST">CA_ACCESS_LIST</A>&gt;
+            &lt;<A HREF="#CA_CLEAR">CA_CLEAR</A>&gt;...&lt;/<A HREF="#CA_CLEAR">CA_CLEAR</A>&gt;
+            &lt;<A HREF="#CA_NOJOIN">CA_NOJOIN</A>&gt;...&lt;/<A HREF="#CA_NOJOIN">CA_NOJOIN</A>&gt;
+            &lt;<A HREF="#CA_ACCESS_CHANGE">CA_ACCESS_CHANGE</A>&gt;...&lt;/<A HREF="#CA_ACCESS_CHANGE">CA_ACCESS_CHANGE</A>&gt;
+            &lt;<A HREF="#CA_MEMO">CA_MEMO</A>&gt;...&lt;/<A HREF="#CA_MEMO">CA_MEMO</A>&gt;
+            &lt;<A HREF="#CA_VOICE">CA_VOICE</A>&gt;...&lt;/<A HREF="#CA_VOICE">CA_VOICE</A>&gt;
+            &lt;<A HREF="#CA_AUTOHALFOP">CA_AUTOHALFOP</A>&gt;...&lt;/<A HREF="#CA_AUTOHALFOP">CA_AUTOHALFOP</A>&gt;
+            &lt;<A HREF="#CA_HALFOP">CA_HALFOP</A>&gt;...&lt;/<A HREF="#CA_HALFOP">CA_HALFOP</A>&gt;
+            &lt;<A HREF="#CA_AUTOPROTECT">CA_AUTOPROTECT</A>&gt;...&lt;/<A HREF="#CA_AUTOPROTECT">CA_AUTOPROTECT</A>&gt;
+            &lt;<A HREF="#CA_PROTECT">CA_PROTECT</A>&gt;...&lt;/<A HREF="#CA_PROTECT">CA_PROTECT</A>&gt;
+        &lt;/<a href="#levels">levels</a>&gt;
+        &lt;<a href="#chanaccesslist">chanaccesslist</a> count='...'&gt;
+            &lt;<a href="#chanaccess">chanaccess</a>&gt;
+                &lt;<a href="#nickgroup">nickgroup</a>&gt;...&lt;/<a href="#nickgroup">nickgroup</a>&gt;
+                &lt;<a href="#level">level</a>&gt;...&lt;/<a href="#level">level</a>&gt;
+            &lt;/<a href="#chanaccess">chanaccess</a>&gt;
+        &lt;/<a href="#chanaccesslist">chanaccesslist</a>&gt;
+        &lt;<a href="#akicklist">akicklist</a> count='...'&gt;
+            &lt;<a href="#akick">akick</a>&gt;
+                &lt;<a href="#mask">mask</a>&gt;...&lt;/<a href="#mask">mask</a>&gt;
+	        &lt;<a href="#reason">reason</a>&gt;...&lt;/<a href="#reason">reason</a>&gt;
+                &lt;<a href="#who">who</a>&gt;...&lt;/<a href="#who">who</a>&gt;
+                &lt;<a href="#set">set</a>&gt;...&lt;/<a href="#set">set</a>&gt;
+                &lt;<a href="#lastused">lastused</a>&gt;...&lt;/<a href="#lastused">lastused</a>&gt;
+            &lt;/<a href="#akick">akick</a>&gt;
+        &lt;/<a href="#akicklist">akicklist</a>&gt;
+        &lt;<a href="#mlock">mlock</a>&gt;
+            &lt;<a href="#mlock.on">mlock.on</a>&gt;...&lt;/<a href="#mlock.on">mlock.on</a>&gt;
+            &lt;<a href="#mlock.off">mlock.off</a>&gt;...&lt;/<a href="#mlock.off">mlock.off</a>&gt;
+            &lt;<a href="#mlock.limit">mlock.limit</a>&gt;...&lt;/<a href="#mlock.limit">mlock.limit</a>&gt;
+            &lt;<a href="#mlock.key">mlock.key</a>&gt;...&lt;/<a href="#mlock.key">mlock.key</a>&gt;
+            &lt;<a href="#mlock.link">mlock.link</a>&gt;...&lt;/<a href="#mlock.link">mlock.link</a>&gt;
+            &lt;<a href="#mlock.flood">mlock.flood</a>&gt;...&lt;/<a href="#mlock.flood">mlock.flood</a>&gt;
+            &lt;<a href="#mlock.joindelay">mlock.joindelay</a>&gt;...&lt;/<a href="#mlock.joindelay">mlock.joindelay</a>&gt;
+            &lt;<a href="#mlock.joinrate1">mlock.joinrate1</a>&gt;...&lt;/<a href="#mlock.joinrate1">mlock.joinrate1</a>&gt;
+            &lt;<a href="#mlock.joinrate2">mlock.joinrate2</a>&gt;...&lt;/<a href="#mlock.joinrate2">mlock.joinrate2</a>&gt;
+        &lt;/<a href="#mlock">mlock</a>&gt;
+        &lt;<a href="#entry_message">entry_message</a>&gt;...&lt;/<a href="#entry_message">entry_message</a>&gt;
+    &lt;/<a href="#channelinfo">channelinfo</a>&gt;
+    &lt;<a href="#news">news</a>&gt;
+        &lt;<a href="#type">type</a>&gt;...&lt;/<a href="#type">type</a>&gt;
+        &lt;<a href="#num">num</a>&gt;...&lt;/<a href="#num">num</a>&gt;
+        &lt;<a href="#text">text</a>&gt;...&lt;/<a href="#text">text</a>&gt;
+        &lt;<a href="#who">who</a>&gt;...&lt;/<a href="#who">who</a>&gt;
+        &lt;<a href="#time">time</a>&gt;...&lt;/<a href="#time">time</a>&gt;
+    &lt;/<a href="#news">news</a>&gt;
+    &lt;<a href="#maskdata">maskdata</a> type='...'&gt;
+        &lt;<a href="#num">num</a>&gt;...&lt;/<a href="#num">num</a>&gt;
+        &lt;<a href="#mask">mask</a>&gt;...&lt;/<a href="#mask">mask</a>&gt;
+        &lt;<a href="#limit">limit</a>&gt;...&lt;/<a href="#limit">limit</a>&gt;
+        &lt;<a href="#reason">reason</a>&gt;...&lt;/<a href="#reason">reason</a>&gt;
+        &lt;<a href="#who">who</a>&gt;...&lt;/<a href="#who">who</a>&gt;
+        &lt;<a href="#time">time</a>&gt;...&lt;/<a href="#time">time</a>&gt;
+        &lt;<a href="#expires">expires</a>&gt;...&lt;/<a href="#expires">expires</a>&gt;
+        &lt;<a href="#lastused">lastused</a>&gt;...&lt;/<a href="#lastused">lastused</a>&gt;
+    &lt;/<a href="#maskdata">maskdata</a>&gt;
+    &lt;<a href="#serverstats">serverstats</a>&gt;
+        &lt;<a href="#name">name</a>&gt;...&lt;/<a href="#name">name</a>&gt;
+        &lt;<a href="#t_join">t_join</a>&gt;...&lt;/<a href="#t_join">t_join</a>&gt;
+        &lt;<a href="#t_quit">t_quit</a>&gt;...&lt;/<a href="#t_quit">t_quit</a>&gt;
+        &lt;<a href="#quit_message">quit_message</a>&gt;...&lt;/<a href="#quit_message">quit_message</a>&gt;
+    &lt;/<a href="#serverstats">serverstats</a>&gt;
+&lt;/<a href="#ircservices-db">ircservices-db</a>&gt;
+</pre>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<a name=2></a>
+<h3>B-2. Tag index</h3>
+
+<dl>
+
+<dt><a name="ircservices-db"></a><b><tt>ircservices-db</tt></b>
+    <dd>The enclosing tag for the entire database.
+
+<dt><a name="constants"></a><b><tt>constants</tt></b>
+    <dd>Contains the various constant values used in this data set.
+
+<dt><a name="LANG_DEFAULT"></a><b><tt>LANG_DEFAULT</tt></b>
+    <dd>Contains the value of the <tt>LANG_DEFAULT</tt> constant as a
+	decimal integer.
+
+<dt><a name="CHANMAX_UNLIMITED"></a><b><tt>CHANMAX_UNLIMITED</tt></b>
+    <dd>Contains the value of the <tt>CHANMAX_UNLIMITED</tt> constant as a
+	decimal integer.
+
+<dt><a name="CHANMAX_DEFAULT"></a><b><tt>CHANMAX_DEFAULT</tt></b>
+    <dd>Contains the value of the <tt>CHANMAX_DEFAULT</tt> constant as a
+	decimal integer.
+
+<dt><a name="TIMEZONE_DEFAULT"></a><b><tt>TIMEZONE_DEFAULT</tt></b>
+    <dd>Contains the value of the <tt>TIMEZONE_DEFAULT</tt> constant as a
+	decimal integer.
+
+<dt><a name="ACCLEV_FOUNDER"></a><b><tt>ACCLEV_FOUNDER</tt></b>
+    <dd>Contains the value of the <tt>ACCLEV_FOUNDER</tt> constant as a
+	decimal integer.
+
+<dt><a name="ACCLEV_INVALID"></a><b><tt>ACCLEV_INVALID</tt></b>
+    <dd>Contains the value of the <tt>ACCLEV_INVALID</tt> constant as a
+	decimal integer.
+
+<dt><a name="ACCLEV_SOP"></a><b><tt>ACCLEV_SOP</tt></b>
+    <dd>Contains the value of the <tt>ACCLEV_SOP</tt> constant as a
+	decimal integer.
+
+<dt><a name="ACCLEV_AOP"></a><b><tt>ACCLEV_AOP</tt></b>
+    <dd>Contains the value of the <tt>ACCLEV_AOP</tt> constant as a
+	decimal integer.
+
+<dt><a name="ACCLEV_HOP"></a><b><tt>ACCLEV_HOP</tt></b>
+    <dd>Contains the value of the <tt>ACCLEV_HOP</tt> constant as a
+	decimal integer.
+
+<dt><a name="ACCLEV_VOP"></a><b><tt>ACCLEV_VOP</tt></b>
+    <dd>Contains the value of the <tt>ACCLEV_VOP</tt> constant as a
+	decimal integer.
+
+<dt><a name="ACCLEV_NOP"></a><b><tt>ACCLEV_NOP</tt></b>
+    <dd>Contains the value of the <tt>ACCLEV_NOP</tt> constant as a
+	decimal integer.
+
+<dt><a name="MEMOMAX_UNLIMITED"></a><b><tt>MEMOMAX_UNLIMITED</tt></b>
+    <dd>Contains the value of the <tt>MEMOMAX_UNLIMITED</tt> constant as a
+	decimal integer.
+
+<dt><a name="MEMOMAX_DEFAULT"></a><b><tt>MEMOMAX_DEFAULT</tt></b>
+    <dd>Contains the value of the <tt>MEMOMAX_DEFAULT</tt> constant as a
+	decimal integer.
+
+<dt><a name="NEWS_LOGON"></a><b><tt>NEWS_LOGON</tt></b>
+    <dd>Contains the value of the <tt>NEWS_LOGON</tt> constant as a
+	decimal integer.
+
+<dt><a name="NEWS_OPER"></a><b><tt>NEWS_OPER</tt></b>
+    <dd>Contains the value of the <tt>NEWS_OPER</tt> constant as a
+	decimal integer.
+
+<dt><a name="MD_AKILL"></a><b><tt>MD_AKILL</tt></b>
+    <dd>Contains the value of the <tt>MD_AKILL</tt> constant as a
+	decimal integer.
+
+<dt><a name="MD_EXCLUDE"></a><b><tt>MD_EXCLUDE</tt></b>
+    <dd>Contains the value of the <tt>MD_EXCLUDE</tt> constant as a
+	decimal integer.
+
+<dt><a name="MD_EXCEPTION"></a><b><tt>MD_EXCEPTION</tt></b>
+    <dd>Contains the value of the <tt>MD_EXCEPTION</tt> constant as a
+	decimal integer.
+
+<dt><a name="MD_SGLINE"></a><b><tt>MD_SGLINE</tt></b>
+    <dd>Contains the value of the <tt>MD_SGLINE</tt> constant as a
+	decimal integer.
+
+<dt><a name="MD_SQLINE"></a><b><tt>MD_SQLINE</tt></b>
+    <dd>Contains the value of the <tt>MD_SQLINE</tt> constant as a
+	decimal integer.
+
+<dt><a name="MD_SZLINE"></a><b><tt>MD_SZLINE</tt></b>
+    <dd>Contains the value of the <tt>MD_SZLINE</tt> constant as a
+	decimal integer.
+
+<dt><a name="maxusercnt"></a><b><tt>maxusercnt</tt></b>
+    <dd>Contains the maximum number of users seen on the network as a
+	decimal integer.
+
+<dt><a name="maxusertime"></a><b><tt>maxusertime</tt></b>
+    <dd>Contains the timestamp of the time when the maximum number of users
+	on the network was recorded as a decimal integer.
+
+<dt><a name="supass"></a><b><tt>supass</tt></b>
+    <dd>Contains the password for the OperServ
+	<a href="4.html#oper.su"><tt>SU</tt></a> command.  If the "cipher"
+	attribute is given, it specifies the name of the algorithm used to
+	encrypt the password; if not given, the password is not encrypted.
+
+<dt><a name="nickgroupinfo"></a><b><tt>nickgroupinfo</tt></b>
+    <dd>Contains data related to a single nickname group.
+
+<dt><a name="id"></a><b><tt>id</tt></b>
+    <dd>Contains the ID value for this nickname group as a decimal integer.
+	The ID value is a positive integer unique across all nickname groups.
+
+<dt><a name="nicks"></a><b><tt>nicks count='<i>n</i>'</tt></b>
+    <dd>Contains <tt><i>n</i></tt>
+	<tt>&lt;<a href="#array-element">array-element</a>&gt;</tt> tags
+	which contain the nicknames associated with this nickname group.
+
+<dt><a name="array-element"></a><b><tt>array-element</tt></b>
+    <dd>Contains a text string used as an array element.
+
+<dt><a name="mainnick"></a><b><tt>mainnick</tt></b>
+    <dd>Contains the index number in the <tt>nicks</tt> array of the main
+	nick for the nick group as a decimal integer.
+
+<dt><a name="pass"></a><b><tt>pass</tt></b>
+    <dd>Contains a nickname group password.  If the "cipher" attribute is
+	given, it specifies the name of the algorithm used to encrypt the
+	password; if not given, the password is not encrypted.
+
+<dt><a name="url"></a><b><tt>url</tt></b>
+    <dd>Contains a URL for a nickname group or channel.
+
+<dt><a name="email"></a><b><tt>email</tt></b>
+    <dd>Contains an E-mail address for a nickname group or channel.
+
+<dt><a name="last_email"></a><b><tt>last_email</tt></b>
+    <dd>Contains the last authenticated E-mail address for a nickname
+	group, if the E-mail address has been changed and not yet been
+	authenticated.
+
+<dt><a name="info"></a><b><tt>info</tt></b>
+    <dd>Contains the information text for a nickname group.
+
+<dt><a name="authcode"></a><b><tt>authcode</tt></b>
+    <dd>Contains the authentication code for a nickname group as a decimal
+	integer.  If no authentication code is set, contains the number 0
+	(zero).
+
+<dt><a name="authset"></a><b><tt>authset</tt></b>
+    <dd>Contains the timestamp of the time at which the nickname group's
+	authentication code was set, if an authentication code is set.
+
+<dt><a name="authreason"></a><b><tt>authreason</tt></b>
+    <dd>Contains the reason code for the nickname group's authentication
+	code, if an authentication code is set.
+
+<dt><a name="suspend_who"></a><b><tt>suspend_who</tt></b>
+    <dd>Contains the nickname responsible for suspending a nickname or
+	channel.
+
+<dt><a name="suspend_reason"></a><b><tt>suspend_reason</tt></b>
+    <dd>Contains the reason for suspending a nickname or channel.
+
+<dt><a name="suspend_time"></a><b><tt>suspend_time</tt></b>
+    <dd>Contains the timestamp of the time the nickname or channel was
+	suspended as a decimal integer.
+
+<dt><a name="suspend_expires"></a><b><tt>suspend_expires</tt></b>
+    <dd>Contains the timestamp of the time the nickname's or channel's
+	suspension expires (or zero if the suspension does not expire) as
+	a decimal integer.
+
+<dt><a name="flags"></a><b><tt>flags</tt></b>
+    <dd>Contains flags for a nickname or channel as a decimal integer.
+
+<dt><a name="os_priv"></a><b><tt>os_priv</tt></b>
+    <dd>Contains the OperServ privilege level of a nickname group as a
+	decimal integer.
+
+<dt><a name="language"></a><b><tt>language</tt></b>
+    <dd>Contains the language (or <tt>LANG_DEFAULT</tt>) selected for a
+	nickname group as a decimal integer.
+
+<dt><a name="timezone"></a><b><tt>timezone</tt></b>
+    <dd>Contains the timezone offset from UTC in minutes (or
+	<tt>TIMEZONE_DEFAULT</tt>) selected for the nickname as a decimal
+	integer.
+
+<dt><a name="channelmax"></a><b><tt>channelmax</tt></b>
+    <dd>Contains the maximum number of channels a nickname group is
+	permitted to register (or <tt>CHANMAX_UNLIMITED</tt> or
+	<tt>CHANMAX_DEFAULT</tt>) as a decimal integer.
+
+<dt><a name="access"></a><b><tt>access count='<i>n</i>'</tt></b>
+    <dd>Contains <tt><i>n</i></tt>
+	<tt>&lt;<a href="#array-element">array-element</a>&gt;</tt> tags
+	containing the nickname group's access list entries.
+
+<dt><a name="ajoin"></a><b><tt>ajoin count='<i>n</i>'</tt></b>
+    <dd>Contains <tt><i>n</i></tt>
+	<tt>&lt;<a href="#array-element">array-element</a>&gt;</tt> tags
+	containing the nickname group's autojoin list entries.
+
+<dt><a name="memoinfo"></a><b><tt>memoinfo</tt></b>
+    <dd>Contains a nickname group or channel's memo data.
+
+<dt><a name="memos"></a><b><tt>memos count='<i>n</i>'</tt></b>
+    <dd>Contains <tt><i>n</i></tt> <tt>&lt;<a href="#memo">memo</a>&gt;</tt>
+	tags containing memos.
+
+<dt><a name="memo"></a><b><tt>memo</tt></b>
+    <dd>Contains the data for a single memo.
+
+<dt><a name="number"></a><b><tt>number</tt></b>
+    <dd>Contains the number of the memo as a decimal integer.
+
+<dt><a name="time"></a><b><tt>time</tt></b>
+    <dd>Contains the timestamp of the time a memo was sent or the time a
+	news or mask-data entry was added as a decimal integer.
+
+<dt><a name="sender"></a><b><tt>sender</tt></b>
+    <dd>Contains the nickname of the sender of the memo.
+
+<dt><a name="channel"></a><b><tt>channel</tt></b>
+    <dd>If the memo is a channel memo, contains the name of the channel the
+	memo was sent to.
+
+<dt><a name="text"></a><b><tt>text</tt></b>
+    <dd>Contains the text of a memo or news item.
+
+<dt><a name="memomax"></a><b><tt>memomax</tt></b>
+    <dd>Contains the maximum number of memos the nickname group or channel
+	is allowed to store (or <tt>MEMOMAX_UNLIMITED</tt> or
+	<tt>MEMOMAX_DEFAULT</tt>) as a decimal integer.
+
+<dt><a name="ignore"></a><b><tt>ignore count='<i>n</i>'</tt></b>
+    <dd>Contains <tt><i>n</i></tt>
+	<tt>&lt;<a href="#array-element">array-element</a>&gt;</tt> tags
+	containing the nickname group's memo ignore list entries.
+
+<dt><a name="nickinfo"></a><b><tt>nickinfo</tt></b>
+    <dd>Contains data for a single nickname.
+
+<dt><a name="nick"></a><b><tt>nick</tt></b>
+    <dd>Contains the nickname with which the data is associated.
+
+<dt><a name="status"></a><b><tt>status</tt></b>
+    <dd>Contains the nickname's "status" field as a decimal integer.
+
+<dt><a name="last_usermask"></a><b><tt>last_usermask</tt></b>
+    <dd>Contains the nickname's last seen usermask (possibly including a
+	fakehost).
+
+<dt><a name="last_realmask"></a><b><tt>last_realmask</tt></b>
+    <dd>Contains the nickname's last seen real usermask.
+
+<dt><a name="last_realname"></a><b><tt>last_realname</tt></b>
+    <dd>Contains the nickname's last seen real name.
+
+<dt><a name="last_quit"></a><b><tt>last_quit</tt></b>
+    <dd>Contains the nickname's last quit message.
+
+<dt><a name="time_registered"></a><b><tt>time_registered</tt></b>
+    <dd>Contains the timestamp of the time the nickname or channel was
+	registered as a decimal integer.
+
+<dt><a name="last_seen"></a><b><tt>last_seen</tt></b>
+    <dd>Contains the timestamp of the last time the nickname's owner was
+	seen online as a decimal integer.
+
+<dt><a name="nickgroup"></a><b><tt>nickgroup</tt></b>
+    <dd>Contains the ID value of the nickname group with which this
+	nickname or channel access list entry is associated.
+
+<dt><a name="channelinfo"></a><b><tt>channelinfo</tt></b>
+    <dd>Contains data for a channel.
+
+<dt><a name="name"></a><b><tt>name</tt></b>
+    <dd>Contains the name of the channel or server with which the following
+	data is associated.
+
+<dt><a name="founder"></a><b><tt>founder</tt></b>
+    <dd>Contains the ID value of the founder's nickname group as a decimal
+	integer.
+
+<dt><a name="successor"></a><b><tt>successor</tt></b>
+    <dd>Contains the ID value of the successor's nickname group as a
+	decimal integer.
+
+<dt><a name="founderpass"></a><b><tt>founderpass</tt></b>
+    <dd>Contains the channel's founder password.  If the "cipher" attribute
+	is given, it specifies the name of the algorithm used to encrypt
+	the password; if not given, the password is not encrypted.
+
+<dt><a name="desc"></a><b><tt>desc</tt></b>
+    <dd>Contains the channel's description.
+
+<dt><a name="last_used"></a><b><tt>last_used</tt></b>
+    <dd>Contains the timestamp of the last time a channel was used.
+
+<dt><a name="last_topic"></a><b><tt>last_topic</tt></b>
+    <dd>Contains the last seen topic of the channel.
+
+<dt><a name="last_topic_setter"></a><b><tt>last_topic_setter</tt></b>
+    <dd>Contains the nickname of the setter of the last seen topic of the
+	channel.
+
+<dt><a name="last_topic_time"></a><b><tt>last_topic_time</tt></b>
+    <dd>Contains the timestamp of the time the last seen topic of the
+	channel was set.
+
+<dt><a name="levels"></a><b><tt>levels</tt></b>
+    <dd>Contains tags for each channel access level.
+
+<dt><a name="CA_INVITE"></a><b><tt>CA_INVITE</tt></b>
+    <dd>Contains the value of the <tt>CA_INVITE</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_AKICK"></a><b><tt>CA_AKICK</tt></b>
+    <dd>Contains the value of the <tt>CA_AKICK</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_SET"></a><b><tt>CA_SET</tt></b>
+    <dd>Contains the value of the <tt>CA_SET</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_UNBAN"></a><b><tt>CA_UNBAN</tt></b>
+    <dd>Contains the value of the <tt>CA_UNBAN</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_AUTOOP"></a><b><tt>CA_AUTOOP</tt></b>
+    <dd>Contains the value of the <tt>CA_AUTOOP</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_AUTODEOP"></a><b><tt>CA_AUTODEOP</tt></b>
+    <dd>Contains the value of the <tt>CA_AUTODEOP</tt> level as a
+	decimal integer.  Always -1 in Services 5.1.
+
+<dt><a name="CA_AUTOVOICE"></a><b><tt>CA_AUTOVOICE</tt></b>
+    <dd>Contains the value of the <tt>CA_AUTOVOICE</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_OPDEOP"></a><b><tt>CA_OPDEOP</tt></b>
+    <dd>Contains the value of the <tt>CA_OPDEOP</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_ACCESS_LIST"></a><b><tt>CA_ACCESS_LIST</tt></b>
+    <dd>Contains the value of the <tt>CA_ACCESS_LIST</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_CLEAR"></a><b><tt>CA_CLEAR</tt></b>
+    <dd>Contains the value of the <tt>CA_CLEAR</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_NOJOIN"></a><b><tt>CA_NOJOIN</tt></b>
+    <dd>Contains the value of the <tt>CA_NOJOIN</tt> level as a
+	decimal integer.  Always -100 in Services 5.1.
+
+<dt><a name="CA_ACCESS_CHANGE"></a><b><tt>CA_ACCESS_CHANGE</tt></b>
+    <dd>Contains the value of the <tt>CA_ACCESS_CHANGE</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_MEMO"></a><b><tt>CA_MEMO</tt></b>
+    <dd>Contains the value of the <tt>CA_MEMO</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_VOICE"></a><b><tt>CA_VOICE</tt></b>
+    <dd>Contains the value of the <tt>CA_VOICE</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_AUTOHALFOP"></a><b><tt>CA_AUTOHALFOP</tt></b>
+    <dd>Contains the value of the <tt>CA_AUTOHALFOP</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_HALFOP"></a><b><tt>CA_HALFOP</tt></b>
+    <dd>Contains the value of the <tt>CA_HALFOP</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_AUTOPROTECT"></a><b><tt>CA_AUTOPROTECT</tt></b>
+    <dd>Contains the value of the <tt>CA_AUTOPROTECT</tt> level as a
+	decimal integer.
+
+<dt><a name="CA_PROTECT"></a><b><tt>CA_PROTECT</tt></b>
+    <dd>Contains the value of the <tt>CA_PROTECT</tt> level as a
+	decimal integer.
+
+<dt><a name="chanaccesslist"></a><b><tt>chanaccesslist count='<i>n</i>'</tt></b>
+    <dd>Contains <tt><i>n</i></tt>
+	<tt>&lt;<a href="#chanaccess">chanaccess</a>&gt;</tt> tags
+	containing the entries on the channel's access list.
+
+<dt><a name="chanaccess"></a><b><tt>chanaccess</tt></b>
+    <dd>Contains the data for a channel access list entry.
+
+<dt><a name="level"></a><b><tt>level</tt></b>
+    <dd>Contains the level for a channel access list entry as a decimal
+	integer.
+
+<dt><a name="akicklist"></a><b><tt>akicklist count='<i>n</i>'</tt></b>
+    <dd>Contains <tt><i>n</i></tt>
+	<tt>&lt;<a href="#akick">akick</a>&gt;</tt> tags containing the
+	entries on the channel's autokick list.
+
+<dt><a name="akick"></a><b><tt>akick</tt></b>
+    <dd>Contains the data for a channel autokick list entry.
+
+<dt><a name="mask"></a><b><tt>mask</tt></b>
+    <dd>Contains the mask associated with a channel autokick or mask-data
+	entry.
+
+<dt><a name="who"></a><b><tt>who</tt></b>
+    <dd>Contains the nickname of the user who added a channel autokick or
+	mask-data entry.
+
+<dt><a name="set"></a><b><tt>set</tt></b>
+    <dd>Contains the timestamp of the time a channel autokick entry was added.
+
+<dt><a name="lastused"></a><b><tt>lastused</tt></b>
+    <dd>Contains the timestamp of the last time a channel autokick or
+	mask-data entry was added.
+
+<dt><a name="mlock"></a><b><tt>mlock</tt></b>
+    <dd>Contains the data for a channel's mode lock.
+
+<dt><a name="mlock.on"></a><b><tt>mlock.on</tt></b>
+    <dd>Contains the string of modes locked on for the channel.
+
+<dt><a name="mlock.off"></a><b><tt>mlock.off</tt></b>
+    <dd>Contains the string of modes locked off for the channel.
+
+<dt><a name="mlock.limit"></a><b><tt>mlock.limit</tt></b>
+    <dd>Contains the channel's locked limit, if any.
+
+<dt><a name="mlock.key"></a><b><tt>mlock.key</tt></b>
+    <dd>Contains the channel's locked key, if any.
+
+<dt><a name="mlock.link"></a><b><tt>mlock.link</tt></b>
+    <dd>Contains the channel's locked link channel, if any.
+
+<dt><a name="mlock.flood"></a><b><tt>mlock.flood</tt></b>
+    <dd>Contains the channel's locked flood setting, if any.
+
+<dt><a name="mlock.joindelay"></a><b><tt>mlock.joindelay</tt></b>
+    <dd>Contains the channel's locked join delay setting, if any.
+
+<dt><a name="mlock.joinrate1"></a><b><tt>mlock.joinrate1</tt></b>
+    <dd>Contains the first part of the channel's locked join rate limit
+	setting, if any.
+
+<dt><a name="mlock.joinrate2"></a><b><tt>mlock.joinrate2</tt></b>
+    <dd>Contains the second part of the channel's locked join rate limit
+	setting, if any.
+
+<dt><a name="entry_message"></a><b><tt>entry_message</tt></b>
+    <dd>Contains the channel's entry message, if any.
+
+<dt><a name="news"></a><b><tt>news</tt></b>
+    <dd>Contains the data for a news item.
+
+<dt><a name="type"></a><b><tt>type</tt></b>
+    <dd>Contains the type of the news item (<tt>NEWS_LOGON</tt> or
+	<tt>NEWS_OPER</tt>) or mask-data entry (<tt>MD_*</tt>) as a decimal
+	integer.
+
+<dt><a name="num"></a><b><tt>num</tt></b>
+    <dd>Contains the number of the news item as a decimal integer.
+
+<dt><a name="maskdata"></a><b><tt>maskdata</tt></b>
+    <dd>Contains the data for a mask-data entry.
+
+<dt><a name="limit"></a><b><tt>limit</tt></b>
+    <dd>Contains the limit for an exception list entry as a decimal integer.
+
+<dt><a name="reason"></a><b><tt>reason</tt></b>
+    <dd>Contains the reason given for an autokick or mask-data entry.
+
+<dt><a name="expires"></a><b><tt>expires</tt></b>
+    <dd>Contains the timestamp of the time at wich a mask-data entry
+	expires (or zero if the entry does not expire) as a decimal integer.
+
+<dt><a name="serverstats"></a><b><tt>serverstats</tt></b>
+    <dd>Contains the data for a StatServ server entry.
+
+<dt><a name="t_join"></a><b><tt>t_join</tt></b>
+    <dd>Contains the timestamp of the last time the server joined the
+	network as a decimal integer.
+
+<dt><a name="t_quit"></a><b><tt>t_quit</tt></b>
+    <dd>Contains the timestamp of the last time the server disconnected
+	from the network as a decimal integer.
+
+<dt><a name="quit_message"></a><b><tt>quit_message</tt></b>
+    <dd>Contains the server's last quit message.
+
+</dl>
+
+<p align=right><font size="-1"><a href="#top">Back to top</a></font>
+
+<!------------------------------------------------------------------------>
+<p><hr>
+
+<p align=right><font size=-1><a href="index.html">Table of Contents</a></font>
+
+</body>
+</html>

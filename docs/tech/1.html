@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+<meta http-equiv="Content-Style-Type" content="text/css"/>
+<style type="text/css">@import "style.css";</style>
+<title>IRC Services Technical Reference Manual - 1. Program structure overview</title>
+</head>
+
+<body>
+<h1 class="title" id="top">IRC Services Technical Reference Manual</h1>
+
+<h2 class="section-title">1. About this manual</h2>
+
+<p class="section-toc">
+     1-1. <a href="#s1">Intended audience</a>
+<br/>1-2. <a href="#s2">Structure of this manual</a>
+<br/>1-3. <a href="#s3">History of Services development</a>
+</p>
+
+<p class="backlink"><a href="index.html">Table of Contents</a> |
+<a href="2.html">Next section: Core Services functionality</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s1">1-1. Intended audience</h3>
+
+<p>This manual is written with an intended audience of programmers looking
+to change or extend the IRC Services source code, and covers the overall
+structure of the code as well as details on each of Services' functions.
+The content of this manual is highly technical, and requires a reasonably
+high level of expertise (both in programming in general and in the C
+language and Unix computer systems in particular) to peruse.</p>
+
+<p>For information on installing and using IRC Services, please see the
+<a href="../index.html">user's manual</a>.</p>
+
+<p>Note that this manual describes Services for IRC Networks version 5.1.24,
+and its contents may not be applicable to modified versions or derivative
+programs.  Also, this manual is intended to be used alongside the source
+code; details of function parameters, structure fields, and the like are
+often omitted for the sake of brevity and clarity. <!-- Use the source,
+Luke! --> </p>
+
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s2">1-2. Structure of this manual</h3>
+
+<p>Services can be broken up into two parts: the <b>core functionality</b>,
+which implements the "IRC server" part of Services, and <b>modules</b>,
+which add the "bot-like" functions to Services as well as provide common
+interfaces to differing implementations of some functions.</p>
+
+<p>The core Services functionality is primarily discussed in
+<a href="2.html">section 2</a>.  Two topics, however, are given their own
+sections due to their complexity: communications (<a href="3.html">section
+3</a>) and module handling (<a href="4.html">section 4</a>).</p>
+
+<p>Modules are divided into four groups:</p>
+
+<ul>
+<li><b>protocol modules</b> (<a href="5.html">section 5</a>), which
+handle the interface between the generic IRC server implemented by the
+Services core and the particular protocols used by various IRC servers;</li>
+<li><b>database modules</b> (<a href="6.html">section 6</a>), which handle
+the storage and retrieval of data used by pseudoclients and other Services
+functions;</li>
+<li><b>pseudoclient modules</b> (<a href="7.html">section 7</a>), which
+implement the various pseudoclients themselves; and</li>
+<li><b>other modules</b> (<a href="8.html">section 8</a>), including all
+modules not covered above.</li>
+</ul>
+
+<p><a href="9.html">Section 9</a> covers <tt>convert-db</tt>, the tool
+included with Services to convert databases from other Services-like
+programs to an XML data stream that can then be imported into Services
+itself.  The compilation of Services (the <tt>configure</tt> script and
+<tt>Makefile</tt> files) is described in <a href="10.html">section 10</a>,
+and areas where Services could potentially be improved are discussed in
+<a href="11.html">section 11</a>.</p>
+
+<p>A source code reference is included as <a href="a.html">Appendix A</a>
+(by source file) and <a href="b.html">Appendix B</a> (by function name).</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<h3 class="subsection-title" id="s3">1-3. History of Services development</h3>
+
+<p>Before discussing the details of the Services code base, it is worth
+mentioning the history of Services development.</p>
+
+<p>Originally, I (Andrew Church, the developer of Services) started writing
+Services as something of a "quick hack" for my personal server, which I had
+set up for the use of a channel I frequented at the time that had decided
+to move away from the DALnet IRC network.  DALnet did not at the time&mdash;and
+to the best of my knowledge still does not&mdash;publish the source code to
+their nickname and channel registration services, nor was I able to locate
+any other similar usable open-source software, so I took the route of
+writing my own.  This motive had, at least initially, significant influence
+on the user interface design; the service nicknames NickServ and ChanServ
+seem to have been around since the early days of IRC, but the basic
+commands, such as <tt>REGISTER</tt>, <tt>SET</tt>, and the NickServ
+<tt>RECOVER</tt> and <tt>RELEASE</tt> functions, were based on those seen
+on DALnet.  (Ironically, it seems that DALnet has since incorporated at
+least one feature, the channel successor concept, from this program due to
+user pressure.)</p>
+
+<p>The first "release" of Services&mdash;using the term loosely,
+since I had no interest in releasing Services publicly at this
+point&mdash;was made on April 5, 1996, when the program first went online.
+Since my IRC server was mainly for private use, there was little call for
+additional features, and aside from occasional bug fixes, not much
+development was performed during this time.  The code base itself could be
+called "functional" at best; while I have always put effort into writing
+good code rather than simply "working" code, I had considerably less skill
+in programming at that time.  In fact, work on Services accounted for a
+significant amount of my programming experience during its first several
+years of existence, and careful reading of the Services source code may
+well reveal the effect of that experience.</p>
+
+<p>My private IRC server eventually expanded into a small network, as
+friends of mine connected servers of their own.  I stored a copy of the
+Services source code on each server, both to function as a backup of the
+code itself and to allow a backup copy of Services to be started in case
+the primary one should fail for some reason.  This backfired, however, when
+one such server was broken into on November 19, 1996; a few days later, we
+received a message essentially accusing us of stealing Services from
+another IRC network called IceNet.  Investigation showed the purported
+"original" Services to in fact be a copy of my own program, presumably
+taken from the broken-into server.  I was naturally upset, and exchanged
+several angry messages with an IceNet administrator, but the situation was
+amicably resolved in the end, and IceNet continued using my program.</p>
+
+<p>After this incident, I began receiving occasional requests for copies of
+the program, and at some point over the next month or two I decided that,
+since so many people seemed interested in it and I had no particular reason
+to keep it secret, I would release the source code publicly, free for
+anyone to use.  The first public release was version 2.2.0, on January 10,
+1997.  This sudden "change of heart" is also the reason Services has such a
+generic name: I had not originally planned to publish the program, so I had
+not bothered to come up with a distinctive name for it.  The moniker
+"EsperNet Services", from the name of the network for which I developed it,
+appeared every now and then, but (partly to avoid users of the program
+flooding EsperNet administrators with help requests) I only called it
+"Services".  The current full name, "Services for IRC Networks", was chosen
+when the program was listed on the <a href="http://freshmeat.net/">FreshMeat
+software index</a> <span class="remotehost">[freshmeat.net]</span>.</p>
+
+<p>I continued Services development through mid-1999, extending the program
+to deal with users' feature requests and my own experience.  But after
+graduating from university and moving to Japan to work, I found myself with
+little time available for work on Services; so, after doing some
+preliminary work for version 4.3, I handed the code base off to Andrew
+Kempe, a user of Services who had contributed numerous suggestions and
+improvements.  At the time, I had already had some preliminary thoughts
+toward redesigning Services, including the module system which eventually
+saw the light of day in version 5.0, but as my IRC use had declined
+significantly, I had intended to just let Services go, to be developed by
+others with more interest.</p>
+
+<p>However, in late 2000, Andrew Kempe wrote to me explaining that he no
+longer had time to work on Services, and I ended up deciding to continue
+Services development where he had left off.  I reviewed his additions,
+notably the session limiting system (now the <tt>operserv/sessions</tt>
+module), and began preparations for releasing version 4.5.  I also began
+using the CVS source code management tool to keep better track of changes
+to the code.  (I had at one point considered taking advantage of CVS to
+allow others to update the code as well, but copyright issues aside, there
+were simply very few people I trusted to write code to my standards, and
+with the exception for a time of a friend from EsperNet, I was the only one
+who actually developed the code.)</p>
+
+<p>After releasing version 4.5.0, I decided to start work on a major
+redesign of Services, including the implementation of my former module
+idea.  Over the five years until this time, the Services source code had
+not undergone any significant redesign, and the result of continually
+adding features on top of other features was, to put it politely, a mess.
+In one of my favorite computer science books, <i>The Mythical Man-Month</i>,
+the author, Dr. Frederick Brooks, gives as one of the tenets of software
+development: "<i>Plan to throw one away; you will, anyhow</i>" (chapter
+11).  Indeed, I had learned a lot about both software design and
+programming in general and IRC service software in particular over the
+years, and it was easy to see where the current Services code was
+inadequate or poorly designed.  So, around the release of version 4.5.8, I
+split off a copy of the code base, added in the module support system I had
+started work on separately, and began a year-plus effort to clean up the
+code.  I did not actually rewrite the program from scratch, since I lacked
+both the time and the incentive to do so, but the structure of the program
+was vastly improved.</p>
+
+<p>The one major goal for version 5.0 which I did not complete was a new
+database implementation.  The database system which existed at the time was
+heavily intertwined with the individual pseudoclients (NickServ, ChanServ,
+and so on), making it very difficult for third parties to add new features
+that required persistent data; this was exacerbated by the database file
+format, originally just a binary dump of the data structures stored in
+memory, which lacked any sort of flexibility at all and was highly
+susceptible to data corruption.  Every time a new field was added, the
+database files' identifying version number was incremented, rendering the
+files incompatible with previous versions, and requiring highly complex
+routines in later releases to handle data from earlier versions.  It had
+been my intention to implement a format-agnostic system for 5.0 along with
+a more expandable and robust file format, but this proved to be too much to
+handle at once, and I ended up simply moving all of the database handling
+to a module (<tt>database/version4</tt>) that used dozens of hacks to read
+and write the data in a format that remained compatible with the previous
+version (4.5).</p>
+
+<p>After a couple of years of on-and-off work, I finally found the time to
+go back and redesign the database system, and the result is the code
+present in this version.  However, as I no longer use IRC, my interest in
+continuing development of Services has waned, and I have ended Services
+development as of version 5.1.</p>
+
+<p class="backlink"><a href="#top">Back to top</a></p>
+
+<!------------------------------------------------------------------------>
+<hr/>
+
+<p class="backlink"><a href="index.html">Table of Contents</a> |
+<a href="2.html">Next section: Core Services functionality</a></p>
+
+</body>
+</html>
