@@ -11,6 +11,7 @@
 #include "language.h"
 #include "modules.h"
 #include "timeout.h"
+#include <string.h>
 
 /*************************************************************************/
 
@@ -229,7 +230,6 @@ const char *set_clear_channel_sender(const char *newsender)
 void kill_user(const char *source, const char *user, const char *reason)
 {
     char *av[2];
-    char buf[BUFSIZE];
 
     if (!user || !*user)
         return;
@@ -237,6 +237,7 @@ void kill_user(const char *source, const char *user, const char *reason)
         source = ServerName;
     if (!reason)
         reason = "";
+    char buf[BUFSIZE + strlen(source) + strlen(reason) + 3];
     snprintf(buf, sizeof(buf), "%s (%s)", source, reason);
     av[0] = (char *)user;
     av[1] = buf;
@@ -546,7 +547,7 @@ static void add_mode_with_params(struct modedata *md, char mode, int is_add,
     log_debug(2, "add_mode_with_params: current=%.*s mode=%c add=%d"
               " params=%d[%.*s]", md->nopmodes*2, md->opmodes, mode, is_add,
               params, len, parambuf);
-            
+
     /* Check for overflow of parameter count or length */
     if (md->nparams+params > MAXMODES
      || md->paramslen+1+len > MAXPARAMSLEN

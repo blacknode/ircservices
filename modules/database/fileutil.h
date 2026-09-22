@@ -10,6 +10,8 @@
 #ifndef DATABASE_FILEUTIL_H
 #define DATABASE_FILEUTIL_H
 
+#include <stdio.h>
+
 /*************************************************************************/
 
 typedef struct dbFILE_ dbFILE;

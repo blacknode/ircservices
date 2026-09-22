@@ -1,0 +1,24 @@
+#include "version.h"
+#define BUILD "1"
+const char program_name[] = "@SERVICES_PROGRAM@";
+const char version_number[] = "@PROJECT_VERSION@";
+const char version_build[] = "build #" BUILD ", compiled " __DATE__ " " __TIME__;
+const char *info_text[] = {
+    "IRC Services developed by and copyright (c) 1996-2009",
+    "Andrew Church <achurch@achurch.org>.",
+    "Parts written by Andrew Kempe and others.",
+    "IRC Services may be freely redistributed under the GNU",
+    "General Public License, version 2 or later.",
+    " ",
+    "Many people have contributed to the ongoing development of",
+    "IRC Services.  Particularly noteworthy contributors include:",
+    "    Mauritz Antunes", "    Holger Baust", "    Elijah",
+    "    Yusuf Iskenderoglu", "    Janos Kapitany", "    Jacek Margos",
+    "    Craig McLure", "    Martin Pels", "    Krisztian Romek",
+    "    Alexander Zverev",
+    "A full list of contributors and their contributions can be",
+    "found in the manual and the Changes file included in the IRC",
+    "Services distribution archive.  Many thanks to all of them!", " ",
+    "For more information and a list of distribution sites,",
+    "please visit: http://www.ircservices.za.net/", 0
+};

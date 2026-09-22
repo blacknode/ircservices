@@ -52,7 +52,7 @@ static char *gen_log_filename(void)
     to = result;
 
     while ((s = strchr(from, '%')) != NULL) {
-        to += snprintf(to, sizeof(result)-(to-result), "%.*s", s-from, from);
+        to += snprintf(to, sizeof(result)-(to-result), "%.*s", (int) (s-from), from);
         s++;
         switch (*s) {
           case 'y':
