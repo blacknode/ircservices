@@ -21,10 +21,7 @@
 /* Name of configuration file (in Services directory) */
 #define IRCSERVICES_CONF PROGRAM ".conf"
 
-/* Name of module configuration file (in Services directory) */
-#define MODULES_CONF "modules.conf"
-
-/* Maximum number of parameters for a configuration directive */
+/* Maximum number of parameters (values) for a configuration directive */
 #define CONFIG_MAXPARAMS 8
 
 /* Maximum number of channels to buffer modes for (for MergeChannelModes) */
@@ -53,9 +50,6 @@
  * This MUST be big enough to hold at least one full IRC message, or Bad
  * Things will happen. */
 #define BUFSIZE 1024
-
-/* Maximum length of a configuration file line */
-#define CONFIG_LINEMAX 4096
 
 /* Size of memory-based log buffer (only used with SHOWALLOCS) */
 #define LOGMEMSIZE 65536

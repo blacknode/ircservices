@@ -188,7 +188,7 @@ static int do_user_check(int ac, char **av)
                             "\2WARNING\2: Client IP addresses are not"
                             " available with this IRC server; SZLINEs"
                             " cannot be used unless ImmediatelySendSline"
-                            " is enabled in %s.", MODULES_CONF);
+                            " is enabled in %s.", IRCSERVICES_CONF);
                     no_szline = -1;
                 } else {
                     no_szline = 1;

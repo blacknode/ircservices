@@ -97,79 +97,204 @@ static int do_Umask(const char* filename, int linenum, char* param);
 
 /*************************************************************************/
 
-/* List of directives for ircservices.conf (main configuration file): */
+/* Directives of ircservices.conf, by block.  Module blocks (`module
+ * "<name>" { ... }') are bound by the module loader, see modules.c. */
 
-static ConfigDirective main_directives[] = {
-    {"BadPassLimit", {{CD_POSINT, 0, &BadPassLimit}}},
-    {"BadPassTimeout", {{CD_TIME, 0, &BadPassTimeout}}},
-    {"BadPassWarning", {{CD_POSINT, 0, &BadPassWarning}}},
-    {"DefTimeZone", {{CD_FUNC, 0, do_DefTimeZone}}},
-    {"EnableGetpass", {{CD_SET, 0, &EnableGetpass}}},
-    {"EncryptionType", {{CD_STRING, 0, &EncryptionType}}},
-    {"ExpireTimeout", {{CD_DEPRECATED, 0}}},
-    {"GuestNickPrefix", {{CD_STRING, CF_DIRREQ, &GuestNickPrefix}}},
-    {"IgnoreDecay", {{CD_TIMEMSEC, 0, &IgnoreDecay}}},
-    {"IgnoreThreshold", {{CD_FUNC, 0, do_IgnoreThreshold}}},
-    {"ListMax", {{CD_POSINT, CF_DIRREQ, &ListMax}}},
-    {"LoadLanguageText", {{CD_FUNC, 0, do_LoadLanguageText}}},
-    {"LoadModule", {{CD_FUNC, 0, do_LoadModule}}},
-    {"LocalAddress",
+/* Top level. */
+static ConfigDirective toplevel_directives[] = {
+    {"loadlanguage", {{CD_FUNC, CF_MULTI, do_LoadLanguageText}}},
+    {"loadmodule", {{CD_FUNC, CF_MULTI, do_LoadModule}}},
+    {NULL}};
+
+/* serverinfo { }: how Services present themselves to the network. */
+static ConfigDirective serverinfo_directives[] = {
+    {"description", {{CD_STRING, CF_DIRREQ, &ServerDesc}}},
+    {"name", {{CD_STRING, CF_DIRREQ, &ServerName}}},
+    {"numeric", {{CD_INT, CF_DIRREQ, &ServerNumeric}}},
+    {"user", {{CD_FUNC, CF_DIRREQ, do_ServiceUser}}},
+    {NULL}};
+
+/* uplink { }: the ircu2 server Services link to. */
+static ConfigDirective uplink_directives[] = {
+    {"host", {{CD_STRING, CF_DIRREQ, &RemoteServer}}},
+    {"local_address",
      {{CD_STRING, 0, &LocalHost}, {CD_PORT, CF_OPTIONAL, &LocalPort}}},
-    {"LockFilename", {{CD_STRING, CF_DIRREQ, &LockFilename}}},
-    {"LogFilename", {{CD_STRING, CF_DIRREQ, &LogFilename}}},
-    {"LogMaxUsers", {{CD_SET, 0, &LogMaxUsers}}},
-    {"MergeChannelModes", {{CD_TIMEMSEC, 0, &MergeChannelModes}}},
-    {"MOTDFilename", {{CD_STRING, CF_DIRREQ, &MOTDFilename}}},
-    {"NetBufferLimit",
+    {"password", {{CD_STRING, CF_DIRREQ, &RemotePassword}}},
+    {"port", {{CD_PORT, CF_DIRREQ, &RemotePort}}},
+    {NULL}};
+
+/* files { }: files in the data directory, and the process owning them. */
+static ConfigDirective files_directives[] = {
+    {"lock", {{CD_STRING, CF_DIRREQ, &LockFilename}}},
+    {"log", {{CD_STRING, CF_DIRREQ, &LogFilename}}},
+    {"motd", {{CD_STRING, CF_DIRREQ, &MOTDFilename}}},
+    {"pid", {{CD_FUNC, 0, do_PIDFilename}}},
+    {"run_group", {{CD_FUNC, 0, do_RunGroup}}},
+    {"umask", {{CD_FUNC, 0, do_Umask}}},
+    {NULL}};
+
+/* options { }: general behaviour. */
+static ConfigDirective options_directives[] = {
+    {"bad_pass_limit", {{CD_POSINT, 0, &BadPassLimit}}},
+    {"bad_pass_timeout", {{CD_TIME, 0, &BadPassTimeout}}},
+    {"bad_pass_warning", {{CD_POSINT, 0, &BadPassWarning}}},
+    {"enable_getpass", {{CD_SET, 0, &EnableGetpass}}},
+    {"encryption", {{CD_STRING, 0, &EncryptionType}}},
+    {"guest_nick_prefix", {{CD_STRING, CF_DIRREQ, &GuestNickPrefix}}},
+    {"ignore_decay", {{CD_TIMEMSEC, 0, &IgnoreDecay}}},
+    {"ignore_threshold", {{CD_FUNC, 0, do_IgnoreThreshold}}},
+    {"list_max", {{CD_POSINT, CF_DIRREQ, &ListMax}}},
+    {"log_max_users", {{CD_SET, 0, &LogMaxUsers}}},
+    {"merge_channel_modes", {{CD_TIMEMSEC, 0, &MergeChannelModes}}},
+    {"no_admin_password_check", {{CD_SET, 0, &NoAdminPasswordCheck}}},
+    {"no_bouncy_modes", {{CD_SET, 0, &NoBouncyModes}}},
+    {"no_split_recovery", {{CD_SET, 0, &NoSplitRecovery}}},
+    {"reject_email", {{CD_FUNC, CF_MULTI, do_RejectEmail}}},
+    {"strict_passwords", {{CD_SET, 0, &StrictPasswords}}},
+    {"timezone", {{CD_FUNC, 0, do_DefTimeZone}}},
+    {"wall_admin_privs", {{CD_SET, 0, &WallAdminPrivs}}},
+    {NULL}};
+
+/* timeouts { }: timers. */
+static ConfigDirective timeouts_directives[] = {
+    {"check", {{CD_TIMEMSEC, CF_DIRREQ, &TimeoutCheck}}},
+    {"ping", {{CD_TIME, 0, &PingFrequency}}},
+    {"read", {{CD_TIMEMSEC, 0, &ReadTimeout}}},
+    {"update", {{CD_TIME, CF_DIRREQ, &UpdateTimeout}}},
+    {"warning", {{CD_TIME, CF_DIRREQ, &WarningTimeout}}},
+    {NULL}};
+
+/* netbuffer { }: memory for network buffers. */
+static ConfigDirective netbuffer_directives[] = {
+    {"limit",
      {{CD_POSINT, 0, &NetBufferLimitInactive},
       {CD_POSINT, CF_OPTIONAL, &NetBufferLimitIgnore}}},
-    {"NetBufferSize",
+    {"size",
      {{CD_POSINT, 0, &TotalNetBufferSize},
       {CD_POSINT, CF_OPTIONAL, &NetBufferSize}}},
-    {"NoAdminPasswordCheck", {{CD_SET, 0, &NoAdminPasswordCheck}}},
-    {"NoBouncyModes", {{CD_SET, 0, &NoBouncyModes}}},
-    {"NoSplitRecovery", {{CD_SET, 0, &NoSplitRecovery}}},
-    {"PIDFilename", {{CD_FUNC, 0, do_PIDFilename}}},
-    {"PingFrequency", {{CD_TIME, 0, &PingFrequency}}},
-    {"ReadTimeout", {{CD_TIMEMSEC, 0, &ReadTimeout}}},
-    {"RejectEmail", {{CD_FUNC, 0, do_RejectEmail}}},
-    {"RemoteServer",
-     {{CD_STRING, CF_DIRREQ, &RemoteServer},
-      {CD_PORT, 0, &RemotePort},
-      {CD_STRING, 0, &RemotePassword}}},
-    {"RunGroup", {{CD_FUNC, 0, do_RunGroup}}},
-    {"ServerDesc", {{CD_STRING, CF_DIRREQ, &ServerDesc}}},
-    {"ServerName", {{CD_STRING, CF_DIRREQ, &ServerName}}},
-    {"ServerNumeric", {{CD_INT, CF_DIRREQ, &ServerNumeric}}},
-    {"ServiceUser", {{CD_FUNC, CF_DIRREQ, do_ServiceUser}}},
-    {"StrictPasswords", {{CD_SET, 0, &StrictPasswords}}},
-    {"TimeoutCheck", {{CD_TIMEMSEC, CF_DIRREQ, &TimeoutCheck}}},
-    {"Umask", {{CD_FUNC, 0, do_Umask}}},
-    {"UpdateTimeout", {{CD_TIME, CF_DIRREQ, &UpdateTimeout}}},
-    {"WallAdminPrivs", {{CD_SET, 0, &WallAdminPrivs}}},
-    {"WarningTimeout", {{CD_TIME, CF_DIRREQ, &WarningTimeout}}},
     {NULL}};
+
+/* Every block the core reads (a NULL name is the top level). */
+static const struct {
+    const char* block;
+    ConfigDirective* directives;
+} core_config[] = {
+    {NULL, toplevel_directives},
+    {"serverinfo", serverinfo_directives},
+    {"uplink", uplink_directives},
+    {"files", files_directives},
+    {"options", options_directives},
+    {"timeouts", timeouts_directives},
+    {"netbuffer", netbuffer_directives},
+};
+
+/*************************************************************************/
+
+/* Bind (CONFIGURE_READ and/or CONFIGURE_SET) every core directive table to
+ * the current configuration tree.  Every table is read even after an error
+ * so that all errors are reported at once. */
+
+static int configure_core(int action)
+{
+    int i, retval = 1;
+
+    for (i = 0; i < lenof(core_config); i++) {
+        if (!configure_block(core_config[i].block, NULL,
+                             core_config[i].directives, action))
+            retval = 0;
+    }
+    return retval;
+}
+
+/*************************************************************************/
+
+/* Warn about top-level blocks nobody will read: unknown block names,
+ * module blocks without a module name, and (debug only) blocks of modules
+ * that are not loaded.  Call after the core tables have been set
+ * (LoadModules must be current). */
+
+static void check_toplevel_blocks(void)
+{
+    const ConfNode* root = conf_root();
+    const ConfNode* node;
+    int i;
+
+    for (node = root ? root->children : NULL; node; node = node->next) {
+        if (node->type != CONF_BLOCK)
+            continue;
+        if (stricmp(node->name, "module") == 0) {
+            if (!node->label) {
+                config_error(node->file, node->line,
+                             "Warning: `module' block without a module name"
+                             " ignored");
+                continue;
+            }
+            /* Configuring a module without loading it is normal (the
+             * example configuration does it for every module), so this is
+             * only worth a debug message. */
+            ARRAY_SEARCH_PLAIN(LoadModules, node->label, strcmp, i);
+            if (i >= LoadModules_count) {
+                log_debug(1, "%s:%d: module `%s' is configured but not"
+                          " loaded (no loadmodule for it)",
+                          node->file, node->line, node->label);
+            }
+            continue;
+        }
+        for (i = 0; i < lenof(core_config); i++) {
+            if (core_config[i].block &&
+                stricmp(node->name, core_config[i].block) == 0)
+                break;
+        }
+        if (i >= lenof(core_config)) {
+            config_error(node->file, node->line,
+                         "Warning: unknown block `%s' ignored", node->name);
+        }
+    }
+}
+
+/*************************************************************************/
+
+/* Load the configuration file into a new tree and read the core
+ * directives from it.  On success the new tree is committed (modules read
+ * their blocks from it) and the new values are set; on failure the
+ * previous configuration, if any, is left untouched.  Returns nonzero on
+ * success. */
+
+static int load_config(void)
+{
+    if (!conf_load(IRCSERVICES_CONF))
+        return 0;
+    if (!configure_core(CONFIGURE_READ)) {
+        conf_discard();
+        return 0;
+    }
+    conf_commit();
+    configure_core(CONFIGURE_SET);
+    check_toplevel_blocks();
+    return 1;
+}
 
 /*************************************************************************/
 
 /* read_config():  Read the main configuration file.  If an error occurs
  *                 while reading the file or a required directive is not
  *                 found, print and log an appropriate error message and
- *                 return 0; otherwise, return 1.
+ *                 return 0; otherwise, return 1.  The whole file is parsed
+ *                 here, before any module is loaded, so module blocks are
+ *                 available to modules from the moment they load.
  */
 
 static int read_config(void)
 {
     int retval = 1;
 
-    if (!configure(NULL, main_directives, CONFIGURE_READ | CONFIGURE_SET))
+    if (!load_config())
         return 0;
 
     if (TotalNetBufferSize) {
         if (TotalNetBufferSize < SOCK_MIN_BUFSIZE * 2) {
             config_error(IRCSERVICES_CONF, 0,
-                         "Buffer size limit for NetBufferSize must be at"
-                         " least %d",
+                         "netbuffer: total `size' must be at least %d",
                          SOCK_MIN_BUFSIZE * 2);
             retval = 0;
         }
@@ -180,16 +305,15 @@ static int read_config(void)
             if (NetBufferSize) {
                 if (NetBufferSize < SOCK_MIN_BUFSIZE * 2) {
                     config_error(IRCSERVICES_CONF, 0,
-                                 "Per-connection buffer size limit for"
-                                 " NetBufferSize must be at least %d",
+                                 "netbuffer: per-connection `size' must be"
+                                 " at least %d",
                                  SOCK_MIN_BUFSIZE * 2);
                     retval = 0;
                 }
                 else if (NetBufferSize > TotalNetBufferSize) {
                     config_error(IRCSERVICES_CONF, 0,
-                                 "Per-connection buffer size limit for"
-                                 " NetBufferSize must be no more than total"
-                                 " limit");
+                                 "netbuffer: per-connection `size' must be"
+                                 " no more than the total");
                     retval = 0;
                 }
                 else {
@@ -207,14 +331,14 @@ static int read_config(void)
         else {
             if (NetBufferLimitInactive > 99 || NetBufferLimitIgnore > 99) {
                 config_error(IRCSERVICES_CONF, 0,
-                             "Thresholds for NetBufferLimit must be between"
+                             "netbuffer: `limit' thresholds must be between"
                              " 1 and 99 inclusive");
                 retval = 0;
             }
             if (NetBufferLimitIgnore &&
                 NetBufferLimitIgnore < NetBufferLimitInactive) {
                 config_error(IRCSERVICES_CONF, 0,
-                             "Ignore threshold for NetBufferLimit must be"
+                             "netbuffer: `limit' ignore threshold must be"
                              " greater than or equal to inactive threshold");
                 retval = 0;
             }
@@ -1131,8 +1255,8 @@ int init(int ac, char** av)
      * (when forking).
      */
 
-    /* Write our PID to the PID file. */
-    if (!write_pidfile())
+    /* Write our PID to the PID file (if one is configured). */
+    if (*PIDFilename && !write_pidfile())
         log_perror("Warning: cannot write to PID file %s", PIDFilename);
 
     /* Set up signal handlers. */
@@ -1184,43 +1308,54 @@ int reconfigure(void)
     old_LoadModules = LoadModules;
     old_LoadModules_count = LoadModules_count;
 
-    /* Re-read the configuration */
-    if (!configure(NULL, main_directives, CONFIGURE_READ))
-        return 0;
-    /* Prevent current LoadModules (now old_LoadModules) from being freed */
+    /* Re-read the configuration.  CONFIGURE_SET frees the current
+     * LoadModules, so hand it over to old_LoadModules first; if the new
+     * configuration is rejected, nothing has changed and it goes back. */
     LoadModules = NULL;
     LoadModules_count = 0;
-    /* Copy new values to configuration variables */
-    configure(NULL, main_directives, CONFIGURE_SET);
+    if (!load_config()) {
+        LoadModules = old_LoadModules;
+        LoadModules_count = old_LoadModules_count;
+        free(old_RemoteServer);
+        free(old_RemotePassword);
+        free(old_LocalHost);
+        free(old_ServerName);
+        free(old_ServerDesc);
+        free(old_ServiceUser);
+        free(old_ServiceHost);
+        free(old_LogFilename);
+        free(old_PIDFilename);
+        return 0;
+    }
 
     /* Deal with configuration changes */
     if (stricmp(RemoteServer, old_RemoteServer) != 0 ||
         RemotePort != old_RemotePort ||
         strcmp(RemotePassword, old_RemotePassword) != 0)
-        log("warning: reconfigure: new RemoteServer value will not take"
-            " effect until restart");
+        log("warning: reconfigure: new uplink host/port/password will not"
+            " take effect until restart");
     if ((!old_LocalHost && LocalHost) || (old_LocalHost && !LocalHost) ||
         (LocalHost && stricmp(LocalHost, old_LocalHost) != 0) ||
         LocalPort != old_LocalPort)
-        log("warning: reconfigure: new LocalHost value will not take"
+        log("warning: reconfigure: new uplink local_address will not take"
             " effect until restart");
     if (strcmp(ServerName, old_ServerName) != 0)
-        log("warning: reconfigure: new ServerName value will not take"
+        log("warning: reconfigure: new serverinfo name will not take"
             " effect until restart");
     if (strcmp(ServerDesc, old_ServerDesc) != 0)
-        log("warning: reconfigure: new ServerDesc value will not take"
-            " effect until restart");
+        log("warning: reconfigure: new serverinfo description will not"
+            " take effect until restart");
     if ((!old_ServiceUser && ServiceUser) ||
         (!old_ServiceHost && ServiceHost) ||
         (ServiceUser && strcmp(ServiceUser, old_ServiceUser) != 0) ||
         (ServiceHost && strcmp(ServiceHost, old_ServiceHost) != 0))
-        log("warning: reconfigure: new ServiceUser value will not take"
+        log("warning: reconfigure: new serverinfo user will not take"
             " effect until restart");
     if (strcmp(LogFilename, old_LogFilename) != 0) {
-        log("reconfigure: LogFilename changed, closing log file");
+        log("reconfigure: log file changed, closing log file");
         set_logfile(LogFilename);
         if (reopen_log()) {
-            log("reconfigure: LogFilename changed, writing to new log file");
+            log("reconfigure: log file changed, writing to new log file");
         }
         else {
             log("warning: reconfigure: unable to open new log file `%s',"
@@ -1232,7 +1367,10 @@ int reconfigure(void)
         }
     }
     if (strcmp(PIDFilename, old_PIDFilename) != 0) {
-        if (write_pidfile()) {
+        if (!*PIDFilename) {
+            remove(old_PIDFilename);
+        }
+        else if (write_pidfile()) {
             /* Successfully wrote the new PID file, so delete the old one */
             remove(old_PIDFilename);
         }
@@ -1250,13 +1388,13 @@ int reconfigure(void)
     load_ext_lang(LoadLanguageText[i]);
 
     /* For modules, we need to:
-     *    - first unload any modules which don't have LoadModule lines
+     *    - first unload any modules which don't have loadmodule entries
      *          anymore--this has to be done in reverse order to avoid
      *          dependency problems;
      *    - next reconfigure any still-loaded modules (because newly-loaded
      *          modules in the next step may depend on the new settings);
      *    - finally load any modules which weren't loaded before but have
-     *          LoadModule lines now.
+     *          loadmodule entries now.
      */
     LoadModules_insert = LoadModules_count;
     for (i = old_LoadModules_count - 1; i >= 0; i--) {
@@ -1346,6 +1484,7 @@ void cleanup(void)
     unregister_callback(cb_introduce_user);
     unregister_callback(cb_cmdline);
     modules_cleanup();
+    conf_cleanup();
     close_log();
 }
 

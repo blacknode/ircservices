@@ -21,11 +21,11 @@
  * Numerics.  Every server has a two-character numeric and every client a
  * five-character one (server numeric + three characters), in the P10
  * base64 alphabet (A-Z a-z 0-9 [ ]).  Services' own numeric comes from
- * the ServerNumeric directive in ircservices.conf and must be unique on
- * the network.
+ * serverinfo { numeric } in ircservices.conf and must be unique on the
+ * network.
  *
  * The uplink has to treat Services as a services server: a Connect{}
- * block for the link and a UWorld{} block naming ServerName, so that
+ * block for the link and a UWorld{} block naming serverinfo { name }, so that
  * ACCOUNT, OPMODE and server-sourced MODE/KICK are accepted.
  */
 
@@ -36,7 +36,7 @@
 
 /*************************************************************************/
 
-/* ServerNumeric directive: our server numeric, 0..4095. */
+/* serverinfo { numeric }: our server numeric, 0..4095. */
 extern int32 ServerNumeric;
 
 /* Highest nickname length ircu accepts (NICKLEN). */

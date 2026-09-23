@@ -8,9 +8,21 @@ General Public License, version 2 or later, and may be freely redistributed,
 with certain limitations described in that license (notably, if you
 distribute IRC Services at all then you must distribute the source code as
 well).  See the GNU General Public License (in the file GPL.txt) and the
-relevant section of the manual (docs/copyright.html).
+relevant section of the manual (docs/readme.copyright).
 
 ---------------------------------------------------------------------------
 
-Documentation is located in the docs/ directory; point your browser at
-docs/index.html to start reading.
+This tree links to ircu2 (P10) networks; see BUILDING.md to build and
+install it.  Documentation is located in the docs/ directory, one file per
+topic:
+
+    docs/readme.about      what Services are; list of the documents
+    docs/readme.install    installing, running and controlling Services
+    docs/readme.config     the configuration file: syntax and core settings
+    docs/readme.modules    the settings of every module
+    docs/readme.migration  converting an old ircservices.conf/modules.conf
+    docs/readme.features   what Services do, feature by feature
+    docs/readme.commands   every command of every pseudoclient
+    docs/readme.xml        exporting and importing databases (XML)
+    docs/readme.api        the configuration interface for module developers
+    docs/readme.copyright  copyright and licenses

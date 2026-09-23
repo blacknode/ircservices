@@ -9,7 +9,71 @@ ircservices \- Services for IRC Networks daemon program
 .SH DESCRIPTION
 Services for IRC Networks (also known as IRC Services or just Services)
 provides nickname and channel registration and many other services for
-use on IRC (Internet Relay Chat) networks.
+use on ircu2 (P10) IRC networks.
 .PP
-There is no manpage documentation; please see the HTML documentation for
-details.
+On start-up, Services read their configuration file,
+.IR ircservices.conf ,
+and every file it includes, from the data directory, load the modules it
+lists and connect to the uplink server.
+.SH OPTIONS
+.TP
+.BI \-dir= directory
+Use
+.I directory
+as the data directory.
+.TP
+.BI \-remote= host[:port]
+Connect to this server instead of the one in the uplink block.
+.TP
+.BI \-log= filename
+Log to
+.IR filename .
+.TP
+.B \-debug
+Debug mode (repeat for more output).
+.TP
+.B \-readonly
+Do not write the databases or the log.
+.TP
+.B \-nofork
+Stay in the foreground and log to the terminal as well.
+.TP
+.B \-noexpire
+Disable all expirations.
+.TP
+.B \-noakill
+Disable autokill checking.
+.TP
+.B \-forceload
+Load as much as possible from damaged databases.
+.TP
+.B \-encrypt\-all
+Re-encrypt all passwords on start-up.
+.TP
+.B \-help
+List the core options.
+.SH SIGNALS
+.TP
+.B SIGHUP
+Save the databases and reload the configuration.
+.TP
+.B SIGTERM
+Save the databases and exit.
+.TP
+.B SIGUSR2
+Reopen the log file.
+.SH FILES
+.TP
+.I ircservices.conf
+The configuration file, in the data directory.
+.TP
+.I modules.conf
+Module settings, included by the example ircservices.conf.
+.SH SEE ALSO
+The documentation in the
+.I docs
+directory of the source tree:
+.IR readme.install ,
+.IR readme.config ,
+.IR readme.modules ,
+.IR readme.commands .

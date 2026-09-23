@@ -1,28 +1,49 @@
-/* Configuration file handling.
+/* Configuration file handling: the parsed tree and directive binding.
  *
  * IRC Services is copyright (c) 1996-2009 Andrew Church.
  *     E-mail: <achurch@achurch.org>
  * Parts written by Andrew Kempe and others.
  * This program is free but copyrighted software; see the file GPL.txt for
  * details.
+ *
+ * The file is read by the scanner and parser generated from conf_lexer.l
+ * and conf_parser.y, which call back into this file to build the tree.
+ * See conffile.h for the tree and the public interface.
  */
 
 #include "conffile.h"
 #include "services.h"
 
+#include "conf_internal.h"
+
 /*************************************************************************/
 
+/* A whole configuration: the top-level block and the names of the files
+ * it was read from (nodes point into `files'). */
+typedef struct ConfTree_ {
+    ConfNode root;
+    char** files;
+    int files_count;
+} ConfTree;
+
+/* Values of an entry under construction. */
+struct ConfValues_ {
+    char** values;
+    int count;
+};
+
+static ConfTree* current_tree; /* Configuration in use */
+static ConfTree* pending_tree; /* Loaded by conf_load(), not committed */
+static char* main_filename;    /* As passed to conf_load() */
+
+/* The tree lookups and configure() work on. */
+#define active_tree() (pending_tree ? pending_tree : current_tree)
+
+static void free_tree(ConfTree* tree);
+
+static int read_directives(const char* blockname, const char* label,
+                           ConfigDirective* directives);
 static void do_all_directives(int action, ConfigDirective* directives);
-
-static int read_config_file(const char* modulename,
-                            ConfigDirective* directives);
-
-static int do_read_config_file(const char* modulename,
-                               ConfigDirective* directives, FILE* f,
-                               const char* filename, int recursion_level);
-
-static int parse_config_line(const char* filename, int linenum, char* buf,
-                             ConfigDirective* directives);
 
 /* Actions for do_all_directives(): */
 
@@ -30,32 +51,532 @@ static int parse_config_line(const char* filename, int linenum, char* buf,
 #define ACTION_RESTORESAVED 1 /* Restore saved values of config variables */
 
 /*************************************************************************/
+/****************** Tree construction (for the parser) *******************/
 /*************************************************************************/
 
-/* Set configuration options for the given module (if `modulename' is NULL,
- * set core configuration options).  Returns nonzero on success, 0 on error
- * (an error message is logged, and printed to the terminal if applicable,
- * in this case).  Returns successfully without doing anything if
- * `directives' is NULL.
- *
- * `action' is a bitmask of CONFIGURE_* values (services.h), specifying
- * what this function should do, as follows:
- *     - CONFIGURE_READ: read new values from the configuration file
- *     - CONFIGURE_SET: copy new values to configuration variables
- * If both CONFIGURE_READ and CONFIGURE_SET are specified, new values are
- * copied to the configuration variables only if all values are read in
- * successfully (i.e. if a configure(...,CONFIGURE_READ) call would have
- * returned success).  CONFIGURE_SET alone will never fail.
- */
+/* Plain malloc() and friends are used here (as the old line parser did):
+ * the file is read before the signal handling smalloc() relies on is set
+ * up. */
 
-int configure(const char* modulename, ConfigDirective* directives, int action)
+void conf_parse_error(ConfParseCtx* ctx, int line, const char* fmt, ...)
+{
+    char buf[4096];
+    va_list args;
+
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    config_error(ctx->filename, line, "%s", buf);
+    ctx->errors++;
+}
+
+/*************************************************************************/
+
+char* conf_strndup(ConfParseCtx* ctx, const char* s, size_t len)
+{
+    char* copy = malloc(len + 1);
+
+    if (!copy) {
+        conf_parse_error(ctx, 0, "Out of memory");
+        return NULL;
+    }
+    memcpy(copy, s, len);
+    copy[len] = 0;
+    return copy;
+}
+
+void conf_str_free(char* s)
+{
+    free(s);
+}
+
+/*************************************************************************/
+
+ConfValues* conf_values_add(ConfParseCtx* ctx, ConfValues* values,
+                            char* value)
+{
+    char** newarray;
+
+    if (!values) {
+        values = calloc(1, sizeof(*values));
+        if (!values)
+            goto oom;
+    }
+    newarray = realloc(values->values, sizeof(char*) * (values->count + 1));
+    if (!newarray)
+        goto oom;
+    values->values = newarray;
+    values->values[values->count++] = value;
+    return values;
+
+oom:
+    conf_parse_error(ctx, 0, "Out of memory");
+    conf_str_free(value);
+    conf_values_free(values);
+    return NULL;
+}
+
+void conf_values_free(ConfValues* values)
+{
+    int i;
+
+    if (!values)
+        return;
+    for (i = 0; i < values->count; i++)
+        free(values->values[i]);
+    free(values->values);
+    free(values);
+}
+
+/*************************************************************************/
+
+ConfNode* conf_new_entry(ConfParseCtx* ctx, char* name, ConfValues* values,
+                         int line)
+{
+    ConfNode* node = calloc(1, sizeof(*node));
+
+    if (!node) {
+        conf_parse_error(ctx, line, "Out of memory");
+        conf_str_free(name);
+        conf_values_free(values);
+        return NULL;
+    }
+    node->type = CONF_ENTRY;
+    node->name = name;
+    node->file = ctx->filename;
+    node->line = line;
+    if (values) {
+        node->values = values->values;
+        node->values_count = values->count;
+        free(values); /* the array now belongs to the node */
+    }
+    return node;
+}
+
+ConfNode* conf_new_block(ConfParseCtx* ctx, char* name, char* label,
+                         ConfList children, int line)
+{
+    ConfNode *node = calloc(1, sizeof(*node)), *child;
+
+    if (!node) {
+        conf_parse_error(ctx, line, "Out of memory");
+        conf_str_free(name);
+        conf_str_free(label);
+        conf_list_free(children);
+        return NULL;
+    }
+    node->type = CONF_BLOCK;
+    node->name = name;
+    node->label = label;
+    node->file = ctx->filename;
+    node->line = line;
+    node->children = children.head;
+    for (child = node->children; child; child = child->next)
+        child->parent = node;
+    return node;
+}
+
+void conf_node_free(ConfNode* node)
+{
+    ConfNode *child, *next;
+    int i;
+
+    if (!node)
+        return;
+    for (child = node->children; child; child = next) {
+        next = child->next;
+        conf_node_free(child);
+    }
+    for (i = 0; i < node->values_count; i++)
+        free(node->values[i]);
+    free(node->values);
+    free(node->label);
+    free(node->name);
+    free(node);
+}
+
+/*************************************************************************/
+
+void conf_list_init(ConfList* list)
+{
+    list->head = list->tail = NULL;
+}
+
+void conf_list_append(ConfList* list, ConfNode* node)
+{
+    node->next = NULL;
+    if (list->tail)
+        list->tail->next = node;
+    else
+        list->head = node;
+    list->tail = node;
+}
+
+void conf_list_concat(ConfList* list, ConfList other)
+{
+    if (!other.head)
+        return;
+    if (list->tail)
+        list->tail->next = other.head;
+    else
+        list->head = other.head;
+    list->tail = other.tail;
+}
+
+void conf_list_free(ConfList list)
+{
+    ConfNode *node, *next;
+
+    for (node = list.head; node; node = next) {
+        next = node->next;
+        conf_node_free(node);
+    }
+}
+
+/*************************************************************************/
+
+const char* conf_intern_filename(ConfTree* tree, const char* filename)
+{
+    char **newarray, *copy;
+    int i;
+
+    for (i = 0; i < tree->files_count; i++) {
+        if (strcmp(tree->files[i], filename) == 0)
+            return tree->files[i];
+    }
+    newarray = realloc(tree->files, sizeof(char*) * (tree->files_count + 1));
+    copy = strdup(filename);
+    if (!newarray || !copy) {
+        free(copy);
+        if (newarray)
+            tree->files = newarray;
+        config_error(filename, 0, "Out of memory");
+        return NULL;
+    }
+    tree->files = newarray;
+    tree->files[tree->files_count++] = copy;
+    return copy;
+}
+
+/*************************************************************************/
+/******************************* Loading *********************************/
+/*************************************************************************/
+
+int conf_load(const char* filename)
+{
+    ConfTree* tree;
+    ConfList list;
+    ConfNode* node;
+    char* name;
+
+    tree = calloc(1, sizeof(*tree));
+    name = strdup(filename);
+    if (tree)
+        tree->root.name = strdup("");
+    if (!tree || !name || !tree->root.name) {
+        if (tree)
+            free(tree->root.name);
+        free(tree);
+        free(name);
+        config_error(filename, 0, "Out of memory");
+        return 0;
+    }
+    tree->root.type = CONF_BLOCK;
+
+    if (!conf_parse_file(tree, filename, 0, &list, NULL, 0)) {
+        free_tree(tree);
+        free(name);
+        return 0;
+    }
+    tree->root.children = list.head;
+    for (node = list.head; node; node = node->next)
+        node->parent = &tree->root;
+    if (list.head) {
+        tree->root.file = list.head->file;
+        tree->root.line = 0;
+    }
+
+    free_tree(pending_tree);
+    pending_tree = tree;
+    free(main_filename);
+    main_filename = name;
+    return 1;
+}
+
+void conf_commit(void)
+{
+    if (!pending_tree)
+        return;
+    free_tree(current_tree);
+    current_tree = pending_tree;
+    pending_tree = NULL;
+}
+
+void conf_discard(void)
+{
+    free_tree(pending_tree);
+    pending_tree = NULL;
+}
+
+void conf_cleanup(void)
+{
+    conf_discard();
+    free_tree(current_tree);
+    current_tree = NULL;
+    free(main_filename);
+    main_filename = NULL;
+}
+
+const char* conf_filename(void)
+{
+    return main_filename ? main_filename : IRCSERVICES_CONF;
+}
+
+static void free_tree(ConfTree* tree)
+{
+    ConfNode *node, *next;
+    int i;
+
+    if (!tree)
+        return;
+    for (node = tree->root.children; node; node = next) {
+        next = node->next;
+        conf_node_free(node);
+    }
+    free(tree->root.name);
+    for (i = 0; i < tree->files_count; i++)
+        free(tree->files[i]);
+    free(tree->files);
+    free(tree);
+}
+
+/*************************************************************************/
+/******************************* Lookups *********************************/
+/*************************************************************************/
+
+const ConfNode* conf_root(void)
+{
+    ConfTree* tree = active_tree();
+    return tree ? &tree->root : NULL;
+}
+
+/*************************************************************************/
+
+static int block_matches(const ConfNode* node, const char* name,
+                         const char* label)
+{
+    return node->type == CONF_BLOCK && stricmp(node->name, name) == 0 &&
+           (!label || (node->label && strcmp(node->label, label) == 0));
+}
+
+const ConfNode* conf_find_block(const ConfNode* parent, const char* name,
+                                const char* label)
+{
+    const ConfNode* node;
+
+    if (!parent || !name)
+        return NULL;
+    for (node = parent->children; node; node = node->next) {
+        if (block_matches(node, name, label))
+            return node;
+    }
+    return NULL;
+}
+
+const ConfNode* conf_next_block(const ConfNode* block, const char* name,
+                                const char* label)
+{
+    const ConfNode* node;
+
+    if (!block || !name)
+        return NULL;
+    for (node = block->next; node; node = node->next) {
+        if (block_matches(node, name, label))
+            return node;
+    }
+    return NULL;
+}
+
+const ConfNode* conf_module_block(const char* modulename)
+{
+    return modulename ? conf_find_block(conf_root(), "module", modulename)
+                      : NULL;
+}
+
+/*************************************************************************/
+
+static int entry_matches(const ConfNode* node, const char* key)
+{
+    return node->type == CONF_ENTRY && (!key || stricmp(node->name, key) == 0);
+}
+
+const ConfNode* conf_first_entry(const ConfNode* block, const char* key)
+{
+    const ConfNode* node;
+
+    if (!block)
+        return NULL;
+    for (node = block->children; node; node = node->next) {
+        if (entry_matches(node, key))
+            return node;
+    }
+    return NULL;
+}
+
+const ConfNode* conf_next_entry(const ConfNode* entry, const char* key)
+{
+    const ConfNode* node;
+
+    if (!entry)
+        return NULL;
+    for (node = entry->next; node; node = node->next) {
+        if (entry_matches(node, key))
+            return node;
+    }
+    return NULL;
+}
+
+const ConfNode* conf_find_entry(const ConfNode* block, const char* key)
+{
+    const ConfNode *node, *found = NULL;
+
+    for (node = conf_first_entry(block, key); node;
+         node = conf_next_entry(node, key))
+        found = node;
+    return found;
+}
+
+/*************************************************************************/
+
+int conf_value_count(const ConfNode* entry)
+{
+    return entry && entry->type == CONF_ENTRY ? entry->values_count : 0;
+}
+
+const char* conf_value(const ConfNode* entry, int index)
+{
+    if (index < 0 || index >= conf_value_count(entry))
+        return NULL;
+    return entry->values[index];
+}
+
+/*************************************************************************/
+
+int conf_parse_bool(const char* s)
+{
+    if (!s)
+        return -1;
+    if (stricmp(s, "yes") == 0 || stricmp(s, "on") == 0 ||
+        stricmp(s, "true") == 0)
+        return 1;
+    if (stricmp(s, "no") == 0 || stricmp(s, "off") == 0 ||
+        stricmp(s, "false") == 0)
+        return 0;
+    return -1;
+}
+
+/*************************************************************************/
+
+/* Return the first value of entry `key' in `block', or NULL (with a
+ * warning if the entry is there without a value). */
+
+static const char* first_value(const ConfNode* block, const char* key,
+                               const ConfNode** entry_ret)
+{
+    const ConfNode* entry = conf_find_entry(block, key);
+
+    *entry_ret = entry;
+    if (!entry)
+        return NULL;
+    if (!entry->values_count) {
+        config_error(entry->file, entry->line,
+                     "Warning: `%s' requires a value, using default", key);
+        return NULL;
+    }
+    return entry->values[0];
+}
+
+const char* conf_get_string(const ConfNode* block, const char* key,
+                            const char* def)
+{
+    const ConfNode* entry;
+    const char* value = first_value(block, key, &entry);
+
+    return value ? value : def;
+}
+
+int32 conf_get_int(const ConfNode* block, const char* key, int32 def)
+{
+    const ConfNode* entry;
+    const char* value = first_value(block, key, &entry);
+    char* end;
+    long l;
+
+    if (!value)
+        return def;
+    errno = 0;
+    l = strtol(value, &end, 0);
+    if (!*value || *end || errno == ERANGE
+#if SIZEOF_LONG > 4
+        || l < -0x80000000L || l > 0x7FFFFFFFL
+#endif
+    ) {
+        config_error(entry->file, entry->line,
+                     "Warning: `%s' expects an integer, using default", key);
+        return def;
+    }
+    return (int32)l;
+}
+
+time_t conf_get_time(const ConfNode* block, const char* key, time_t def)
+{
+    const ConfNode* entry;
+    const char* value = first_value(block, key, &entry);
+    int t;
+
+    if (!value)
+        return def;
+    t = dotime(value);
+    if (t < 0) {
+        config_error(entry->file, entry->line,
+                     "Warning: `%s' expects a time value, using default",
+                     key);
+        return def;
+    }
+    return (time_t)t;
+}
+
+int conf_get_bool(const ConfNode* block, const char* key, int def)
+{
+    const ConfNode* entry = conf_find_entry(block, key);
+    int b;
+
+    if (!entry)
+        return def;
+    if (!entry->values_count)
+        return 1;
+    b = conf_parse_bool(entry->values[0]);
+    if (b < 0) {
+        config_error(entry->file, entry->line,
+                     "Warning: `%s' expects yes or no, using default", key);
+        return def;
+    }
+    return b;
+}
+
+/*************************************************************************/
+/*************************** Directive binding ***************************/
+/*************************************************************************/
+
+int configure_block(const char* blockname, const char* label,
+                    ConfigDirective* directives, int action)
 {
     /* If no directives were given, return success */
     if (!directives)
         return 1;
 
     if (action & CONFIGURE_READ) {
-        if (!read_config_file(modulename, directives))
+        if (!read_directives(blockname, label, directives))
             return 0;
     }
 
@@ -63,6 +584,14 @@ int configure(const char* modulename, ConfigDirective* directives, int action)
         do_all_directives(ACTION_COPYNEW, directives);
 
     return 1;
+}
+
+/*************************************************************************/
+
+int configure(const char* modulename, ConfigDirective* directives, int action)
+{
+    return configure_block(modulename ? "module" : NULL, modulename,
+                           directives, action);
 }
 
 /*************************************************************************/
@@ -104,6 +633,359 @@ void config_error(const char* filename, int linenum, const char* message, ...)
 /*************************************************************************/
 /*************************************************************************/
 
+/* Describe the block(s) a directive table is bound to, for messages. */
+
+static const char* describe_block(char* buf, size_t size,
+                                  const char* blockname, const char* label)
+{
+    if (!blockname)
+        snprintf(buf, size, "the top level");
+    else if (label)
+        snprintf(buf, size, "block `%s \"%s\"'", blockname, label);
+    else
+        snprintf(buf, size, "block `%s'", blockname);
+    return buf;
+}
+
+/*************************************************************************/
+
+/* Store the values of `entry' as the new values of directive `d'.  Returns
+ * 1 on success; otherwise reports the error and returns 0.
+ */
+
+static int bind_entry(const ConfNode* entry, ConfigDirective* d)
+{
+    const char* filename = entry->file;
+    int linenum = entry->line;
+    int ac = entry->values_count;
+    char** av = entry->values;
+    int i, optind = 0;
+    long longval;
+    unsigned long ulongval;
+    char* s;
+    int retval = 1;
+
+    d->was_seen = 1;
+    for (i = 0; i < CONFIG_MAXPARAMS && d->params[i].type != CD_NONE; i++) {
+        if (d->params[i].type == CD_SET) {
+            int value = optind < ac ? conf_parse_bool(av[optind]) : -1;
+            if (value >= 0) {
+                optind++;
+            }
+            else if (optind < ac && (i + 1 >= CONFIG_MAXPARAMS ||
+                                     d->params[i + 1].type == CD_NONE)) {
+                /* A plain flag given something that is not yes/no */
+                config_error(filename, linenum,
+                             "%s: Expected yes or no (or no value)",
+                             d->name);
+                return 0;
+            }
+            else {
+                value = 1;
+            }
+            if (!(d->params[i].flags & CF_SAVED)) {
+                d->params[i].prev.intval = *(int*)d->params[i].ptr;
+                d->params[i].flags |= CF_SAVED;
+            }
+            d->params[i].new.intval = value;
+            d->params[i].flags |= CF_WASSET;
+            if (!value) {
+                /* Switched off: whatever follows does not apply */
+                optind = ac;
+                break;
+            }
+            continue;
+        }
+        if (d->params[i].type == CD_DEPRECATED) {
+            config_error(filename, linenum, "Deprecated directive `%s' used",
+                         d->name);
+            d->params[i].flags |= CF_WASSET;
+            continue;
+        }
+        if (optind >= ac) {
+            if (!(d->params[i].flags & CF_OPTIONAL)) {
+                config_error(filename, linenum,
+                             "Not enough parameters for `%s'", d->name);
+                retval = 0;
+            }
+            break;
+        }
+        switch (d->params[i].type) {
+            case CD_INT:
+                if (!(d->params[i].flags & CF_SAVED)) {
+                    d->params[i].prev.intval = *(int32*)d->params[i].ptr;
+                    d->params[i].flags |= CF_SAVED;
+                }
+                longval = strtol(av[optind++], &s, 0);
+                if (*s || s == av[optind - 1]) {
+                    config_error(filename, linenum,
+                                 "%s: Expected an integer for parameter %d",
+                                 d->name, optind);
+                    retval = 0;
+                    break;
+                }
+#if SIZEOF_LONG > 4
+                if (longval < -0x80000000L || longval > 0x7FFFFFFFL) {
+                    config_error(filename, linenum,
+                                 "%s: Value out of range for parameter %d",
+                                 d->name, optind);
+                    retval = 0;
+                    break;
+                }
+#endif
+                d->params[i].new.intval = (int32)longval;
+                break;
+            case CD_POSINT:
+                if (!(d->params[i].flags & CF_SAVED)) {
+                    d->params[i].prev.intval = *(int32*)d->params[i].ptr;
+                    d->params[i].flags |= CF_SAVED;
+                }
+                ulongval = strtoul(av[optind++], &s, 0);
+                if (*s || s == av[optind - 1] || ulongval <= 0) {
+                    config_error(filename, linenum,
+                                 "%s: Expected a positive integer for"
+                                 " parameter %d",
+                                 d->name, optind);
+                    retval = 0;
+                    break;
+                }
+#if SIZEOF_LONG > 4
+                if (ulongval > 0xFFFFFFFFL) {
+                    config_error(filename, linenum,
+                                 "%s: Value out of range for parameter %d",
+                                 d->name, optind);
+                    retval = 0;
+                    break;
+                }
+#endif
+                d->params[i].new.intval = (int32)ulongval;
+                break;
+            case CD_PORT:
+                if (!(d->params[i].flags & CF_SAVED)) {
+                    d->params[i].prev.intval = *(int32*)d->params[i].ptr;
+                    d->params[i].flags |= CF_SAVED;
+                }
+                longval = strtol(av[optind++], &s, 0);
+                if (*s || s == av[optind - 1]) {
+                    config_error(filename, linenum,
+                                 "%s: Expected a port number for parameter %d",
+                                 d->name, optind);
+                    retval = 0;
+                    break;
+                }
+                if (longval < 1 || longval > 65535) {
+                    config_error(filename, linenum,
+                                 "Port numbers must be in the range 1..65535");
+                    retval = 0;
+                    break;
+                }
+                d->params[i].new.intval = (int32)longval;
+                break;
+            case CD_STRING:
+                if (!(d->params[i].flags & CF_SAVED)) {
+                    d->params[i].prev.ptrval = *(char**)d->params[i].ptr;
+                    d->params[i].flags |= CF_SAVED;
+                }
+                /* A repeated directive replaces the value read before */
+                if (d->params[i].flags & CF_ALLOCED_NEW)
+                    free(d->params[i].new.ptrval);
+                d->params[i].flags &= ~CF_ALLOCED_NEW;
+                d->params[i].new.ptrval = strdup(av[optind++]);
+                if (!d->params[i].new.ptrval) {
+                    config_error(filename, linenum, "%s: Out of memory",
+                                 d->name);
+                    return 0;
+                }
+                d->params[i].flags |= CF_ALLOCED_NEW;
+                break;
+            case CD_TIME:
+                if (!(d->params[i].flags & CF_SAVED)) {
+                    d->params[i].prev.timeval = *(time_t*)d->params[i].ptr;
+                    d->params[i].flags |= CF_SAVED;
+                }
+                d->params[i].new.timeval = dotime(av[optind++]);
+                if (d->params[i].new.timeval < 0) {
+                    config_error(filename, linenum,
+                                 "%s: Expected a time value for parameter %d",
+                                 d->name, optind);
+                    retval = 0;
+                    break;
+                }
+                break;
+            case CD_TIMEMSEC:
+                if (!(d->params[i].flags & CF_SAVED)) {
+                    d->params[i].prev.intval = *(int32*)d->params[i].ptr;
+                    d->params[i].flags |= CF_SAVED;
+                }
+                longval = strtol(av[optind++], &s, 10);
+                if (longval < 0) {
+                    config_error(filename, linenum,
+                                 "%s: Expected a positive value for"
+                                 " parameter %d",
+                                 d->name, optind);
+                    retval = 0;
+                    break;
+                }
+                else if (longval > 1000000) {
+                    config_error(filename, linenum,
+                                 "%s: Value too large (maximum 1000000)",
+                                 d->name);
+                    retval = 0;
+                    break;
+                }
+                longval *= 1000;
+                if (*s == '.') {
+                    int decimal = 0;
+                    int count = 0;
+                    s++;
+                    while (count < 3 && isdigit(*s)) {
+                        decimal = decimal * 10 + (*s++ - '0');
+                        count++;
+                    }
+                    while (count++ < 3)
+                        decimal *= 10;
+                    longval += decimal;
+                    while (isdigit(*s))
+                        s++;
+                }
+                if (*s) {
+                    config_error(filename, linenum,
+                                 "%s: Expected a decimal number for"
+                                 " parameter %d",
+                                 d->name, optind);
+                    retval = 0;
+                    break;
+                }
+                d->params[i].new.intval = (int32)longval;
+                break;
+            case CD_FUNC: {
+                int (*func)(const char*, int, char*) =
+                    (int (*)(const char*, int, char*))(d->params[i].ptr);
+                /* Handlers may modify their parameter, so give them a
+                 * copy; a CF_MULTI handler gets every remaining value */
+                do {
+                    char* param = strdup(av[optind++]);
+                    if (!param) {
+                        config_error(filename, linenum, "%s: Out of memory",
+                                     d->name);
+                        return 0;
+                    }
+                    if (!func(filename, linenum, param))
+                        retval = 0;
+                    free(param);
+                } while ((d->params[i].flags & CF_MULTI) && optind < ac);
+                break;
+            }
+            default:
+                config_error(filename, linenum,
+                             "%s: Unknown type %d for param %d", d->name,
+                             d->params[i].type, i + 1);
+                return 0; /* don't bother continuing--something's bizarre */
+        } /* switch (d->params[i].type) */
+        d->params[i].flags |= CF_WASSET;
+    } /* for all parameters */
+
+    if (optind < ac) {
+        config_error(filename, linenum,
+                     "Warning: too many parameters for `%s' (extra ignored)",
+                     d->name);
+    }
+
+    return retval;
+}
+
+/*************************************************************************/
+
+/* Bind the entries of one block to a directive table. */
+
+static int bind_block(const ConfNode* block, ConfigDirective* directives,
+                      const char* where)
+{
+    const ConfNode* entry;
+    int n, retval = 1;
+
+    for (entry = conf_first_entry(block, NULL); entry;
+         entry = conf_next_entry(entry, NULL)) {
+        for (n = 0; directives[n].name; n++) {
+            if (stricmp(entry->name, directives[n].name) == 0)
+                break;
+        }
+        if (!directives[n].name) {
+            /* don't cause abort */
+            config_error(entry->file, entry->line,
+                         "Unknown directive `%s' in %s", entry->name, where);
+            continue;
+        }
+        if (!bind_entry(entry, &directives[n]))
+            retval = 0;
+    }
+    return retval;
+}
+
+/*************************************************************************/
+
+/* Read in configuration options, and return nonzero for success, zero for
+ * failure.  Performs the actions needed by configure(...,CONFIGURE_READ).
+ */
+
+static int read_directives(const char* blockname, const char* label,
+                           ConfigDirective* directives)
+{
+    char where[256];
+    const ConfNode* block;
+    int retval = 1, i, n;
+
+    if (!conf_root()) {
+        log("conffile: BUG: configure() called before conf_load()");
+        return 0;
+    }
+    describe_block(where, sizeof(where), blockname, label);
+
+    /* Clear `was_set' flag and `new' value for all directives */
+    for (n = 0; directives[n].name != NULL; n++) {
+        directives[n].was_seen = 0;
+        for (i = 0; i < CONFIG_MAXPARAMS; i++) {
+            if (directives[n].params[i].flags & CF_ALLOCED_NEW)
+                free(directives[n].params[i].new.ptrval);
+            directives[n].params[i].flags &= ~(CF_WASSET | CF_ALLOCED_NEW);
+            memset(&directives[n].params[i].new, 0,
+                   sizeof(directives[n].params[i].new));
+            if (directives[n].params[i].type == CD_FUNC) {
+                int (*func)(const char*, int, char*) = (int (*)(
+                    const char*, int, char*))(directives[n].params[i].ptr);
+                func(NULL, CDFUNC_INIT, NULL);
+            }
+        }
+    }
+
+    /* Actually do the work */
+    if (!blockname) {
+        retval = bind_block(conf_root(), directives, where);
+    }
+    else {
+        for (block = conf_find_block(conf_root(), blockname, label); block;
+             block = conf_next_block(block, blockname, label)) {
+            if (!bind_block(block, directives, where))
+                retval = 0;
+        }
+    }
+
+    /* Make sure all required directives were seen */
+    for (n = 0; directives[n].name != NULL; n++) {
+        if (!directives[n].was_seen &&
+            (directives[n].params[0].flags & CF_DIRREQ)) {
+            config_error(conf_filename(), 0,
+                         "Required directive `%s' missing from %s",
+                         directives[n].name, where);
+            retval = 0;
+        }
+    }
+
+    return retval;
+}
+
+/*************************************************************************/
+
 /* Perform an action for all directives in an array; the action is given
  * by ACTION_*, defined above.
  */
@@ -123,6 +1005,15 @@ static void do_all_directives(int action, ConfigDirective* directives)
                 val = d->params[i].new;
             else
                 val = d->params[i].prev;
+
+            /* When restoring, a value read but never set (a REHASH that
+             * failed elsewhere) is dropped too */
+            if (action == ACTION_RESTORESAVED &&
+                (d->params[i].flags & CF_ALLOCED_NEW)) {
+                free(d->params[i].new.ptrval);
+                d->params[i].new.ptrval = NULL;
+                d->params[i].flags &= ~CF_ALLOCED_NEW;
+            }
 
             /* In any case, we'll be rewriting the config variable, so free
              * the previous value if it was one we allocated */
@@ -196,483 +1087,6 @@ static void do_all_directives(int action, ConfigDirective* directives)
         } /* for each parameter */
     } /* for each directive */
 }
-
-/*************************************************************************/
-
-/* Read in configuration options, and return nonzero for success, zero for
- * failure.  Performs the actions needed by configure(...,CONFIGURE_READ).
- */
-
-static int read_config_file(const char* modulename,
-                            ConfigDirective* directives)
-{
-    const char* filename;
-    FILE* f;
-    int retval, i, n;
-
-    /* Open default file */
-    filename = modulename == NULL ? IRCSERVICES_CONF : MODULES_CONF;
-    f = fopen(filename, "r");
-    if (!f) {
-        log_perror("Unable to open %s", filename);
-        if (!nofork && isatty(2))
-            fprintf(stderr, "Unable to open %s: %s\n", filename,
-                    strerror(errno));
-        return 0;
-    }
-
-    /* Clear `was_set' flag and `new' value for all directives */
-    for (n = 0; directives[n].name != NULL; n++) {
-        directives[n].was_seen = 0;
-        for (i = 0; i < CONFIG_MAXPARAMS; i++) {
-            if (directives[n].params[i].flags & CF_ALLOCED_NEW)
-                free(directives[n].params[i].new.ptrval);
-            directives[n].params[i].flags &= ~(CF_WASSET | CF_ALLOCED_NEW);
-            memset(&directives[n].params[i].new, 0,
-                   sizeof(directives[n].params[i].new));
-            if (directives[n].params[i].type == CD_FUNC) {
-                int (*func)(const char*, int, char*) = (int (*)(
-                    const char*, int, char*))(directives[n].params[i].ptr);
-                func(NULL, CDFUNC_INIT, NULL);
-            }
-        }
-    }
-
-    /* Actually do the work */
-    retval = do_read_config_file(modulename, directives, f, filename, 0);
-
-    fclose(f);
-
-    /* Make sure all required directives were seen */
-    for (n = 0; directives[n].name != NULL; n++) {
-        if (!directives[n].was_seen &&
-            (directives[n].params[0].flags & CF_DIRREQ)) {
-            config_error(filename, 0, "Required directive `%s' missing",
-                         directives[n].name);
-            retval = 0;
-        }
-    }
-
-    return retval;
-}
-
-/*************************************************************************/
-
-/* Read in a single configuration file, recursively processing IncludeFile
- * directives.
- */
-
-static int do_read_config_file(const char* modulename,
-                               ConfigDirective* directives, FILE* f,
-                               const char* filename, int recursion_level)
-{
-    char* current_module = NULL; /* Current module in modules.conf */
-    int retval = 1;              /* Return value */
-    int linenum = 0;
-    char buf[4096], tmpbuf[4096], *s;
-
-    while (fgets(buf, sizeof(buf), f)) {
-        /* Check for pathologically long files */
-        if (linenum + 1 < linenum) {
-            config_error(filename, linenum, "File too long");
-            retval = 0;
-            break;
-        }
-        linenum++;
-        /* Check for pathologically long lines */
-        if (strlen(buf) == sizeof(buf) - 1 && buf[sizeof(buf) - 1] != '\n') {
-            /* Report the maximum size as sizeof(buf)-3 to allow \r\n as
-             * well as \n to fit */
-            config_error(filename, linenum, "Line too long (%d bytes maximum)",
-                         sizeof(buf) - 3);
-            /* Skip everything else until an EOL (or EOF) is seen */
-            while (fgets(buf, sizeof(buf), f) && buf[strlen(buf) - 1] != '\n')
-                /*nothing*/;
-            retval = 0;
-        }
-        /* Strip out comments (but don't touch # inside of quotes) */
-        s = buf;
-        while (*s) {
-            if (*s == '"') {
-                if (!(s = strchr(s + 1, '"')))
-                    break;
-            }
-            else if (*s == '#') {
-                *s = 0;
-                break;
-            }
-            s++;
-        }
-        /* Check for IncludeFile directives (use tmpbuf to avoid damaging
-         * the original copy of the line) */
-        strbcpy(tmpbuf, buf);
-        s = strtok(tmpbuf, " \t\r\n");
-        if (s && stricmp(s, "IncludeFile") == 0) {
-            FILE* f2;
-            /* Check recursion level for infinite loops */
-            if (recursion_level > 100) {
-                config_error(filename, linenum,
-                             "IncludeFile recursion depth limit exceeded");
-                retval = 0;
-                continue;
-            }
-            /* Find the filename */
-            s = strtok_remaining();
-            if (s && *s == '"') {
-                char* t = strchr(s + 1, '"');
-                if (!t) {
-                    config_error(filename, linenum,
-                                 "Missing closing double quote");
-                    retval = 0;
-                    continue;
-                }
-                *t = 0;
-                s++;
-            }
-            else {
-                s = strtok(s, " \t\r\n");
-            }
-            if (!s || !*s) {
-                config_error(filename, linenum,
-                             "Missing filename for IncludeFile");
-                retval = 0;
-                continue;
-            }
-            /* Valid filename string; try to open it */
-            f2 = fopen(s, "r");
-            if (!f2) {
-                config_error(filename, linenum, "Unable to open %s: %s", s,
-                             strerror(errno));
-                retval = 0;
-                continue;
-            }
-            if (!do_read_config_file(modulename, directives, f2, s,
-                                     recursion_level + 1))
-                retval = 0;
-            fclose(f2);
-            continue;
-        }
-        /* Handle Module/EndModule lines specially, and don't parse lines
-         * belonging to other modules */
-        if (modulename) {
-            if (current_module) {
-                /* Inside a Module/EndModule pair: discard lines belonging
-                 * to other modules, and handle EndModule directives.  If
-                 * we reach EndModule for the module we're supposed to be
-                 * processing, exit the loop to avoid unneeded processing. */
-                strbcpy(tmpbuf, buf);
-                s = strtok(tmpbuf, " \t\r\n");
-                if (s && stricmp(s, "EndModule") == 0) {
-                    int strcmp_result = strcmp(current_module, modulename);
-                    free(current_module);
-                    if (strcmp_result == 0)
-                        break; /* stop processing file, we're finished */
-                    else
-                        current_module = NULL;
-                    continue;
-                }
-                else if (strcmp(current_module, modulename) != 0) {
-                    continue;
-                }
-            }
-            else { /* !current_module */
-                /* Outside a Module/EndModule pair: handle Module
-                 * directives, and report errors for anything else */
-                s = strtok(buf, " \t\r\n");
-                if (!s)
-                    continue;
-                if (stricmp(s, "Module") != 0) {
-                    config_error(filename, linenum,
-                                 "Expected `Module' directive");
-                    retval = 0;
-                }
-                else {
-                    current_module = strtok(NULL, " \t\r\n");
-                    if (!current_module) {
-                        config_error(filename, linenum, "Module name missing");
-                        retval = 0;
-                    }
-                    current_module = strdup(current_module);
-                    if (!current_module) {
-                        config_error(filename, linenum, "Out of memory");
-                        retval = 0;
-                        break;
-                    }
-                }
-                continue;
-            } /* if (current_module) */
-        } /* if (modulename) */
-        /* Valid line--parse it */
-        if (!parse_config_line(filename, linenum, buf, directives))
-            retval = 0;
-    }
-
-    return retval;
-}
-
-/*************************************************************************/
-
-/* Parse a configuration line.  Return 1 on success; otherwise, print (and
- * log, if applicable) appropriate error message and return 0.  Destroys
- * the buffer by side effect.
- */
-
-static int parse_config_line(const char* filename, int linenum, char* buf,
-                             ConfigDirective* directives)
-{
-    char *s, *t, *directive;
-    int i, n, optind;
-    long longval;
-    unsigned long ulongval;
-    int retval = 1;
-    int ac = 0;
-    char* av[CONFIG_MAXPARAMS];
-
-    directive = strtok(buf, " \t\r\n");
-    s = strtok(NULL, "");
-    if (s) {
-        while (isspace(*s))
-            s++;
-        while (*s) {
-            if (ac >= CONFIG_MAXPARAMS) {
-                config_error(filename, linenum,
-                             "Warning: too many parameters (%d max)",
-                             CONFIG_MAXPARAMS);
-                break;
-            }
-            t = s;
-            if (*s == '"') {
-                t++;
-                s++;
-                while (*s && *s != '"') {
-                    if (*s == '\\' && s[1] != 0)
-                        strmove(s, s + 1);
-                    s++;
-                }
-                if (!*s)
-                    config_error(filename, linenum,
-                                 "Warning: unterminated double-quoted string");
-                else
-                    *s++ = 0;
-            }
-            else {
-                s += strcspn(s, " \t\r\n");
-                if (*s)
-                    *s++ = 0;
-            }
-            av[ac++] = t;
-            while (isspace(*s))
-                s++;
-        }
-    }
-
-    if (!directive)
-        return 1;
-
-    for (n = 0; directives[n].name; n++) {
-        ConfigDirective* d = &directives[n];
-        if (stricmp(directive, d->name) != 0)
-            continue;
-        d->was_seen = 1;
-        optind = 0;
-        for (i = 0; i < CONFIG_MAXPARAMS && d->params[i].type != CD_NONE;
-             i++) {
-            if (d->params[i].type == CD_SET) {
-                if (!(d->params[i].flags & CF_SAVED)) {
-                    d->params[i].prev.intval = *(int*)d->params[i].ptr;
-                    d->params[i].flags |= CF_SAVED;
-                }
-                d->params[i].new.intval = 1;
-                d->params[i].flags |= CF_WASSET;
-                continue;
-            }
-            if (d->params[i].type == CD_DEPRECATED) {
-                config_error(filename, linenum,
-                             "Deprecated directive `%s' used", d->name);
-                d->params[i].flags |= CF_WASSET;
-                continue;
-            }
-            if (optind >= ac) {
-                if (!(d->params[i].flags & CF_OPTIONAL)) {
-                    config_error(filename, linenum,
-                                 "Not enough parameters for `%s'", d->name);
-                    retval = 0;
-                }
-                break;
-            }
-            switch (d->params[i].type) {
-                case CD_INT:
-                    if (!(d->params[i].flags & CF_SAVED)) {
-                        d->params[i].prev.intval = *(int32*)d->params[i].ptr;
-                        d->params[i].flags |= CF_SAVED;
-                    }
-                    longval = strtol(av[optind++], &s, 0);
-                    if (*s) {
-                        config_error(
-                            filename, linenum,
-                            "%s: Expected an integer for parameter %d",
-                            d->name, optind);
-                        retval = 0;
-                        break;
-                    }
-#if SIZEOF_LONG > 4
-                    if (longval < -0x80000000L || longval > 0x7FFFFFFFL) {
-                        config_error(filename, linenum,
-                                     "%s: Value out of range for parameter %d",
-                                     d->name, optind);
-                        retval = 0;
-                        break;
-                    }
-#endif
-                    d->params[i].new.intval = (int32)longval;
-                    break;
-                case CD_POSINT:
-                    if (!(d->params[i].flags & CF_SAVED)) {
-                        d->params[i].prev.intval = *(int32*)d->params[i].ptr;
-                        d->params[i].flags |= CF_SAVED;
-                    }
-                    ulongval = strtoul(av[optind++], &s, 0);
-                    if (*s || ulongval <= 0) {
-                        config_error(filename, linenum,
-                                     "%s: Expected a positive integer for"
-                                     " parameter %d",
-                                     d->name, optind);
-                        retval = 0;
-                        break;
-                    }
-#if SIZEOF_LONG > 4
-                    if (ulongval > 0xFFFFFFFFL) {
-                        config_error(filename, linenum,
-                                     "%s: Value out of range for parameter %d",
-                                     d->name, optind);
-                        retval = 0;
-                        break;
-                    }
-#endif
-                    d->params[i].new.intval = (int32)ulongval;
-                    break;
-                case CD_PORT:
-                    if (!(d->params[i].flags & CF_SAVED)) {
-                        d->params[i].prev.intval = *(int32*)d->params[i].ptr;
-                        d->params[i].flags |= CF_SAVED;
-                    }
-                    longval = strtol(av[optind++], &s, 0);
-                    if (*s) {
-                        config_error(
-                            filename, linenum,
-                            "%s: Expected a port number for parameter %d",
-                            d->name, optind);
-                        retval = 0;
-                        break;
-                    }
-                    if (longval < 1 || longval > 65535) {
-                        config_error(
-                            filename, linenum,
-                            "Port numbers must be in the range 1..65535");
-                        retval = 0;
-                        break;
-                    }
-                    d->params[i].new.intval = (int32)longval;
-                    break;
-                case CD_STRING:
-                    if (!(d->params[i].flags & CF_SAVED)) {
-                        d->params[i].prev.ptrval = *(char**)d->params[i].ptr;
-                        d->params[i].flags |= CF_SAVED;
-                    }
-                    d->params[i].new.ptrval = strdup(av[optind++]);
-                    if (!d->params[i].new.ptrval) {
-                        config_error(filename, linenum, "%s: Out of memory",
-                                     d->name);
-                        return 0;
-                    }
-                    d->params[i].flags |= CF_ALLOCED_NEW;
-                    break;
-                case CD_TIME:
-                    if (!(d->params[i].flags & CF_SAVED)) {
-                        d->params[i].prev.timeval = *(time_t*)d->params[i].ptr;
-                        d->params[i].flags |= CF_SAVED;
-                    }
-                    d->params[i].new.timeval = dotime(av[optind++]);
-                    if (d->params[i].new.timeval < 0) {
-                        config_error(
-                            filename, linenum,
-                            "%s: Expected a time value for parameter %d",
-                            d->name, optind);
-                        retval = 0;
-                        break;
-                    }
-                    break;
-                case CD_TIMEMSEC:
-                    if (!(d->params[i].flags & CF_SAVED)) {
-                        d->params[i].prev.intval = *(int32*)d->params[i].ptr;
-                        d->params[i].flags |= CF_SAVED;
-                    }
-                    longval = strtol(av[optind++], &s, 10);
-                    if (longval < 0) {
-                        config_error(filename, linenum,
-                                     "%s: Expected a positive value for"
-                                     " parameter %d",
-                                     d->name, optind);
-                        retval = 0;
-                        break;
-                    }
-                    else if (longval > 1000000) {
-                        config_error(filename, linenum,
-                                     "%s: Value too large (maximum 1000000)",
-                                     d->name);
-                    }
-                    longval *= 1000;
-                    if (*s == '.') {
-                        int decimal = 0;
-                        int count = 0;
-                        s++;
-                        while (count < 3 && isdigit(*s)) {
-                            decimal = decimal * 10 + (*s++ - '0');
-                            count++;
-                        }
-                        while (count++ < 3)
-                            decimal *= 10;
-                        longval += decimal;
-                        while (isdigit(*s))
-                            s++;
-                    }
-                    if (*s) {
-                        config_error(filename, linenum,
-                                     "%s: Expected a decimal number for"
-                                     " parameter %d",
-                                     d->name, optind);
-                        retval = 0;
-                        break;
-                    }
-                    d->params[i].new.intval = (int32)longval;
-                    break;
-                case CD_FUNC: {
-                    int (*func)(const char*, int, char*) =
-                        (int (*)(const char*, int, char*))(d->params[i].ptr);
-                    if (!func(filename, linenum, av[optind++]))
-                        retval = 0;
-                    break;
-                }
-                default:
-                    config_error(filename, linenum,
-                                 "%s: Unknown type %d for"
-                                 " param %d",
-                                 d->name, d->params[i].type, i + 1);
-                    return 0; /* don't bother continuing--something's bizarre
-                               */
-            } /* switch (d->params[i].type) */
-            d->params[i].flags |= CF_WASSET;
-        } /* for all parameters */
-        break; /* because we found a match */
-    } /* for all directives in array */
-
-    if (!directives[n].name) {
-        config_error(filename, linenum, "Unknown directive `%s'", directive);
-        return 1; /* don't cause abort */
-    }
-
-    return retval;
-} /* parse_config_line() */
 
 /*************************************************************************/
 

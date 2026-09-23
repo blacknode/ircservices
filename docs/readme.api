@@ -1,0 +1,234 @@
+readme.api -- The configuration interface for modules
+=====================================================
+
+How the core and the modules get at the configuration.  The declarations
+are in include/conffile.h; the implementation is in src/conffile.c (the
+tree, the lookups and the binding of directive tables), src/conf_lexer.l
+(the flex scanner) and src/conf_parser.y (the bison grammar).  The syntax of
+the file itself is in readme.config.
+
+1. How it works
+---------------
+
+The grammar knows nothing of the settings: it accepts any block, entry and
+include, and builds a tree of them.  Settings are checked when a table of
+directives is bound to a block of the tree -- by the core for its own
+blocks, by the module loader for each module's block -- so a module can
+define any setting without touching the parser.
+
+    start-up                              REHASH
+    --------                              ------
+    conf_load("ircservices.conf")         conf_load(...)      new tree
+    core tables bound (READ)              core tables bound (READ)
+    conf_commit()                         conf_commit()      old tree freed
+    core tables set (SET)                 core tables set (SET)
+    for each loadmodule:                  "reconfigure" callback (0)
+        dlopen, module_config bound       every module_config bound (READ)
+        (READ+SET), init_module()         every module_config set (SET)
+                                          "reconfigure" callback (1)
+
+If the file has a syntax error, or a core table fails to bind, the new tree
+is discarded (conf_discard()) and the running configuration is untouched.
+
+The tree is parsed before the first module is loaded, so it is complete
+and available from the moment a module's init_module() runs -- and even
+before, since the module's directive table is bound first.
+
+2. Declaring settings: module_config
+------------------------------------
+
+The usual way for a module to get its settings is a table of
+ConfigDirective called `module_config`.  The loader finds it by name, binds
+it to every `module "<this module>"` block before calling init_module(),
+binds it again on every REHASH, and restores the previous values of the
+variables (deconfigure()) when the module is unloaded.
+
+    static char *s_MyServ, *desc_MyServ;
+    static int32 MyMax;
+    static time_t MyDelay;
+    static int MyFlag;
+
+    ConfigDirective module_config[] = {
+        { "MyServName", { { CD_STRING, CF_DIRREQ, &s_MyServ },
+                          { CD_STRING, 0, &desc_MyServ } } },
+        { "MyMax",      { { CD_POSINT, 0, &MyMax } } },
+        { "MyDelay",    { { CD_TIME, 0, &MyDelay } } },
+        { "MyFlag",     { { CD_SET, 0, &MyFlag } } },
+        { NULL }
+    };
+
+which binds
+
+    module "misc/myserv" {
+        MyServName = "MyServ", "My Service";
+        MyMax = 10;
+        MyDelay = 5m;
+        MyFlag;
+    };
+
+Each directive has up to CONFIG_MAXPARAMS (8) parameters; the values of an
+entry fill them in order.
+
+Parameter types:
+
+    CD_INT       int32; any integer (decimal, 0octal, 0xhex)
+    CD_POSINT    int32; an integer > 0
+    CD_PORT      int32; 1..65535
+    CD_STRING    char *; a copy of the value, freed by the binding code
+    CD_TIME      time_t; a time ("90", "1h30m")
+    CD_TIMEMSEC  int32 in milliseconds; seconds with up to 3 decimals
+    CD_SET       int; set to 1 when the entry is present (a flag).  It
+                 takes a value only if that value is yes/no/on/off/
+                 true/false; a false value sets 0 and skips the
+                 remaining parameters of the directive.  A flag followed
+                 by other parameters (e.g. KillClonesAutokill = 30m;) sets
+                 1 and passes the values on to them.
+    CD_FUNC      a function called with each value (see below)
+    CD_DEPRECATED
+                 accepted with a warning, value ignored
+
+Flags:
+
+    CF_DIRREQ    (on the first parameter) the directive is required; if no
+                 block has it, binding fails
+    CF_OPTIONAL  the value may be omitted (the variable keeps its previous
+                 value); following parameters should be optional too
+    CF_MULTI     (on a trailing CD_FUNC) the function is called for every
+                 remaining value: `AllowHost = /a, /b, /c;`
+
+Parameters that are not given leave their variables alone; a directive
+given several times keeps the last values, except for CD_FUNC, which is
+called for every occurrence (that is how list settings accumulate).
+
+CD_FUNC handlers have the signature
+
+    int handler(const char *filename, int linenum, char *param);
+
+- with filename != NULL, one value is being read: validate `param` (a
+  private, modifiable copy), store it in a pending ("new") variable, and
+  return 1, or report with config_error(filename, linenum, ...) and return
+  0;
+- with filename == NULL, `linenum` is the action: CDFUNC_INIT (a read is
+  starting: clear the pending data), CDFUNC_SET (make the pending data
+  current) or CDFUNC_DECONFIG (the module is going away: drop the current
+  data).  The return value is ignored.
+
+The read/set split is what makes a REHASH atomic: values are read into
+pending storage for every table first, and only copied into the variables
+once everything was read successfully.  See do_RejectEmail() or
+do_LoadModule() in src/init.c for complete handlers.
+
+3. Reading the tree directly
+----------------------------
+
+A module may also look at its block directly, at any time: from
+init_module(), from a command handler, from a callback.  This is the way
+to go for structured settings (nested blocks), for settings whose meaning
+depends on other settings, or for optional features that do not deserve a
+variable.
+
+    #include "conffile.h"
+
+    const ConfNode *me = conf_this_module();   /* module "<this module>" */
+
+    const char *greeting = conf_get_string(me, "Greeting", "Hello!");
+    int32 max = conf_get_int(me, "MaxEntries", 32);
+    time_t delay = conf_get_time(me, "Delay", 60);
+    int verbose = conf_get_bool(me, "Verbose", 0);
+
+Every function accepts a NULL node and then finds nothing or returns the
+default, so the calls above (and below) are safe even if there is no
+block at all.  A value of the
+wrong type is reported (with its file and line) and the default returned.
+
+Repeated entries and nested blocks:
+
+    module "misc/myserv" {
+        Channel = "#help";
+        Channel = "#support", "#staff";
+        listen {
+            address = 127.0.0.1;
+            port = 8080;
+        };
+        listen {
+            address = ::1;
+            port = 8080;
+        };
+    };
+
+    const ConfNode *e, *b;
+    int i;
+
+    for (e = conf_first_entry(me, "Channel"); e;
+         e = conf_next_entry(e, "Channel")) {
+        for (i = 0; i < conf_value_count(e); i++)
+            join_channel(conf_value(e, i));
+    }
+    for (b = conf_find_block(me, "listen", NULL); b;
+         b = conf_next_block(b, "listen", NULL)) {
+        open_listener(conf_get_string(b, "address", "0.0.0.0"),
+                      conf_get_int(b, "port", 80));
+    }
+
+Reference (include/conffile.h):
+
+    const ConfNode *conf_root(void);
+        The top level of the configuration.
+    const ConfNode *conf_find_block(parent, name, label);
+    const ConfNode *conf_next_block(block, name, label);
+        Blocks called `name` directly inside `parent` (conf_root() for the
+        top level), with label `label` (any label if NULL).
+    const ConfNode *conf_module_block(modulename);
+    conf_this_module()
+        The (first) `module "<name>"` block; the macro gives the calling
+        module's own.
+    const ConfNode *conf_find_entry(block, key);
+        The last entry `key` in `block` (the one in effect).
+    const ConfNode *conf_first_entry(block, key);
+    const ConfNode *conf_next_entry(entry, key);
+        Every entry `key` (every entry if NULL), in file order.
+    int conf_value_count(entry);
+    const char *conf_value(entry, index);
+        The values of an entry, as strings, quotes removed.
+    conf_get_string / conf_get_int / conf_get_time / conf_get_bool
+        The first value of entry `key`, converted, or a default.
+    int conf_parse_bool(s);
+        1 for yes/on/true, 0 for no/off/false, -1 otherwise.
+    void config_error(filename, linenum, fmt, ...);
+        Report a problem, to the log and (at start-up) the terminal; use
+        node->file and node->line to point at the offending entry.
+
+ConfNode is declared in the header (type, name, label, values, file, line,
+children, next, parent) and may be read directly, but never modified.
+
+Lifetime.  Nodes belong to the tree, and a REHASH replaces the tree: do not
+keep ConfNode pointers across a REHASH.  Look them up again when you need
+them, or copy what you need, typically from the "reconfigure" callback,
+which is called with 0 before the modules' tables are rebound and with 1
+after; the new tree is already in place in both calls:
+
+    static int do_reconfigure(int after_configure)
+    {
+        if (after_configure)
+            reload_listeners(conf_this_module());
+        return 0;
+    }
+    ...
+    add_callback(NULL, "reconfigure", do_reconfigure);
+
+4. Settings outside the module block
+------------------------------------
+
+A module should keep its settings in its own block.  Reading core settings
+is fine (conf_find_block(conf_root(), "serverinfo", NULL) and so on), but the core
+variables already hold them.  A new top-level block is reported as unknown
+by the core; to share settings between several modules, put them in a
+nested block of one module's block, or in the block of the module the
+others depend on.
+
+The core binds its own tables with configure_block(blockname, label,
+table, action), which binds a table to every top-level block with that
+name and label; configure(modulename, table, action) is the same thing for
+a module block, and is what the loader uses for module_config.  Both
+return 0 on error, having reported it.  Nested blocks are not bound this
+way; read them with the functions of section 3.

@@ -97,7 +97,7 @@ static nickname_t services_admins[MAX_SERVADMINS];
 static nickname_t services_opers[MAX_SERVOPERS];
 static int services_admins_count = 0, services_opers_count = 0;
 
-/* Database file names (loaded from modules.conf): */
+/* Database file names (from the module block of ircservices.conf): */
 static char *NickDBName;
 static char *ChanDBName;
 static char *OperDBName;

@@ -1,0 +1,129 @@
+readme.migration -- Converting an old configuration
+===================================================
+
+Earlier versions of Services read two line-based files, ircservices.conf
+and modules.conf, with their own parser.  The configuration is now a single
+block-structured file (ircservices.conf, which may include others) read by
+a bison/flex parser; see readme.config.  Old files are not accepted: the
+first old-style line is reported as a syntax error.  This file explains how
+to convert them.
+
+What changed
+------------
+
+- One configuration: ircservices.conf is the only file Services open.
+  modules.conf is still a good place for the module settings, but only
+  because ircservices.conf includes it (`include "modules.conf";`).
+- Blocks and semicolons: core settings are grouped in blocks
+  (serverinfo, uplink, files, options, timeouts, netbuffer) with new,
+  lower-case names; module settings go in `module "<name>" { ... };`
+  blocks and keep their names.
+- Every entry ends with `;`, and several values are separated by commas.
+- `IncludeFile` became `include`, `LoadModule` became `loadmodule`,
+  `LoadLanguageText` became `loadlanguage`.
+- Flags may be written with yes/no.
+- The whole configuration is parsed before any module is loaded, and on
+  REHASH a configuration with errors is rejected as a whole.
+
+Step 1: the core settings
+-------------------------
+
+Move each directive of the old ircservices.conf to its new place (the full
+table is in readme.config, section 4-8):
+
+    Old                                   New
+    ------------------------------------  ---------------------------------
+    RemoteServer 127.0.0.1 4400 "pass"    uplink {
+    LocalAddress 192.0.2.10                   host = 127.0.0.1;
+                                              port = 4400;
+                                              password = "pass";
+                                              local_address = 192.0.2.10;
+                                          };
+    ServerName "services.example.net"     serverinfo {
+    ServerDesc "Services"                     name = "services.example.net";
+    ServerNumeric 4094                        description = "Services";
+    ServiceUser "services@example.net"        numeric = 4094;
+                                              user = "services@example.net";
+                                          };
+    LogFilename ircservices.log           files {
+    PIDFilename ircservices.pid               log = "ircservices.log";
+    MOTDFilename ircservices.motd             pid = "ircservices.pid";
+    LockFilename .lock                        motd = "ircservices.motd";
+    Umask 077                                 lock = ".lock";
+    RunGroup =65534                           umask = 077;
+                                              run_group = "=65534";
+                                          };
+    GuestNickPrefix "Guest"               options {
+    ListMax 50                                guest_nick_prefix = "Guest";
+    StrictPasswords                           list_max = 50;
+    BadPassLimit 5                            strict_passwords;
+    RejectEmail *@example.com                 bad_pass_limit = 5;
+    RejectEmail *@example.org                 reject_email = "*@example.com",
+    DefTimeZone PST8PDT                                      "*@example.org";
+                                              timezone = PST8PDT;
+                                          };
+    UpdateTimeout 5m                      timeouts {
+    WarningTimeout 4h                         update = 5m;
+    ReadTimeout 3                             warning = 4h;
+    TimeoutCheck 1.0                          read = 3;
+                                              check = 1.0;
+                                          };
+    NetBufferSize 4194304 1048576         netbuffer {
+    NetBufferLimit 80 95                      size = 4194304, 1048576;
+                                              limit = 80, 95;
+                                          };
+    LoadModule nickserv/main              loadmodule nickserv/main;
+    LoadLanguageText mytext.l             loadlanguage "mytext.l";
+    IncludeFile "local.conf"              include "local.conf";
+
+ExpireTimeout, which had no effect, no longer exists.
+
+Step 2: the module settings
+---------------------------
+
+The module settings keep their names; only the syntax changes.  For each
+`Module ... EndModule` section of the old modules.conf:
+
+1. `Module <name>` becomes `module "<name>" {` and `EndModule` becomes
+   `};`.
+2. Each directive `Name value value ...` becomes `Name = value, value, ...;`.
+3. Each directive without parameters (a flag) `Name` becomes `Name;`.
+4. Values that contain blanks or any of `{ } ; = , " #` must be quoted.
+   Watch in particular the alias settings, whose value contains `=`:
+
+       NSAlias ID=IDENTIFY          ->  NSAlias = "ID=IDENTIFY";
+
+For example:
+
+    Module nickserv/main                 module "nickserv/main" {
+        NickServName "NickServ" "Nick"       NickServName = "NickServ", "Nick";
+        NSEnableRegister                     NSEnableRegister;
+        NSRegDelay 5m                        NSRegDelay = 5m;
+        NSAlias ID=IDENTIFY                  NSAlias = "ID=IDENTIFY";
+    EndModule                            };
+
+Keep the converted blocks in modules.conf and add, at the end of
+ircservices.conf:
+
+    include "modules.conf";
+
+(or paste the blocks into ircservices.conf itself).  Every loadmodule entry
+must stay in the file: a module block does not load its module.
+
+Step 3: check
+-------------
+
+Start Services in the foreground:
+
+    bin/ircservices -nofork -debug
+
+Every problem is reported with its file and line; the most common ones
+after a conversion are a missing `;` (reported on the next line), an
+unquoted value containing `=` or `#`, and a core directive left under its
+old name (reported as an unknown directive, or as a syntax error if it has
+no `;`).  With -debug, the log also lists module blocks for modules that
+are not loaded, which catches a misspelt module name.
+
+The example files data/example-ircservices.conf and
+data/example-modules.conf contain every setting in the new syntax, with
+the same documentation as before.

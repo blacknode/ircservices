@@ -6,8 +6,9 @@ protocol module to choose or load.
 
 ## Requirements
 
-* CMake 3.18+ (3.21+ for the presets), Ninja or Make
+* CMake 3.20+ (3.21+ for the presets), Ninja or Make
 * A C99 compiler (GCC or Clang) on a POSIX system
+* GNU Bison 3.6+ and flex 2.6+ (the configuration file parser)
 * Optional: `crypt(3)` for the `encryption/unix-crypt` module
 
 ## Build
@@ -55,9 +56,13 @@ src/                    the core executable (src/CMakeLists.txt)
   p10.c                 P10 protocol: numerics, tokens, burst, accounts
   sockets.c             buffered sockets, callbacks
   engine.h, engine_*.c  event engines (epoll, kqueue, poll, select)
+  conf_lexer.l,         configuration file scanner and grammar (flex/bison);
+  conf_parser.y,        conffile.c holds the parsed tree, its lookup API
+  conffile.c            and the binding of directive tables
 modules/                loadable modules (modules/CMakeLists.txt)
 lang/                   message catalogs; langstrs.h is generated from lang/index
 data/                   example configuration files
+docs/                   documentation, one readme.<topic> file per topic
 ```
 
 ### Event engines
@@ -82,7 +87,7 @@ modules/<type>/*.h          headers shared by the modules of <type>;
 ```
 
 Either way the result is `build/modules/<type>/<name>.so`, loaded with
-`LoadModule <type>/<name>`. To add a module, create the file or directory
+`loadmodule <type>/<name>;`. To add a module, create the file or directory
 and rebuild: the globs pick it up. A module that needs a library or a
 flag declares it in `<name>.cmake` (or `<name>/module.cmake`); see
 `modules/encryption/unix-crypt.cmake`.
@@ -92,9 +97,16 @@ flag declares it in `<name>.cmake` (or `<name>/module.cmake`); see
 In `ircservices.conf`:
 
 ```
-RemoteServer    127.0.0.1 4400 "linkpass"
-ServerName      "services.example.net"
-ServerNumeric   4094            # unique on the network, 0..4095
+uplink {
+    host = 127.0.0.1;
+    port = 4400;
+    password = "linkpass";
+};
+serverinfo {
+    name = "services.example.net";
+    numeric = 4094;             # unique on the network, 0..4095
+    ...
+};
 ```
 
 In the uplink's `ircd.conf`:
@@ -127,7 +139,7 @@ What P10 changes for the service modules:
   ChanServ, because ircu bounces a MODE or KICK from a non-op user. The
   pseudo-clients are `+kS` (channel service, network service).
 * **AKILL / SZLINE** become G-lines (`GL * +user@host`). Set
-  `ImmediatelySendAutokill` in modules.conf to push them to the network
+  `ImmediatelySendAutokill` in the `operserv/akill` module block to push them to the network
   at once instead of when a matching user connects.
 * **JUPE** uses ircu's `JUPE`, which lasts at most 7 days.
 * No `SVSNICK`/`SVSJOIN`: `NSForceNickChange` and `nickserv/autojoin`
@@ -141,6 +153,12 @@ cp example-ircservices.conf ircservices.conf   # edit
 cp example-modules.conf modules.conf           # edit (ServicesRoot, ...)
 bin/ircservices -nofork -debug                 # foreground, verbose log
 ```
+
+`ircservices.conf` is parsed (with everything it `include`s, such as
+`modules.conf`) before any module is loaded; errors are reported as
+`file:line: message` and stop the start-up. The syntax and every core
+setting are described in `docs/readme.config`, the module settings in
+`docs/readme.modules`.
 
 `misc/helpserv` needs a directory of help files (`HelpDir`); none are
 shipped.

@@ -1,0 +1,180 @@
+readme.install -- Installing, running and controlling Services
+==============================================================
+
+Requirements
+------------
+
+- A POSIX system (Linux, the BSDs, macOS) and a C99 compiler (GCC or Clang).
+- CMake 3.20 or later, with Ninja or Make.
+- GNU Bison 3.6 or later and flex 2.6 or later, which generate the
+  configuration file parser.
+- Optionally crypt(3), for the encryption/unix-crypt module.
+- An ircu2 network (Undernet ircu 2.10 or later): Services speak the P10
+  protocol natively and support no other IRC server.
+
+Building and installing
+-----------------------
+
+The build is described in detail in BUILDING.md, in the top directory.  In
+short:
+
+    cmake -S . -B build                  # or: cmake --preset default
+    cmake --build build -j
+    cmake --install build
+
+Everything is installed into the data directory, SERVICES_DATA_DIR
+(`<prefix>/lib/ircservices` unless set otherwise):
+
+    bin/ircservices          the program
+    modules/<type>/<name>.so the modules
+    languages/               the message catalogs
+    example-ircservices.conf the example configuration
+    example-modules.conf     the example module settings
+
+Configuring
+-----------
+
+    cd <SERVICES_DATA_DIR>
+    cp example-ircservices.conf ircservices.conf
+    cp example-modules.conf modules.conf
+
+Then edit both files.  ircservices.conf holds the core settings (the uplink,
+how Services present themselves, files, timers) and the list of modules to
+load; it includes modules.conf, which holds the settings of each module.
+The syntax and every core setting are described in readme.config, the
+module settings in readme.modules.  At the very least, set:
+
+- `uplink { host; port; password; }` -- the ircu2 server to link to;
+- `serverinfo { name; description; numeric; user; }` -- the numeric must
+  be unique on the network;
+- in modules.conf, `ServicesRoot` (operserv/main) and, if mail/main is
+  loaded, `FromAddress` (mail/main) and `RelayHost`/`SMTPName`
+  (mail/smtp).
+
+Configuring the IRC server
+--------------------------
+
+The uplink must know Services as a server and give them U-lined (UWorld)
+privileges.  In its ircd.conf, with the names and password used in the
+uplink and serverinfo blocks:
+
+    Connect {
+            name = "services.example.net";
+            host = "127.0.0.1";          # where Services connect from
+            password = "password";       # uplink { password }
+            class = "Server";
+    };
+    UWorld {
+            name = "services.example.net";
+    };
+
+The UWorld block is what lets Services log users in to accounts (ACCOUNT),
+set channel modes and kick users without being channel operators.
+
+Starting Services
+-----------------
+
+Services are started by running the `ircservices` program:
+
+    bin/ircservices                  # detach and run in the background
+    bin/ircservices -nofork -debug   # stay in the foreground, verbose log
+
+On start-up, Services parse their command-line options, then read the
+whole configuration: ircservices.conf and every file it includes.  This
+happens once, before any module is loaded.  Any error -- a syntax error, a
+missing required setting, a value of the wrong type -- is reported as
+
+    ircservices.conf:42: syntax error, unexpected '}', expecting ';'
+    ircservices.conf: Required directive `numeric' missing from block `serverinfo'
+
+on the terminal and in the log, and Services exit.  Unknown settings are
+reported the same way but only as warnings.
+
+If the configuration is valid, Services open the log file, load the
+language files and the modules (each module reads its block from the
+configuration already in memory), detach from the terminal and connect to
+the uplink.  Errors from then on are written to the log file only; if
+Services appear to start but do not connect, look there.
+
+Command-line options
+--------------------
+
+    -help                  List the available options.
+    -dir=pathname          Use `pathname` as the data directory instead of
+                           the compiled-in SERVICES_DATA_DIR.
+    -remote=host[:port]    Connect to this server, overriding
+                           uplink { host; port; }.
+    -log=filename          Log to `filename`, overriding files { log; }.
+    -debug                 Debug mode; give it several times for more
+                           output.
+    -readonly              Read-only mode: databases and log are not
+                           written, and online changes are limited to
+                           Services administrators.
+    -nofork                Do not go into the background; log messages are
+                           also written to the terminal.
+    -noexpire              Disable all expirations (nicknames, channels,
+                           autokills, session exceptions, ...).
+    -noakill               Disable autokill checking (the list can still
+                           be modified).
+    -forceload             With database/version4, load as much as
+                           possible from damaged databases instead of
+                           aborting.
+    -encrypt-all           Re-encrypt all passwords on start-up with
+                           options { encryption; }.
+
+Modules add their own options:
+
+    -export[=filename]     misc/xml-export: write the databases as XML and
+                           exit (see readme.xml).
+    -import=filename       misc/xml-import: merge an XML file into the
+                           databases and exit (see readme.xml).
+    -clear-nick-email      nickserv/main: clear every nickname's E-mail
+                           address on start-up.
+
+Reloading the configuration
+---------------------------
+
+After editing the configuration, have Services re-read it with the OperServ
+REHASH command or the SIGHUP signal:
+
+    kill -HUP `cat ircservices.pid`
+
+The configuration is parsed again from scratch, into a new tree, and the
+core settings are checked against it.  If there is any error, it is
+written to the log (the operator giving REHASH is told that the rehash
+failed) and nothing changes: Services keep running with the configuration
+they had.  Otherwise the new configuration replaces the old one, and then:
+
+- modules whose loadmodule entry was removed are unloaded, in reverse
+  order of loading (a module that other loaded modules depend on cannot be
+  unloaded);
+- the remaining modules re-read their blocks;
+- modules with a new loadmodule entry are loaded, in file order.
+
+A few settings are only used when Services connect, and changing them
+takes effect at the next restart (a warning is logged): the uplink block
+(host, port, password, local_address) and serverinfo (name, description,
+user).  Changes to files { log; } and files { pid; } take effect at once.
+
+Signals
+-------
+
+    SIGHUP    save the databases and reload the configuration
+    SIGTERM   save the databases and exit
+    SIGUSR2   close and reopen the log file (for log rotation)
+    SIGINT, SIGQUIT
+              terminate Services
+
+Running
+-------
+
+Once linked, Services keep running until the uplink closes the connection
+(for example after an /SQUIT), an OperServ RESTART, SHUTDOWN or QUIT
+command is given, or a termination signal is received; the reason is
+written to the log file.  The debug level and read-only mode can be changed
+at run time with OperServ SET.
+
+Services periodically save modified data to disk (every
+timeouts { update; }, and on OperServ UPDATE).  The files are written in
+such a way that a crash while saving leaves the previous contents intact;
+even so, back up the data directory regularly.

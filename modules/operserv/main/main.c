@@ -1915,7 +1915,7 @@ static int do_user_create(const User *user, int ac, char **av)
 /*************************************************************************/
 
 /* Watch for umode +o and send wallops.  This callback is only activated if
- * WallOper is specified in modules.conf.
+ * WallOper is specified in the module block of ircservices.conf.
  */
 
 static int wall_oper_callback(User *u, int modechar, int add)

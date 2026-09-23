@@ -19,7 +19,7 @@
 #                                  them); include them from the tree root,
 #                                  e.g. #include "modules/nickserv/nickserv.h"
 #
-# A module is loaded by its <type>/<name>, the string LoadModule takes in
+# A module is loaded by its <type>/<name>, the string loadmodule takes in
 # ircservices.conf ("nickserv/main", "chanserv/access-levels", ...), and
 # the build mirrors that: build/modules/<type>/<name>.so, installed under
 # <SERVICES_DATA_DIR>/modules/<type>/.
