@@ -12,8 +12,8 @@ What changed
 ------------
 
 - One configuration: ircservices.conf is the only file Services open.
-  modules.conf is still a good place for the module settings, but only
-  because ircservices.conf includes it (`include "modules.conf";`).
+  modules.conf is gone; the module settings go in ircservices.conf
+  itself (or, if you prefer, in a file it includes).
 - Blocks and semicolons: core settings are grouped in blocks
   (serverinfo, uplink, files, options, timeouts, netbuffer) with new,
   lower-case names; module settings go in `module "<name>" { ... };`
@@ -102,12 +102,13 @@ For example:
         NSAlias ID=IDENTIFY                  NSAlias = "ID=IDENTIFY";
     EndModule                            };
 
-Keep the converted blocks in modules.conf and add, at the end of
-ircservices.conf:
+Paste the converted blocks into ircservices.conf, after the loadmodule
+entries (the example keeps them at the end, under "Module settings").  If
+you would rather keep them in a separate file, add to ircservices.conf
 
     include "modules.conf";
 
-(or paste the blocks into ircservices.conf itself).  Every loadmodule entry
+but nothing requires it.  Every loadmodule entry
 must stay in the file: a module block does not load its module.
 
 Step 3: check
@@ -124,6 +125,6 @@ old name (reported as an unknown directive, or as a syntax error if it has
 no `;`).  With -debug, the log also lists module blocks for modules that
 are not loaded, which catches a misspelt module name.
 
-The example files data/example-ircservices.conf and
-data/example-modules.conf contain every setting in the new syntax, with
-the same documentation as before.
+The example file data/example-ircservices.conf contains every setting,
+core and module, in the new syntax, with the same documentation as
+before.

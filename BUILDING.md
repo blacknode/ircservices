@@ -149,13 +149,13 @@ What P10 changes for the service modules:
 
 ```sh
 cd <SERVICES_DATA_DIR>
-cp example-ircservices.conf ircservices.conf   # edit
-cp example-modules.conf modules.conf           # edit (ServicesRoot, ...)
+cp example-ircservices.conf ircservices.conf   # edit (uplink, ServicesRoot, ...)
 bin/ircservices -nofork -debug                 # foreground, verbose log
 ```
 
-`ircservices.conf` is parsed (with everything it `include`s, such as
-`modules.conf`) before any module is loaded; errors are reported as
+`ircservices.conf` is the only configuration file (core and module
+settings); it is parsed (with anything it `include`s) before any module is
+loaded; errors are reported as
 `file:line: message` and stop the start-up. The syntax and every core
 setting are described in `docs/readme.config`, the module settings in
 `docs/readme.modules`.

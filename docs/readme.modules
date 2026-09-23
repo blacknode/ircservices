@@ -2,15 +2,16 @@ readme.modules -- Module settings
 ================================
 
 Every setting of every module distributed with Services, module by module.
-The same text, with the settings in place, is in data/example-modules.conf.
+The same text, with the settings in place, is in the "Module settings" part
+of data/example-ircservices.conf.
 
 How modules are configured
 --------------------------
 
 A module is loaded with a loadmodule entry at the top level of
 ircservices.conf, and reads its settings from a block labelled with its
-name, anywhere in the configuration (the example keeps them all in
-modules.conf, which ircservices.conf includes):
+name, anywhere in the configuration (the example keeps them all at the
+end of ircservices.conf):
 
     loadmodule nickserv/main;
 

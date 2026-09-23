@@ -29,25 +29,24 @@ Everything is installed into the data directory, SERVICES_DATA_DIR
     modules/<type>/<name>.so the modules
     languages/               the message catalogs
     example-ircservices.conf the example configuration
-    example-modules.conf     the example module settings
 
 Configuring
 -----------
 
     cd <SERVICES_DATA_DIR>
     cp example-ircservices.conf ircservices.conf
-    cp example-modules.conf modules.conf
 
-Then edit both files.  ircservices.conf holds the core settings (the uplink,
-how Services present themselves, files, timers) and the list of modules to
-load; it includes modules.conf, which holds the settings of each module.
+Then edit it.  ircservices.conf is the only configuration file: it holds
+the core settings (the uplink, how Services present themselves, files,
+timers), the list of modules to load and, at the end, the settings of each
+module.
 The syntax and every core setting are described in readme.config, the
 module settings in readme.modules.  At the very least, set:
 
 - `uplink { host; port; password; }` -- the ircu2 server to link to;
 - `serverinfo { name; description; numeric; user; }` -- the numeric must
   be unique on the network;
-- in modules.conf, `ServicesRoot` (operserv/main) and, if mail/main is
+- in the module settings, `ServicesRoot` (operserv/main) and, if mail/main is
   loaded, `FromAddress` (mail/main) and `RelayHost`/`SMTPName`
   (mail/smtp).
 

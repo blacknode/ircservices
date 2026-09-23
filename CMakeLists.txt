@@ -59,7 +59,6 @@ add_subdirectory(modules)
 install(FILES data/example-ircservices.conf
   DESTINATION "${SERVICES_DATA_DIR}"
   RENAME "example-${SERVICES_PROGRAM}.conf")
-install(FILES data/example-modules.conf DESTINATION "${SERVICES_DATA_DIR}")
 install(FILES docs/ircservices.8
   DESTINATION "${SERVICES_DATA_DIR}/${CMAKE_INSTALL_MANDIR}/man8")
 
