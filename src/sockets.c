@@ -23,7 +23,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
+#include <arpa/inet.h>.
 
 #ifndef DISABLE_SWRITEMAP
 # include <sys/mman.h>  /* for munmap() */

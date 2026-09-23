@@ -11,7 +11,7 @@
 #define CHANSERV_H
 
 #ifndef ENCRYPT_H
-# include "../../encrypt.h"
+# include "encrypt.h"
 #endif
 #ifndef NICKSERV_H
 # include "../nickserv/nickserv.h"

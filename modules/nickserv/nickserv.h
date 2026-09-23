@@ -11,7 +11,7 @@
 #define NICKSERV_H
 
 #ifndef ENCRYPT_H
-# include "../../encrypt.h"
+# include "encrypt.h"
 #endif
 #ifndef MEMOSERV_H
 # include "../memoserv/memoserv.h"

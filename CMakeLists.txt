@@ -141,13 +141,16 @@ if(SERVICES_USE_LOCAL_FUNCS)
 endif()
 
 set(SERVICES_CORE_SOURCES
-    actions.c channels.c commands.c compat.c conffile.c databases.c encrypt.c
-    ignore.c init.c language.c log.c main.c memory.c messages.c misc.c modes.c
-    modules.c process.c send.c servers.c signals.c sockets.c timeout.c users.c
+    src/actions.c src/channels.c src/commands.c src/compat.c src/conffile.c
+    src/databases.c src/encrypt.c src/ignore.c src/init.c src/language.c
+    src/log.c src/main.c src/memory.c src/messages.c src/misc.c src/modes.c
+    src/modules.c src/process.c src/send.c src/servers.c src/signals.c
+    src/sockets.c src/timeout.c src/users.c
 )
 add_executable(${SERVICES_PROGRAM} ${SERVICES_CORE_SOURCES})
 target_include_directories(${SERVICES_PROGRAM} PRIVATE
-  "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
+  "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(${SERVICES_PROGRAM} PRIVATE m ${CMAKE_DL_LIBS})
 if(CRYPT_LIBRARY)
     target_link_libraries(${SERVICES_PROGRAM} PRIVATE "${CRYPT_LIBRARY}")
@@ -164,7 +167,8 @@ function(add_services_module module_dir module_name)
     string(REPLACE "-" "_" target_name "${module_dir}_${module_name}")
     add_library(${target_name} MODULE ${sources})
     target_include_directories(${target_name} PRIVATE
-      "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
+      "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}")
     target_compile_definitions(${target_name}
       PRIVATE MODULE MODULE_ID=${target_name})
     set_source_files_properties(
