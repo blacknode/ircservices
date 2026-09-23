@@ -10,18 +10,19 @@
 #ifndef SEND_H
 #define SEND_H
 
+#include "types.h"
+
 /*************************************************************************/
 
-/* Protocol information (set by protocol module): */
+/* Protocol information (set by p10_init()): */
 
-extern const char *protocol_name;
-extern const char *protocol_version;
+extern const char* protocol_name;
+extern const char* protocol_version;
 extern uint32 protocol_features;
 extern int protocol_nickmax;
-extern const char *pseudoclient_modes;
-extern const char *enforcer_modes;
+extern const char* pseudoclient_modes;
+extern const char* enforcer_modes;
 extern int pseudoclient_oper;
-
 
 /* Constants for protocol_features: */
 
@@ -46,27 +47,21 @@ extern int pseudoclient_oper;
 /* Has channel invite masks (+I) */
 #define PF_INVITEMASK   0x00000200
 
-/* Invalid flag, used to check whether protocol_features was set */
-#define PF_UNSET        0x80000000
+/* Protocol-level operations, implemented by the P10 layer (p10.c): */
 
-
-/* Routines to be implemented by protocol modules: */
-
-E_FUNCPTR(void, send_nick, (const char *nick, const char *user,
-                            const char *host, const char *server,
-                            const char *name, const char *modes));
-E_FUNCPTR(void, send_nickchange, (const char *nick, const char *newnick));
-E_FUNCPTR(void, send_namechange, (const char *nick, const char *newname));
-E_FUNCPTR(void, send_server, (void));
-E_FUNCPTR(void, send_server_remote, (const char *server, const char *desc));
-E_FUNCPTR(void, wallops, (const char *source, const char *fmt, ...)
-                         FORMAT(printf,2,3));
-E_FUNCPTR(void, notice_all, (const char *source, const char *fmt, ...)
-                            FORMAT(printf,2,3));
-E_FUNCPTR(void, send_channel_cmd, (const char *source, const char *fmt, ...)
-                                  FORMAT(printf,2,3));
-E_FUNCPTR(void, send_nickchange_remote,
-                (const char *nick, const char *newnick));
+extern void send_nick(const char* nick, const char* user, const char* host,
+                      const char* server, const char* name, const char* modes);
+extern void send_nickchange(const char* nick, const char* newnick);
+extern void send_namechange(const char* nick, const char* newname);
+extern void send_server(void);
+extern void send_server_remote(const char* server, const char* desc);
+extern void wallops(const char* source, const char* fmt, ...)
+    FORMAT(printf, 2, 3);
+extern void notice_all(const char* source, const char* fmt, ...)
+    FORMAT(printf, 2, 3);
+extern void send_channel_cmd(const char* source, const char* fmt, ...)
+    FORMAT(printf, 2, 3);
+extern void send_nickchange_remote(const char* nick, const char* newnick);
 
 /*************************************************************************/
 
@@ -74,9 +69,9 @@ E_FUNCPTR(void, send_nickchange_remote,
 
 /* Pseudoclient requires oper privileges (note that depending on the
  * protocol, the pseudoclient may not actually get +o) */
-#define PSEUDO_OPER     0x01
+#define PSEUDO_OPER  0x01
 /* Pseudoclient should be invisible (+i) */
-#define PSEUDO_INVIS    0x02
+#define PSEUDO_INVIS 0x02
 
 /*************************************************************************/
 
@@ -86,38 +81,34 @@ E_FUNCPTR(void, send_nickchange_remote,
  * to be sent. */
 extern time_t last_send;
 
-/* Initialization/cleanup */
-extern int send_init(int ac, char **av);
-extern void send_cleanup(void);
-
 /* Basic message-sending routine ([v]printf-like) */
-extern void send_cmd(const char *source, const char *fmt, ...)
-        FORMAT(printf,2,3);
-extern void vsend_cmd(const char *source, const char *fmt, va_list args)
-        FORMAT(printf,2,0);
+extern void send_cmd(const char* source, const char* fmt, ...)
+    FORMAT(printf, 2, 3);
+extern void vsend_cmd(const char* source, const char* fmt, va_list args)
+    FORMAT(printf, 2, 0);
 
 /* Shortcuts for sending miscellaneous messages */
-extern void send_error(const char *fmt, ...) FORMAT(printf,1,2);
-extern void send_cmode_cmd(const char *source, const char *channel,
-                           const char *fmt, ...);
-extern void send_pseudo_nick(const char *nick, const char *realname,
+extern void send_error(const char* fmt, ...) FORMAT(printf, 1, 2);
+extern void send_cmode_cmd(const char* source, const char* channel,
+                           const char* fmt, ...);
+extern void send_pseudo_nick(const char* nick, const char* realname,
                              int flags);
 
 /* Routines for PRIVMSG/NOTICE sending */
-extern void notice(const char *source, const char *dest, const char *fmt, ...)
-        FORMAT(printf,3,4);
-extern void notice_list(const char *source, const char *dest,
-                        const char **text);
-extern void notice_lang(const char *source, const User *dest, int message,
+extern void notice(const char* source, const char* dest, const char* fmt, ...)
+    FORMAT(printf, 3, 4);
+extern void notice_list(const char* source, const char* dest,
+                        const char** text);
+extern void notice_lang(const char* source, const User* dest, int message,
                         ...);
-extern void notice_help(const char *source, const User *dest, int message,
+extern void notice_help(const char* source, const User* dest, int message,
                         ...);
-extern void privmsg(const char *source, const char *dest, const char *fmt, ...)
-        FORMAT(printf,3,4);
+extern void privmsg(const char* source, const char* dest, const char* fmt, ...)
+    FORMAT(printf, 3, 4);
 
 /*************************************************************************/
 
-#endif  /* SEND_H */
+#endif /* SEND_H */
 
 /*
  * Local variables:

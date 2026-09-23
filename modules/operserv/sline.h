@@ -10,6 +10,8 @@
 #ifndef SLINE_H
 #define SLINE_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 E void create_sline(uint8 type, char *mask, const char *reason,

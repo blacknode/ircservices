@@ -18,38 +18,36 @@
 
 /*************************************************************************/
 
-#include "services.h"
 #include "databases.h"
 #include "modules.h"
+#include "services.h"
 #include "timeout.h"
 #include <fcntl.h>
 #include <setjmp.h>
-
 
 /* Hack for sigsetjmp(); since (at least with glibc, and it shouldn't hurt
  * anywhere else) sigsetjmp() only works if you don't leave the stack frame
  * it was called from, we have to call it before calling the signals.c
  * wrapper. */
 
-#define DO_SIGSETJMP() do {     \
-    static sigjmp_buf buf;      \
-    if (!sigsetjmp(buf, 1))     \
-        do_sigsetjmp(&buf);     \
-} while (0)
-
+#define DO_SIGSETJMP()                                                        \
+    do {                                                                      \
+        static sigjmp_buf buf;                                                \
+        if (!sigsetjmp(buf, 1))                                               \
+            do_sigsetjmp(&buf);                                               \
+    } while (0)
 
 /******** Global variables! ********/
 
 /* Command-line options: (note that configuration variables are in init.c) */
-const char *services_dir = SERVICES_DIR;/* -dir=dirname */
-int   debug        = 0;                 /* -debug */
-int   readonly     = 0;                 /* -readonly */
-int   nofork       = 0;                 /* -nofork */
-int   noexpire     = 0;                 /* -noexpire */
-int   noakill      = 0;                 /* -noakill */
-int   forceload    = 0;                 /* -forceload */
-int   encrypt_all  = 0;                 /* -encrypt-all */
-
+const char* services_dir = SERVICES_DIR; /* -dir=dirname */
+int debug = 0;                           /* -debug */
+int readonly = 0;                        /* -readonly */
+int nofork = 0;                          /* -nofork */
+int noexpire = 0;                        /* -noexpire */
+int noakill = 0;                         /* -noakill */
+int forceload = 0;                       /* -forceload */
+int encrypt_all = 0;                     /* -encrypt-all */
 
 /* Set to 1 while we are linked to the network */
 int linked = 0;
@@ -70,7 +68,7 @@ char quitmsg[BUFSIZE] = "";
 char inbuf[BUFSIZE];
 
 /* Socket for talking to server */
-Socket *servsock = NULL;
+Socket* servsock = NULL;
 
 /* Should we update the databases now? */
 int save_data = 0;
@@ -82,9 +80,8 @@ time_t start_time;
 int openlog_failed, openlog_errno;
 
 /* Module callbacks (global so init.c can set them): */
-int cb_connect       = -1;
+int cb_connect = -1;
 int cb_save_complete = -1;
-
 
 /*************************************************************************/
 /*************************************************************************/
@@ -95,7 +92,7 @@ int cb_save_complete = -1;
 
 /* Actions to perform when connection to server completes. */
 
-void connect_callback(Socket *s, void *param_unused)
+void connect_callback(Socket* s, void* param_unused)
 {
     sock_set_blocking(s, 1);
     sock_setcb(s, SCB_READLINE, readfirstline_callback);
@@ -106,23 +103,25 @@ void connect_callback(Socket *s, void *param_unused)
 
 /* Actions to perform when connection to server is broken. */
 
-void disconnect_callback(Socket *s, void *param)
+void disconnect_callback(Socket* s, void* param)
 {
     /* We are no longer linked */
     linked = 0;
 
     if (param == DISCONN_REMOTE || param == DISCONN_CONNFAIL) {
         int errno_save = errno;
-        const char *msg = (param==DISCONN_REMOTE ? "Read error from server"
-                           : "Connection to server failed");
-        snprintf(quitmsg, sizeof(quitmsg),
-                 "%s: %s", msg, strerror(errno_save));
+        const char* msg =
+            (param == DISCONN_REMOTE ? "Read error from server"
+                                     : "Connection to server failed");
+        snprintf(quitmsg, sizeof(quitmsg), "%s: %s", msg,
+                 strerror(errno_save));
         if (param == DISCONN_REMOTE) {
             /* If we were already connected, make sure any changed data is
              * updated before we terminate. */
             delayed_quit = 1;
             save_data = 1;
-        } else {
+        }
+        else {
             /* The connection was never made in the first place, so we
              * discard any changes (such as expirations) made on the
              * assumption that either a configuration problem or other
@@ -138,7 +137,7 @@ void disconnect_callback(Socket *s, void *param)
 
 /* Actions to perform when first line is read from socket. */
 
-void readfirstline_callback(Socket *s, void *param_unused)
+void readfirstline_callback(Socket* s, void* param_unused)
 {
     sock_setcb(s, SCB_READLINE, readline_callback);
 
@@ -178,7 +177,7 @@ void readfirstline_callback(Socket *s, void *param_unused)
 
 /* Actions to perform when subsequent lines are read from socket. */
 
-void readline_callback(Socket *s, void *param_unused)
+void readline_callback(Socket* s, void* param_unused)
 {
     if (sgets2(inbuf, sizeof(inbuf), s))
         process();
@@ -258,15 +257,17 @@ void save_data_now(void)
             wallops(NULL,
                     "\2Warning:\2 Databases are locked, and cannot be updated."
                     "  Remove the `%s%s%s' file to allow database updates.",
-                    *LockFilename=='/' ? "" : services_dir,
-                    *LockFilename=='/' ? "" : "/", LockFilename);
-        } else {
+                    *LockFilename == '/' ? "" : services_dir,
+                    *LockFilename == '/' ? "" : "/", LockFilename);
+        }
+        else {
             log_perror("warning: unable to lock databases, not updating");
             wallops(NULL, "\2Warning:\2 Unable to lock databases; databases"
                           " will not be updated.");
         }
         call_callback_1(cb_save_complete, 0);
-    } else {
+    }
+    else {
         log_debug(1, "Saving databases");
         save_all_dbtables();
         if (!unlock_data()) {
@@ -274,8 +275,8 @@ void save_data_now(void)
             wallops(NULL,
                     "\2Warning:\2 Unable to unlock databases; future database"
                     " updates may fail until the `%s%s%s' file is removed.",
-                    *LockFilename=='/' ? "" : services_dir,
-                    *LockFilename=='/' ? "" : "/", LockFilename);
+                    *LockFilename == '/' ? "" : services_dir,
+                    *LockFilename == '/' ? "" : "/", LockFilename);
         }
         call_callback_1(cb_save_complete, 1);
     }
@@ -286,11 +287,10 @@ void save_data_now(void)
 
 /* Main routine.  (What does it look like? :-) ) */
 
-int main(int ac, char **av, char **envp)
+int main(int ac, char** av, char** envp)
 {
     volatile time_t last_update; /* When did we last update the databases? */
     volatile uint32 last_check;  /* When did we last check timeouts? */
-
 
     /*** Initialization stuff. ***/
 
@@ -299,16 +299,14 @@ int main(int ac, char **av, char **envp)
         return 1;
     }
 
-
     /* Set up timers. */
-    last_send   = time(NULL);
+    last_send = time(NULL);
     last_update = time(NULL);
-    last_check  = time(NULL);
+    last_check = time(NULL);
 
     /* The signal handler routine will drop back here with quitting != 0
      * if it gets called. */
     DO_SIGSETJMP();
-
 
     /*** Main loop. ***/
 
@@ -318,7 +316,7 @@ int main(int ac, char **av, char **envp)
 
         log_debug(2, "Top of main loop");
 
-        if (!readonly && (save_data || now-last_update >= UpdateTimeout)) {
+        if (!readonly && (save_data || now - last_update >= UpdateTimeout)) {
             save_data_now();
             save_data = 0;
             last_update = now;
@@ -339,9 +337,8 @@ int main(int ac, char **av, char **envp)
         check_sockets();
 
         if (!MergeChannelModes)
-            set_cmode(NULL, NULL);  /* flush out any mode changes made */
+            set_cmode(NULL, NULL); /* flush out any mode changes made */
     }
-
 
     /*** Cleanup stuff. ***/
 

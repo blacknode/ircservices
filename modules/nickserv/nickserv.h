@@ -10,11 +10,13 @@
 #ifndef NICKSERV_H
 #define NICKSERV_H
 
+#include "services.h"
+
 #ifndef ENCRYPT_H
 # include "encrypt.h"
 #endif
 #ifndef MEMOSERV_H
-# include "../memoserv/memoserv.h"
+# include "modules/memoserv/memoserv.h"
 #endif
 
 /*************************************************************************/

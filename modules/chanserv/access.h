@@ -10,6 +10,8 @@
 #ifndef CHANSERV_ACCESS_H
 #define CHANSERV_ACCESS_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 /* Access level data structure: */

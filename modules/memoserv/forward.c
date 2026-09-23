@@ -15,7 +15,7 @@
 #include "modules/mail/mail.h"
 #include "modules/nickserv/nickserv.h"
 
-#include "memoserv.h"
+#include "modules/memoserv/memoserv.h"
 
 /*************************************************************************/
 /*************************** Local variables *****************************/

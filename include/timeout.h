@@ -10,6 +10,8 @@
 #ifndef TIMEOUT_H
 #define TIMEOUT_H
 
+#include "services.h"
+
 #include <time.h>
 
 /*************************************************************************/
@@ -19,15 +21,15 @@
 typedef struct timeout_ Timeout;
 
 struct timeout_ {
-    void *data;                 /* Caller data; can be anything */
-    time_t settime;             /* Time timer was set (from time()) */
+    void* data;     /* Caller data; can be anything */
+    time_t settime; /* Time timer was set (from time()) */
     /* Remainder is PRIVATE DATA! */
 #ifdef IN_TIMEOUT_C
     Timeout *next, *prev;
-    uint32 timeout;             /* In milliseconds (time_msec()) */
-    uint32 repeat;              /* Does this timeout repeat indefinitely?
-                                 *    (if nonzero, new value of `timeout') */
-    void (*code)(Timeout *);    /* This structure is passed to the code */
+    uint32 timeout;         /* In milliseconds (time_msec()) */
+    uint32 repeat;          /* Does this timeout repeat indefinitely?
+                             *    (if nonzero, new value of `timeout') */
+    void (*code)(Timeout*); /* This structure is passed to the code */
 #endif
 };
 
@@ -39,24 +41,24 @@ extern void check_timeouts(void);
 /* Add a timeout to the list to be triggered in `delay' seconds (`delay'
  * may be zero).  Any timeout added from within a timeout routine will not
  * be checked during that run through the timeout list.  Always succeeds. */
-extern Timeout *add_timeout(int delay, void (*code)(Timeout *), int repeat);
+extern Timeout* add_timeout(int delay, void (*code)(Timeout*), int repeat);
 
 /* Add a timeout to the list to be triggered in `delay' milliseconds
  * (`delay' may be zero). */
-extern Timeout *add_timeout_ms(uint32 delay, void (*code)(Timeout *),
+extern Timeout* add_timeout_ms(uint32 delay, void (*code)(Timeout*),
                                int repeat);
 
 /* Remove a timeout from the list (if it's there). */
-extern void del_timeout(Timeout *t);
+extern void del_timeout(Timeout* t);
 
 #ifdef DEBUG_COMMANDS
 /* Send the list of timeouts to the given user. */
-extern void send_timeout_list(User *u);
+extern void send_timeout_list(User* u);
 #endif
 
 /*************************************************************************/
 
-#endif  /* TIMEOUT_H */
+#endif /* TIMEOUT_H */
 
 /*
  * Local variables:

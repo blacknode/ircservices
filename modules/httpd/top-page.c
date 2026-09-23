@@ -11,7 +11,7 @@
 #include "modules.h"
 #include "conffile.h"
 
-#include "http.h"
+#include "modules/httpd/http.h"
 
 /*************************************************************************/
 

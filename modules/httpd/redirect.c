@@ -13,7 +13,7 @@
 #include "modules/nickserv/nickserv.h"
 #include "modules/chanserv/chanserv.h"
 
-#include "http.h"
+#include "modules/httpd/http.h"
 
 /*************************************************************************/
 

@@ -9,20 +9,20 @@
  * details.
  */
 
-#include "services.h"
 #include "modules.h"
+#include "services.h"
 
 /*************************************************************************/
 
-#define add_server  static add_server
-#define del_server  static del_server
+#undef HASH_MODIFY_STATIC
+#define HASH_MODIFY_STATIC static
 #include "hash.h"
 DEFINE_HASH(server, Server, name)
-#undef add_server
-#undef del_server
+#undef HASH_MODIFY_STATIC
+#define HASH_MODIFY_STATIC HASH_STATIC
 
-static Server *root_server;     /* Entry for root server (Services) */
-static int16 servercnt = 0;     /* Number of online servers */
+static Server* root_server; /* Entry for root server (Services) */
+static int16 servercnt = 0; /* Number of online servers */
 
 /* Callback IDs: */
 static int cb_create = -1;
@@ -36,9 +36,9 @@ static int cb_delete = -1;
  * overall list, and return it. Always successful.
  */
 
-static Server *new_server(const char *servername)
+static Server* new_server(const char* servername)
 {
-    Server *server;
+    Server* server;
 
     servercnt++;
     server = scalloc(sizeof(Server), 1);
@@ -47,10 +47,9 @@ static Server *new_server(const char *servername)
     return server;
 }
 
-
 /* Remove and free a Server structure. */
 
-static void delete_server(Server *server)
+static void delete_server(Server* server)
 {
     del_server(server);
     servercnt--;
@@ -65,9 +64,9 @@ static void delete_server(Server *server)
  * actually deleting the server data.
  */
 
-static void recursive_squit(Server *parent, const char *reason);
+static void recursive_squit(Server* parent, const char* reason);
 
-static void squit_server(Server *server, const char *reason)
+static void squit_server(Server* server, const char* reason)
 {
     User *user, *nextuser;
 
@@ -75,8 +74,8 @@ static void squit_server(Server *server, const char *reason)
     if (protocol_features & PF_NOQUIT) {
 #define next snext
 #define prev sprev
-        LIST_FOREACH_SAFE (user, server->userlist, nextuser)
-            quit_user(user, reason, 0);
+        LIST_FOREACH_SAFE(user, server->userlist, nextuser)
+        quit_user(user, reason, 0);
 #undef next
 #undef prev
     }
@@ -85,13 +84,12 @@ static void squit_server(Server *server, const char *reason)
     delete_server(server);
 }
 
-
 /* "SQUIT" all servers who are linked to us via the specified server by
  * deleting them from the server list. The parent server is not deleted,
  * so this must be done by the calling function.
  */
 
-static void recursive_squit(Server *parent, const char *reason)
+static void recursive_squit(Server* parent, const char* reason)
 {
     Server *server, *nextserver;
 
@@ -120,7 +118,7 @@ static void recursive_squit(Server *parent, const char *reason)
  * modified.
  */
 
-void do_server(const char *source, int ac, char **av)
+void do_server(const char* source, int ac, char** av)
 {
     Server *server, *tmpserver;
 
@@ -140,16 +138,19 @@ void do_server(const char *source, int ac, char **av)
              */
             wallops(ServerName,
                     "WARNING: Could not find server \2%s\2 which is supposed "
-                    "to be the hub for \2%s\2", source, av[0]);
+                    "to be the hub for \2%s\2",
+                    source, av[0]);
             log("server: could not find hub %s for %s", source, av[0]);
             return;
         }
-    } else {
+    }
+    else {
         server->hub = root_server;
     }
     if (!server->hub->child) {
         server->hub->child = server;
-    } else {
+    }
+    else {
         tmpserver = server->hub->child;
         while (tmpserver->sibling)
             tmpserver = tmpserver->sibling;
@@ -171,9 +172,9 @@ void do_server(const char *source, int ac, char **av)
  *      av[1] = quit message
  */
 
-void do_squit(const char *source, int ac, char **av)
+void do_squit(const char* source, int ac, char** av)
 {
-    Server *server;
+    Server* server;
 
     server = get_server(av[0]);
 
@@ -181,10 +182,11 @@ void do_squit(const char *source, int ac, char **av)
         if (server->hub) {
             if (server->hub->child == server) {
                 server->hub->child = server->sibling;
-            } else {
-                Server *tmpserver;
+            }
+            else {
+                Server* tmpserver;
                 for (tmpserver = server->hub->child; tmpserver->sibling;
-                                tmpserver = tmpserver->sibling) {
+                     tmpserver = tmpserver->sibling) {
                     if (tmpserver->sibling == server) {
                         tmpserver->sibling = server->sibling;
                         break;
@@ -193,10 +195,10 @@ void do_squit(const char *source, int ac, char **av)
             }
         }
         squit_server(server, av[1]);
-
-    } else {
-        wallops(ServerName,
-                "WARNING: Tried to quit non-existent server: \2%s", av[0]);
+    }
+    else {
+        wallops(ServerName, "WARNING: Tried to quit non-existent server: \2%s",
+                av[0]);
         log("server: Tried to quit non-existent server: %s", av[0]);
         log("server: Input buffer: %s", inbuf);
         return;
@@ -206,9 +208,9 @@ void do_squit(const char *source, int ac, char **av)
 /*************************************************************************/
 /*************************************************************************/
 
-int server_init(int ac, char **av)
+int server_init(int ac, char** av)
 {
-    Server *server;
+    Server* server;
 
     cb_create = register_callback("server create");
     cb_delete = register_callback("server delete");
@@ -244,14 +246,14 @@ void server_cleanup(void)
 
 /* Return information on memory use. Assumes pointers are valid. */
 
-void get_server_stats(long *nservers, long *memuse)
+void get_server_stats(long* nservers, long* memuse)
 {
-    Server *server;
+    Server* server;
     long mem;
 
     mem = sizeof(Server) * servercnt;
     for (server = first_server(); server; server = next_server())
-        mem += strlen(server->name)+1;
+        mem += strlen(server->name) + 1;
 
     *nservers = servercnt;
     *memuse = mem;

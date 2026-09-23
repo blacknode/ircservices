@@ -15,7 +15,7 @@
 #include "language.h"
 #include "commands.h"
 #include "databases.h"
-#include "nickserv.h"
+#include "modules/nickserv/nickserv.h"
 #include "modules/operserv/operserv.h"
 #include "modules/chanserv/chanserv.h"
 
@@ -368,13 +368,8 @@ int init_module()
 
 
     if (!(protocol_features & PF_SVSJOIN)) {
-        if (protocol_features & PF_UNSET) {
-            module_log("No protocol module loaded--you must load a"
-                       " protocol module before loading this module");
-        } else {
-            module_log("SVSJOIN not supported by this IRC server (%s)",
-                       protocol_name);
-        }
+        module_log("SVSJOIN not supported by this IRC server (%s)",
+                   protocol_name);
         return 0;
     }
 

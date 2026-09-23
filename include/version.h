@@ -7,10 +7,15 @@
  * details.
  */
 
+#ifndef VERSION_H
+#define VERSION_H
+
 extern const char program_name[];
 extern const char version_number[];
 extern const char version_build[];
-extern const char *info_text[];
+extern const char* info_text[];
+
+#endif /* VERSION_H */
 
 /*
  * Local variables:

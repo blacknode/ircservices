@@ -10,25 +10,27 @@
 #ifndef MESSAGES_H
 #define MESSAGES_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 /* Type of a message function: */
-typedef void (*MessageFunc)(char *source, int ac, char **av);
+typedef void (*MessageFunc)(char* source, int ac, char** av);
 
 typedef struct {
-    const char *name;
+    const char* name;
     MessageFunc func;
 } Message;
 
-extern int register_messages(Message *table);
-extern int unregister_messages(Message *table);
-extern Message *find_message(const char *name);
-extern int messages_init(int ac, char **av);
+extern int register_messages(Message* table);
+extern int unregister_messages(Message* table);
+extern Message* find_message(const char* name);
+extern int messages_init(int ac, char** av);
 extern void messages_cleanup(void);
 
 /*************************************************************************/
 
-#endif  /* MESSAGES_H */
+#endif /* MESSAGES_H */
 
 /*
  * Local variables:

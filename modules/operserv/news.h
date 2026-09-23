@@ -10,6 +10,8 @@
 #ifndef NEWS_H
 #define NEWS_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 typedef struct newsitem_ NewsItem;

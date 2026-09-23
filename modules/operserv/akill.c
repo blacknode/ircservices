@@ -15,10 +15,10 @@
 #include "language.h"
 #include "timeout.h"
 
-#include "operserv.h"
+#include "modules/operserv/operserv.h"
 #define NEED_MAKE_REASON
-#include "maskdata.h"
-#include "akill.h"
+#include "modules/operserv/maskdata.h"
+#include "modules/operserv/akill.h"
 
 /*************************************************************************/
 

@@ -10,6 +10,8 @@
 #ifndef MEMOSERV_H
 #define MEMOSERV_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 /* Memo info structures. */

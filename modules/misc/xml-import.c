@@ -26,7 +26,7 @@
 #include "modules/operserv/news.h"
 #include "modules/statserv/statserv.h"
 
-#include "xml.h"
+#include "modules/misc/xml.h"
 
 /*************************************************************************/
 
@@ -305,8 +305,8 @@ static void error(const char *fmt, ...)
 
 /*************************************************************************/
 
-#include "modules/nickserv/util.c"
-#include "modules/chanserv/util.c"
+#include "modules/nickserv/main/util.c"
+#include "modules/chanserv/main/util.c"
 
 /*************************************************************************/
 

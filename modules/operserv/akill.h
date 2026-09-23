@@ -10,6 +10,8 @@
 #ifndef AKILL_H
 #define AKILL_H
 
+#include "services.h"
+
 E void create_akill(char *mask, const char *reason, const char *who,
                     time_t expiry);
 

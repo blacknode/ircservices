@@ -10,6 +10,8 @@
 #ifndef STATISTICS_H
 #define STATISTICS_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 #if 0  // not implemented

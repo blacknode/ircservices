@@ -16,9 +16,9 @@
 #include "databases.h"
 #include "language.h"
 
-#include "operserv.h"
-#include "maskdata.h"
-#include "akill.h"
+#include "modules/operserv/operserv.h"
+#include "modules/operserv/maskdata.h"
+#include "modules/operserv/akill.h"
 
 /*************************************************************************/
 

@@ -19,7 +19,7 @@
 #include "modules/operserv/news.h"
 #include "modules/statserv/statserv.h"
 
-#include "xml.h"
+#include "modules/misc/xml.h"
 
 /*************************************************************************/
 

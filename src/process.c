@@ -7,9 +7,10 @@
  * details.
  */
 
-#include "services.h"
-#include "modules.h"
 #include "messages.h"
+#include "modules.h"
+#include "p10.h"
+#include "services.h"
 
 static int cb_recvmsg = -1;
 
@@ -25,32 +26,34 @@ static int cb_recvmsg = -1;
  *             RFC.  Destroys the buffer by side effect.
  */
 
-static char **sbargv = NULL;  /* File scope so process_cleanup() can free it */
+static char** sbargv = NULL; /* File scope so process_cleanup() can free it */
 
-int split_buf(char *buf, char ***argv_ptr, int colon_special)
+int split_buf(char* buf, char*** argv_ptr, int colon_special)
 {
     static int argvsize = 8;
     int argc;
-    char *s;
+    char* s;
 
     if (!sbargv)
-        sbargv = smalloc(sizeof(char *) * argvsize);
+        sbargv = smalloc(sizeof(char*) * argvsize);
     argc = 0;
     while (*buf) {
         if (argc == argvsize) {
             argvsize += 8;
-            sbargv = srealloc(sbargv, sizeof(char *) * argvsize);
+            sbargv = srealloc(sbargv, sizeof(char*) * argvsize);
         }
         if (*buf == ':' && colon_special) {
-            sbargv[argc++] = buf+1;
+            sbargv[argc++] = buf + 1;
             *buf = 0;
-        } else {
+        }
+        else {
             s = strpbrk(buf, " ");
             if (s) {
                 *s++ = 0;
                 while (*s == ' ')
                     s++;
-            } else {
+            }
+            else {
                 s = buf + strlen(buf);
             }
             sbargv[argc++] = buf;
@@ -64,7 +67,7 @@ int split_buf(char *buf, char ***argv_ptr, int colon_special)
 /*************************************************************************/
 /*************************************************************************/
 
-int process_init(int ac, char **av)
+int process_init(int ac, char** av)
 {
     cb_recvmsg = register_callback("receive message");
     if (cb_recvmsg < 0) {
@@ -85,64 +88,34 @@ void process_cleanup(void)
 
 /*************************************************************************/
 
-/* process:  Main processing routine.  Takes the string in inbuf (global
- *           variable) and does something appropriate with it. */
+/* process:  Main processing routine.  Takes the line in inbuf (global
+ *           variable), decodes it (p10.c) and dispatches it to the
+ *           handler registered for its command (messages.c). */
 
 void process(void)
 {
-    char source[64];
-    char cmd[64];
-    char buf[512];              /* Longest legal IRC command line */
-    char *s;
-    int ac;                     /* Parameters for the command */
-    char **av;
+    char buf[BUFSIZE];
+    const char *source, *cmd;
+    int ac;
+    char** av;
 
-
-    /* If debugging, log the buffer. */
     log_debug(1, "Received: %s", inbuf);
 
-    /* First make a copy of the buffer so we have the original in case we
-     * crash - in that case, we want to know what we crashed on. */
+    /* Work on a copy, so the original is still in inbuf if we crash. */
     strbcpy(buf, inbuf);
-
-    /* Split the buffer into pieces. */
-    if (*buf == ':') {
-        s = strpbrk(buf, " ");
-        if (!s)
-            return;
-        *s = 0;
-        while (isspace(*++s))
-            ;
-        strbcpy(source, buf+1);
-        strmove(buf, s);
-    } else {
-        *source = 0;
-    }
-    if (!*buf)
-        return;
-    s = strpbrk(buf, " ");
-    if (s) {
-        *s = 0;
-        while (isspace(*++s))
-            ;
-    } else
-        s = buf + strlen(buf);
-    strbcpy(cmd, buf);
-    ac = split_buf(s, &av, 1);
-
-    /* Do something with the message. */
-    if (call_callback_4(cb_recvmsg, source, cmd, ac, av) <= 0) {
-        Message *m = find_message(cmd);
+    if (p10_parse(buf, &source, &cmd, &ac, &av) &&
+        call_callback_4(cb_recvmsg, source, cmd, ac, av) <= 0) {
+        Message* m = find_message(cmd);
         if (m) {
             if (m->func)
-                m->func(source, ac, av);
-        } else {
+                m->func((char*)source, ac, av);
+        }
+        else {
             log("unknown message from server (%s)", inbuf);
         }
     }
 
-    /* Finally, clear the first byte of `inbuf' to signal that we're
-     * finished processing. */
+    /* Clear the first byte of `inbuf' to signal that we're finished. */
     *inbuf = 0;
 }
 

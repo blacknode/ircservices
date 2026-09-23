@@ -10,6 +10,8 @@
 #ifndef XML_H
 #define XML_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 /* Type for write function passed to export routine. */

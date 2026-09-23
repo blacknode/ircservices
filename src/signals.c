@@ -13,7 +13,7 @@
 /*************************************************************************/
 
 /* If we get a signal, use this to jump out of the main loop. */
-static sigjmp_buf *panic_ptr = NULL;
+static sigjmp_buf* panic_ptr = NULL;
 
 /*************************************************************************/
 /*************************************************************************/
@@ -25,7 +25,7 @@ static sigjmp_buf *panic_ptr = NULL;
 /* SIGHUP = save databases and rehash configuration files */
 static void sighup_handler(int sig_unused)
 {
-    signal(SIGHUP, SIG_IGN);  /* in case we get double signalled */
+    signal(SIGHUP, SIG_IGN); /* in case we get double signalled */
     log("Received SIGHUP, saving data and rehashing.");
     wallops(NULL,
             "Received SIGHUP, saving data and rehashing configuration files");
@@ -66,7 +66,7 @@ static void sigusr2_handler(int sig_unused)
 /* If we get a weird signal, come here. */
 static void weirdsig_handler(int signum)
 {
-    static int dying = 0;  /* Flag to avoid infinite recursion */
+    static int dying = 0; /* Flag to avoid infinite recursion */
 
     if (dying++) {
         /* Double signal, give up.  Set `servsock' to NULL to avoid a
@@ -75,13 +75,10 @@ static void weirdsig_handler(int signum)
         servsock = NULL;
         if (signum == SIGUSR2) {
             fatal("Out of memory while shutting down");
-        } else {
-#if HAVE_STRSIGNAL
+        }
+        else {
             fatal("Caught signal %d (%s) while shutting down", signum,
                   strsignal(signum));
-#else
-            fatal("Caught signal %d while shutting down", signum);
-#endif
         }
     }
 
@@ -101,7 +98,8 @@ static void weirdsig_handler(int signum)
                 inbuf[448] = 0;
             }
             wallops(NULL, "PANIC! buffer = %s\r\n", inbuf);
-        } else {
+        }
+        else {
             log("PANIC! signal %d (no buffer)", signum);
             wallops(NULL, "PANIC! signal %d (no buffer)", signum);
         }
@@ -111,21 +109,18 @@ static void weirdsig_handler(int signum)
     if (signum == SIGUSR1) {
         strbcpy(quitmsg, "Out of memory!");
         quitting = 1;
-    } else {
-#if HAVE_STRSIGNAL
-        snprintf(quitmsg, sizeof(quitmsg),
-                 "Services terminating: %s", strsignal(signum));
-#else
-        snprintf(quitmsg, sizeof(quitmsg),
-                 "Services terminating on signal %d", signum);
-#endif
+    }
+    else {
+        snprintf(quitmsg, sizeof(quitmsg), "Services terminating: %s",
+                 strsignal(signum));
         quitting = 1;
     }
 
     /* Actually quit */
     if (panic_ptr) {
         siglongjmp(*panic_ptr, 1);
-    } else {
+    }
+    else {
         log("%s", quitmsg);
         if (isatty(2))
             fprintf(stderr, "%s\n", quitmsg);
@@ -179,7 +174,6 @@ void init_signals(void)
     signal(SIGQUIT, weirdsig_handler);
     signal(SIGHUP, sighup_handler);
     signal(SIGUSR2, sigusr2_handler);
-
 }
 
 /*************************************************************************/
@@ -188,7 +182,7 @@ void init_signals(void)
  * environment buffer locally.
  */
 
-void do_sigsetjmp(void *bufptr)
+void do_sigsetjmp(void* bufptr)
 {
     panic_ptr = bufptr;
 }
@@ -210,7 +204,6 @@ void enable_signals(void)
     sigaddset(&sigs, SIGUSR2);
     sigprocmask(SIG_UNBLOCK, &sigs, NULL);
 }
-
 
 void disable_signals(void)
 {

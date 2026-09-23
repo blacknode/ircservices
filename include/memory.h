@@ -10,36 +10,38 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include "defs.h"
+
 /*************************************************************************/
 
 #if MEMCHECKS
-# define FILELINE , const char *file, int line
+#define FILELINE , const char *file, int line
 #else
-# define FILELINE /*nothing*/
+#define FILELINE /*nothing*/
 #endif
-extern void *smalloc(long size FILELINE);
-extern void *scalloc(long els, long elsize FILELINE);
-extern void *srealloc(void *oldptr, long newsize FILELINE);
-extern char *sstrdup(const char *s FILELINE);
+extern void* smalloc(long size FILELINE);
+extern void* scalloc(long els, long elsize FILELINE);
+extern void* srealloc(void* oldptr, long newsize FILELINE);
+extern char* sstrdup(const char* s FILELINE);
 #undef FILELINE
 
 #if MEMCHECKS
 
-# if SHOWALLOCS
+#if SHOWALLOCS
 extern int showallocs;
-# endif
+#endif
 extern void init_memory(void);
 extern void uninit_memory(void);
-extern void *MCmalloc(long size, const char *file, int line);
-extern void *MCcalloc(long elsize, long els, const char *file, int line);
-extern void *MCrealloc(void *oldptr, long newsize, const char *file, int line);
-extern void MCfree(void *ptr, const char *file, int line);
-extern char *MCstrdup(const char *s, const char *file, int line);
+extern void* MCmalloc(long size, const char* file, int line);
+extern void* MCcalloc(long elsize, long els, const char* file, int line);
+extern void* MCrealloc(void* oldptr, long newsize, const char* file, int line);
+extern void MCfree(void* ptr, const char* file, int line);
+extern char* MCstrdup(const char* s, const char* file, int line);
 
-#else  /* !MEMCHECKS */
+#else /* !MEMCHECKS */
 
-# define init_memory() /*nothing*/
-# define uninit_memory() /*nothing*/
+#define init_memory()   /*nothing*/
+#define uninit_memory() /*nothing*/
 
 #endif
 
@@ -47,24 +49,24 @@ extern char *MCstrdup(const char *s, const char *file, int line);
 
 #if MEMCHECKS && !defined(NO_MEMREDEF)
 
-# undef malloc
-# undef calloc
-# undef realloc
-# undef free
-# undef strdup
+#undef malloc
+#undef calloc
+#undef realloc
+#undef free
+#undef strdup
 
-# define malloc(size)        MCmalloc(size,__FILE__,__LINE__)
-# define calloc(elsize,els)  MCcalloc(elsize,els,__FILE__,__LINE__)
-# define realloc(ptr,size)   MCrealloc(ptr,size,__FILE__,__LINE__)
-# define free(ptr)           MCfree(ptr,__FILE__,__LINE__)
-# define strdup(str)         MCstrdup(str,__FILE__,__LINE__)
+#define malloc(size)        MCmalloc(size, __FILE__, __LINE__)
+#define calloc(elsize, els) MCcalloc(elsize, els, __FILE__, __LINE__)
+#define realloc(ptr, size)  MCrealloc(ptr, size, __FILE__, __LINE__)
+#define free(ptr)           MCfree(ptr, __FILE__, __LINE__)
+#define strdup(str)         MCstrdup(str, __FILE__, __LINE__)
 
-# define smalloc(size)       smalloc(size,__FILE__,__LINE__)
-# define scalloc(elsize,els) scalloc(elsize,els,__FILE__,__LINE__)
-# define srealloc(ptr,size)  srealloc(ptr,size,__FILE__,__LINE__)
-# define sstrdup(str)        sstrdup(str,__FILE__,__LINE__)
+#define smalloc(size)        smalloc(size, __FILE__, __LINE__)
+#define scalloc(elsize, els) scalloc(elsize, els, __FILE__, __LINE__)
+#define srealloc(ptr, size)  srealloc(ptr, size, __FILE__, __LINE__)
+#define sstrdup(str)         sstrdup(str, __FILE__, __LINE__)
 
-#endif  /* MEMCHECKS && !NO_MEMREDEF */
+#endif /* MEMCHECKS && !NO_MEMREDEF */
 
 /*************************************************************************/
 

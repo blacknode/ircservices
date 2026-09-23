@@ -22,7 +22,7 @@
 #include "modules/statserv/statserv.h"
 #include "modules/misc/xml.h"
 
-#include "http.h"
+#include "modules/httpd/http.h"
 
 /*************************************************************************/
 

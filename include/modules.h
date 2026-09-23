@@ -10,6 +10,8 @@
 #ifndef MODULES_H
 #define MODULES_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 /* Version code macro.  Parameters are:
@@ -22,14 +24,13 @@
  *                5.1.0   -> MODULE_VERSION_FINAL
  *    release: Release number (the "0" in 5.1a0).
  */
-#define MODULE_VERSION(major,minor,status,release) (            \
-    ((major) > 5 || ((major) == 5 && (minor) >= 1))             \
-        ? ((major)<<24 | (minor)<<16 | (status)<<12 | (release))\
-        : (0x050000 | (release))                                \
-)
-#define MODULE_VERSION_ALPHA    0xA
-#define MODULE_VERSION_PRE      0xB
-#define MODULE_VERSION_FINAL    0xF
+#define MODULE_VERSION(major, minor, status, release)                         \
+    (((major) > 5 || ((major) == 5 && (minor) >= 1))                          \
+         ? ((major) << 24 | (minor) << 16 | (status) << 12 | (release))       \
+         : (0x050000 | (release)))
+#define MODULE_VERSION_ALPHA 0xA
+#define MODULE_VERSION_PRE   0xB
+#define MODULE_VERSION_FINAL 0xF
 
 /* Version code for modules.  This will be updated whenever a change to the
  * program (structures, callbacks, etc.) makes existing binary modules
@@ -38,7 +39,7 @@
  * binary; it can also be used with #if to make source code compatible with
  * multiple versions of Services.
  */
-#define MODULE_VERSION_CODE     MODULE_VERSION(5,1,MODULE_VERSION_FINAL,0)
+#define MODULE_VERSION_CODE MODULE_VERSION(5, 1, MODULE_VERSION_FINAL, 0)
 
 /*************************************************************************/
 
@@ -51,8 +52,8 @@ typedef struct Module_ Module;
 typedef int (*callback_t)();
 
 /* Callback priority limits. */
-#define CBPRI_MIN       -10000
-#define CBPRI_MAX       10000
+#define CBPRI_MIN -10000
+#define CBPRI_MAX 10000
 
 /*************************************************************************/
 
@@ -61,18 +62,18 @@ typedef int (*callback_t)();
  * force the preprocessor to substitute the value of MODULE_ID instead of
  * appending "MODULE_ID" literally. */
 
-#define RENAME_SYMBOL(symbol) RENAME_SYMBOL_2(symbol,MODULE_ID)
-#define RENAME_SYMBOL_2(symbol,id) RENAME_SYMBOL_3(symbol,id)
-#define RENAME_SYMBOL_3(symbol,id) symbol##_##id
+#define RENAME_SYMBOL(symbol)       RENAME_SYMBOL_2(symbol, MODULE_ID)
+#define RENAME_SYMBOL_2(symbol, id) RENAME_SYMBOL_3(symbol, id)
+#define RENAME_SYMBOL_3(symbol, id) symbol##_##id
 
 /*************************************************************************/
 
 /* Macros to retrieve a pointer to the current module or its name. */
 
 #ifdef MODULE
-# define THIS_MODULE RENAME_SYMBOL(_this_module)
+#define THIS_MODULE RENAME_SYMBOL(_this_module)
 #else
-# define THIS_MODULE NULL
+#define THIS_MODULE NULL
 #endif
 
 #define MODULE_NAME (get_module_name(THIS_MODULE))
@@ -89,7 +90,7 @@ typedef int (*callback_t)();
 
 /* Initialization and cleanup: */
 
-extern int modules_init(int ac, char **av);
+extern int modules_init(int ac, char** av);
 extern void modules_cleanup(void);
 extern void unload_all_modules(void);
 
@@ -98,22 +99,22 @@ extern void unload_all_modules(void);
 /* Module-level functions: */
 
 /* Load a new module and return the Module pointer, or NULL on error. */
-extern Module *load_module(const char *modulename);
+extern Module* load_module(const char* modulename);
 
 /* Remove a module from memory.  Return nonzero on success, zero on
  * failure. */
-extern int unload_module(Module *module);
+extern int unload_module(Module* module);
 
 /* Return the Module pointer for the named module, or NULL if no such
  * module exists. */
-extern Module *find_module(const char *modulename);
+extern Module* find_module(const char* modulename);
 
 /* Increment or decrement the use count for the given module.  A module
  * cannot be unloaded while its use count is nonzero. */
-#define use_module(mod)   _use_module(mod,THIS_MODULE)
-#define unuse_module(mod) _unuse_module(mod,THIS_MODULE)
-extern void _use_module(Module *module, const Module *caller);
-extern void _unuse_module(Module *module, const Module *caller);
+#define use_module(mod)   _use_module(mod, THIS_MODULE)
+#define unuse_module(mod) _unuse_module(mod, THIS_MODULE)
+extern void _use_module(Module* module, const Module* caller);
+extern void _unuse_module(Module* module, const Module* caller);
 
 /* Re-read configuration files for all modules.  Return nonzero on success,
  * zero on failure. */
@@ -129,21 +130,21 @@ int reconfigure_modules(void);
  * distinguish a symbol value of NULL from an error return.  For such
  * symbols, or for cases where a symbol might legitimately not exist and
  * no error should be printed for nonexistence, use check_module_symbol(). */
-#define get_module_symbol(mod,symname) \
-    _get_module_symbol(mod,symname,THIS_MODULE)
-extern void *_get_module_symbol(Module *module, const char *symname,
-                                const Module *caller);
+#define get_module_symbol(mod, symname)                                       \
+    _get_module_symbol(mod, symname, THIS_MODULE)
+extern void* _get_module_symbol(Module* module, const char* symname,
+                                const Module* caller);
 
 /* Check whether the given symbol exists in the given module; return 1 if
  * so, 0 otherwise.  If `resultptr' is non-NULL and the symbol exists, the
  * value is stored in the variable it points to.  If `errorptr' is non-NULL
  * and the symbol does not exist, a human-readable error message is stored
  * in the variable it points to. */
-extern int check_module_symbol(Module *module, const char *symname,
-                               void **resultptr, const char **errorptr);
+extern int check_module_symbol(Module* module, const char* symname,
+                               void** resultptr, const char** errorptr);
 
 /* Retrieve the name of the given module. */
-extern const char *get_module_name(const Module *module);
+extern const char* get_module_name(const Module* module);
 
 /*************************************************************************/
 
@@ -152,50 +153,47 @@ extern const char *get_module_name(const Module *module);
  */
 
 /* Register a new callback list. */
-#define register_callback(name) _register_callback(THIS_MODULE,name)
-extern int _register_callback(Module *module, const char *name);
+#define register_callback(name) _register_callback(THIS_MODULE, name)
+extern int _register_callback(Module* module, const char* name);
 
 /* Call all functions in a callback list.  Return 1 if a callback returned
  * nonzero, 0 if all callbacks returned zero, or -1 on error.  The _N
  * formats allow passing parameters. */
-#define call_callback(id) \
-    call_callback_1(id, NULL)
-#define call_callback_1(id,arg1) \
-    call_callback_2(id, arg1, NULL)
-#define call_callback_2(id,arg1,arg2) \
-    call_callback_3(id, arg1, arg2, NULL)
-#define call_callback_3(id,arg1,arg2,arg3) \
+#define call_callback(id)               call_callback_1(id, NULL)
+#define call_callback_1(id, arg1)       call_callback_2(id, arg1, NULL)
+#define call_callback_2(id, arg1, arg2) call_callback_3(id, arg1, arg2, NULL)
+#define call_callback_3(id, arg1, arg2, arg3)                                 \
     call_callback_4(id, arg1, arg2, arg3, NULL)
-#define call_callback_4(id,arg1,arg2,arg3,arg4) \
+#define call_callback_4(id, arg1, arg2, arg3, arg4)                           \
     call_callback_5(id, arg1, arg2, arg3, arg4, NULL)
-#define call_callback_5(id,arg1,arg2,arg3,arg4,arg5) \
-    _call_callback_5(THIS_MODULE, id, (void *)(long)(arg1), \
-                     (void *)(long)(arg2), (void *)(long)(arg3), \
-                     (void *)(long)(arg4), (void *)(long)(arg5))
-extern int _call_callback_5(Module *module, int id, void *arg1, void *arg2,
-                            void *arg3, void *arg4, void *arg5);
+#define call_callback_5(id, arg1, arg2, arg3, arg4, arg5)                     \
+    _call_callback_5(THIS_MODULE, id, (void*)(long)(arg1),                    \
+                     (void*)(long)(arg2), (void*)(long)(arg3),                \
+                     (void*)(long)(arg4), (void*)(long)(arg5))
+extern int _call_callback_5(Module* module, int id, void* arg1, void* arg2,
+                            void* arg3, void* arg4, void* arg5);
 
 /* Delete a callback list. */
-#define unregister_callback(name) _unregister_callback(THIS_MODULE,name)
-extern int _unregister_callback(Module *module, int id);
+#define unregister_callback(name) _unregister_callback(THIS_MODULE, name)
+extern int _unregister_callback(Module* module, int id);
 
 /* Add a function to a callback list with the given priority (higher
  * priority value = called sooner).  Callbacks with the same priority are
  * called in the order they were added. */
-#define add_callback_pri(module,name,callback,priority) \
-    _add_callback_pri(module,name,callback,priority,THIS_MODULE)
-int _add_callback_pri(Module *module, const char *name, callback_t callback,
-                      int priority, const Module *caller);
+#define add_callback_pri(module, name, callback, priority)                    \
+    _add_callback_pri(module, name, callback, priority, THIS_MODULE)
+int _add_callback_pri(Module* module, const char* name, callback_t callback,
+                      int priority, const Module* caller);
 
 /* Add a function to a callback list with priority 0. */
-#define add_callback(module,name,callback) \
-    add_callback_pri(module,name,callback,0)
+#define add_callback(module, name, callback)                                  \
+    add_callback_pri(module, name, callback, 0)
 
 /* Remove a function from a callback list. */
-#define remove_callback(module,name,callback) \
-    _remove_callback(module,name,callback,THIS_MODULE)
-extern int _remove_callback(Module *module, const char *name,
-                           callback_t callback, const Module *caller);
+#define remove_callback(module, name, callback)                               \
+    _remove_callback(module, name, callback, THIS_MODULE)
+extern int _remove_callback(Module* module, const char* name,
+                            callback_t callback, const Module* caller);
 
 /*************************************************************************/
 /*************************************************************************/
@@ -223,7 +221,7 @@ int exit_module(int shutdown);
  *     EXPORT_FUNC(create_akill)
  */
 
-#define EXPORT_VAR(type,symbol)
+#define EXPORT_VAR(type, symbol)
 #define EXPORT_ARRAY(symbol)
 #define EXPORT_FUNC(symbol)
 
@@ -240,13 +238,13 @@ int exit_module(int shutdown);
  * rather than accessing this variable directly.
  */
 #ifdef MODULE
-# ifndef MODULE_MAIN_FILE
+#ifndef MODULE_MAIN_FILE
 extern
-# endif
-Module *RENAME_SYMBOL(_this_module);
-# ifdef MODULE_MAIN_FILE
-Module **_this_module_ptr = &RENAME_SYMBOL(_this_module);  /* used by loader */
-# endif
+#endif
+    Module* RENAME_SYMBOL(_this_module);
+#ifdef MODULE_MAIN_FILE
+Module** _this_module_ptr = &RENAME_SYMBOL(_this_module); /* used by loader */
+#endif
 #endif
 
 /*************************************************************************/
@@ -263,7 +261,7 @@ const int32 module_version = MODULE_VERSION_CODE;
 
 /*************************************************************************/
 
-#endif  /* MODULES_H */
+#endif /* MODULES_H */
 
 /*
  * Local variables:

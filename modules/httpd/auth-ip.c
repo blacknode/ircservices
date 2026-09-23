@@ -10,7 +10,7 @@
 #include "services.h"
 #include "modules.h"
 #include "conffile.h"
-#include "http.h"
+#include "modules/httpd/http.h"
 #include <netinet/in.h>
 #include <netdb.h>
 
@@ -168,16 +168,13 @@ static int do_AllowDenyHost(const char *filename, int linenum, char *param,
     } else {
         /* hostname -> check for double recursion, then look up and
          *             recursively add addresses */
-#ifdef HAVE_GETHOSTBYNAME
         struct hostent *hp;
-#endif
         if (recursing) {
             config_error(filename, linenum, "BUG: double recursion (param=%s)",
                          param);
             free(di.path);
             return 0;
         }
-#ifdef HAVE_GETHOSTBYNAME
         if ((hp = gethostbyname(param)) != NULL) {
             if (hp->h_addrtype == AF_INET) {
                 for (i = 0; hp->h_addr_list[i]; i++) {
@@ -212,11 +209,6 @@ static int do_AllowDenyHost(const char *filename, int linenum, char *param,
             config_error(filename, linenum, "%s: %s", param,
                          hstrerror(h_errno));
         }
-#else
-        config_error(filename, linenum,
-                     "gethostbyname() not available, hostnames may not be"
-                     " used");
-#endif
         free(di.path);
         return 0;
     }

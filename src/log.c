@@ -8,18 +8,18 @@
  */
 
 #include "services.h"
-#include <netdb.h>  /* for hstrerror() */
+#include <netdb.h> /* for hstrerror() */
 
 /* Pattern for generating logfile names */
-static char logfile_pattern[PATH_MAX+1];
+static char logfile_pattern[PATH_MAX + 1];
 
 /* Currently open log file */
-static FILE *logfile;
-static char current_filename[PATH_MAX+1];
+static FILE* logfile;
+static char current_filename[PATH_MAX + 1];
 
 /* Memory log buffer (see open_memory_log()) */
 static char logmem[LOGMEMSIZE];
-static char *logmemptr = NULL;
+static char* logmemptr = NULL;
 
 /* Are we in fatal() or fatal_perror()?  (This is used to avoid infinite
  * recursion if wallops() does a fatal().) */
@@ -33,14 +33,14 @@ static int in_fatal = 0;
  * buffer, and will not be longer than PATH_MAX characters.
  */
 
-static char *gen_log_filename(void)
+static char* gen_log_filename(void)
 {
-    static char result[PATH_MAX+1];
+    static char result[PATH_MAX + 1];
     const char *s, *from;
-    char *to;
+    char* to;
 
     time_t now = time(NULL);
-    struct tm *tm = localtime(&now);
+    struct tm* tm = localtime(&now);
     tm->tm_year += 1900;
     tm->tm_mon++;
 
@@ -52,26 +52,30 @@ static char *gen_log_filename(void)
     to = result;
 
     while ((s = strchr(from, '%')) != NULL) {
-        to += snprintf(to, sizeof(result)-(to-result), "%.*s", (int) (s-from), from);
+        to += snprintf(to, sizeof(result) - (to - result), "%.*s",
+                       (int)(s - from), from);
         s++;
         switch (*s) {
-          case 'y':
-            to += snprintf(to, sizeof(result)-(to-result), "%d", tm->tm_year);
-            break;
-          case 'm':
-            to += snprintf(to, sizeof(result)-(to-result), "%02d", tm->tm_mon);
-            break;
-          case 'd':
-            to += snprintf(to, sizeof(result)-(to-result), "%02d",tm->tm_mday);
-            break;
-          default:
-            if (to-result < sizeof(result)-1)
-                *to++ = *s;
-            break;
+            case 'y':
+                to += snprintf(to, sizeof(result) - (to - result), "%d",
+                               tm->tm_year);
+                break;
+            case 'm':
+                to += snprintf(to, sizeof(result) - (to - result), "%02d",
+                               tm->tm_mon);
+                break;
+            case 'd':
+                to += snprintf(to, sizeof(result) - (to - result), "%02d",
+                               tm->tm_mday);
+                break;
+            default:
+                if (to - result < sizeof(result) - 1)
+                    *to++ = *s;
+                break;
         }
-        from = s+1;
+        from = s + 1;
     }
-    to += snprintf(to, sizeof(result)-(to-result), "%s", from);
+    to += snprintf(to, sizeof(result) - (to - result), "%s", from);
 
     *to = 0;
     return result;
@@ -85,9 +89,9 @@ static char *gen_log_filename(void)
 
 static void check_log_rotate(void)
 {
-    char *newname = gen_log_filename();
-    if (strlen(newname) > sizeof(current_filename)-1)
-        newname[sizeof(current_filename)-1] = 0;
+    char* newname = gen_log_filename();
+    if (strlen(newname) > sizeof(current_filename) - 1)
+        newname[sizeof(current_filename) - 1] = 0;
     if (strcmp(current_filename, gen_log_filename()) != 0) {
         if (!reopen_log())
             log("Warning: Unable to rotate log file: %s", strerror(errno));
@@ -99,7 +103,7 @@ static void check_log_rotate(void)
 
 /* Local routines to write text to the log file and/or stderr as needed. */
 
-static void vlogprintf(const char *fmt, va_list args)
+static void vlogprintf(const char* fmt, va_list args)
 {
     if (nofork) {
         va_list args_copy;
@@ -109,16 +113,18 @@ static void vlogprintf(const char *fmt, va_list args)
     }
     if (logfile) {
         vfprintf(logfile, fmt, args);
-    } else if (logmemptr) {
+    }
+    else if (logmemptr) {
         char tmpbuf[BUFSIZE];
         int len = vsnprintf(tmpbuf, sizeof(tmpbuf), fmt, args);
-        if (len > LOGMEMSIZE - (logmemptr-logmem)) {
+        if (len > LOGMEMSIZE - (logmemptr - logmem)) {
             int oldlen = len;
-            len = LOGMEMSIZE - (logmemptr-logmem);
+            len = LOGMEMSIZE - (logmemptr - logmem);
             if (len > 0) {
-                if (tmpbuf[oldlen-1] == '\n') {
-                    tmpbuf[len-1] = '\n';  /* always end with a newline */
-                } else {
+                if (tmpbuf[oldlen - 1] == '\n') {
+                    tmpbuf[len - 1] = '\n'; /* always end with a newline */
+                }
+                else {
                     len--;
                 }
             }
@@ -130,8 +136,8 @@ static void vlogprintf(const char *fmt, va_list args)
     }
 }
 
-static void logprintf(const char *fmt, ...) FORMAT(printf,1,2);
-static void logprintf(const char *fmt, ...)
+static void logprintf(const char* fmt, ...) FORMAT(printf, 1, 2);
+static void logprintf(const char* fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -139,7 +145,7 @@ static void logprintf(const char *fmt, ...)
     va_end(args);
 }
 
-static void logputs(const char *str)
+static void logputs(const char* str)
 {
     logprintf("%s", str);
 }
@@ -156,21 +162,18 @@ static void write_time(void)
 
     time(&t);
     tm = *localtime(&t);
-#if HAVE_GETTIMEOFDAY
     if (debug) {
-        char *s;
+        char* s;
         struct timeval tv;
         gettimeofday(&tv, NULL);
-        strftime(buf, sizeof(buf)-1, "[%b %d %H:%M:%S", &tm);
+        strftime(buf, sizeof(buf) - 1, "[%b %d %H:%M:%S", &tm);
         s = buf + strlen(buf);
-        s += snprintf(s, sizeof(buf)-(s-buf), ".%06d", (int)tv.tv_usec);
-        strftime(s, sizeof(buf)-(s-buf)-1, " %Y] ", &tm);
-    } else {
-#endif
-        strftime(buf, sizeof(buf)-1, "[%b %d %H:%M:%S %Y] ", &tm);
-#if HAVE_GETTIMEOFDAY
+        s += snprintf(s, sizeof(buf) - (s - buf), ".%06d", (int)tv.tv_usec);
+        strftime(s, sizeof(buf) - (s - buf) - 1, " %Y] ", &tm);
     }
-#endif
+    else {
+        strftime(buf, sizeof(buf) - 1, "[%b %d %H:%M:%S %Y] ", &tm);
+    }
     logputs(buf);
 }
 
@@ -179,9 +182,9 @@ static void write_time(void)
 
 /* Set the filename pattern to use for generating the log filename. */
 
-void set_logfile(const char *pattern)
+void set_logfile(const char* pattern)
 {
-    if (pattern) {  /* Just to be safe */
+    if (pattern) { /* Just to be safe */
         strscpy(logfile_pattern, pattern, sizeof(logfile_pattern));
     }
 }
@@ -203,12 +206,13 @@ int open_log(void)
         if (logmemptr) {
             int res, errno_save;
             if (logmemptr > logmem) {
-                res = fwrite(logmem, logmemptr-logmem, 1, logfile);
+                res = fwrite(logmem, logmemptr - logmem, 1, logfile);
                 errno_save = errno;
-            } else {
-                res = 1;  /* i.e. no error */
+            }
+            else {
+                res = 1; /* i.e. no error */
 #if CLEAN_COMPILE
-                errno_save = 0;  /* warning killer for dumb compilers */
+                errno_save = 0; /* warning killer for dumb compilers */
 #endif
             }
             logmemptr = NULL;
@@ -219,7 +223,7 @@ int open_log(void)
             }
         }
     }
-    return logfile!=NULL ? 1 : 0;
+    return logfile != NULL ? 1 : 0;
 }
 
 /*************************************************************************/
@@ -262,13 +266,13 @@ void close_log(void)
 
 int reopen_log(void)
 {
-    char *newname;
-    FILE *f;
+    char* newname;
+    FILE* f;
 
     newname = gen_log_filename();
     /* Make sure it will fit in current_filename later */
-    if (strlen(newname) > sizeof(current_filename)-1)
-        newname[sizeof(current_filename)-1] = 0;
+    if (strlen(newname) > sizeof(current_filename) - 1)
+        newname[sizeof(current_filename) - 1] = 0;
     f = fopen(newname, "a");
     if (!f)
         return 0;
@@ -276,7 +280,7 @@ int reopen_log(void)
     if (logfile)
         fclose(logfile);
     logfile = f;
-    strcpy(current_filename, newname);  /* safe b/c of length check above */
+    strcpy(current_filename, newname); /* safe b/c of length check above */
     return 1;
 }
 
@@ -303,8 +307,8 @@ int log_is_open(void)
  * this function.
  */
 
-void do_log(int debuglevel, int do_perror, const char *modulename,
-            const char *fmt, ...)
+void do_log(int debuglevel, int do_perror, const char* modulename,
+            const char* fmt, ...)
 {
     if (debug >= debuglevel) {
         va_list args;
@@ -320,9 +324,8 @@ void do_log(int debuglevel, int do_perror, const char *modulename,
             logprintf("(%s) ", modulename);
         vlogprintf(fmt, args);
         if (do_perror) {
-            logprintf(": %s",
-                      (errno_save<0) ? hstrerror(-errno_save)
-                                     : strerror(errno_save));
+            logprintf(": %s", (errno_save < 0) ? hstrerror(-errno_save)
+                                               : strerror(errno_save));
         }
         logputs("\n");
         va_end(args);
@@ -337,7 +340,7 @@ void do_log(int debuglevel, int do_perror, const char *modulename,
  * happened, then go down.
  */
 
-void fatal(const char *fmt, ...)
+void fatal(const char* fmt, ...)
 {
     va_list args;
     char buf[4096];
@@ -361,16 +364,16 @@ void fatal(const char *fmt, ...)
 
 /* Same thing, but do it like perror(). */
 
-void fatal_perror(const char *fmt, ...)
+void fatal_perror(const char* fmt, ...)
 {
     va_list args;
     char buf[4096];
-    const char *errstr;
+    const char* errstr;
 
     if (in_fatal)
         exit(2);
     in_fatal++;
-    errstr = (errno<0) ? hstrerror(-errno) : strerror(errno);
+    errstr = (errno < 0) ? hstrerror(-errno) : strerror(errno);
     va_start(args, fmt);
     vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);

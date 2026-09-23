@@ -37,11 +37,11 @@ ModeData chanusermodes[] = {
 };
 
 /* The following are initialized by mode_setup(): */
-int32 usermode_reg;             /* Usermodes applied to registered nicks */
-int32 chanmode_reg;             /* Chanmodes applied to registered chans */
-int32 chanmode_regonly;         /* Chanmodes indicating regnick-only channels*/
-int32 chanmode_opersonly;       /* Chanmodes indicating oper-only channels */
-char  chanmode_multiple[257];   /* Chanmodes that can be set multiple times */
+int32 usermode_reg;          /* Usermodes applied to registered nicks */
+int32 chanmode_reg;          /* Chanmodes applied to registered chans */
+int32 chanmode_regonly;      /* Chanmodes indicating regnick-only channels*/
+int32 chanmode_opersonly;    /* Chanmodes indicating oper-only channels */
+char chanmode_multiple[257]; /* Chanmodes that can be set multiple times */
 
 /* Flag tables, used internally to speed up flag lookups.  0 indicates a
  * flag with no associated mode. */
@@ -51,8 +51,8 @@ static char userflags[31], chanflags[31], chanuserflags[31];
 static int32 prefixtable[256];
 
 /* Tables used for fast lookups. */
-static ModeData *modetable[] = {usermodes, chanmodes, chanusermodes};
-static char *flagtable[] = {userflags, chanflags, chanuserflags};
+static ModeData* modetable[] = {usermodes, chanmodes, chanusermodes};
+static char* flagtable[] = {userflags, chanflags, chanuserflags};
 
 /*************************************************************************/
 /*************************************************************************/
@@ -65,16 +65,16 @@ static char *flagtable[] = {userflags, chanflags, chanuserflags};
 void mode_setup(void)
 {
     int i;
-    ModeData *modelist;
-    char *flaglist;
-    int multi_index = 0;   /* index into chanmode_multiple[] */
+    ModeData* modelist;
+    char* flaglist;
+    int multi_index = 0; /* index into chanmode_multiple[] */
 
     modelist = usermodes;
     flaglist = userflags;
     for (i = 0; i < 256; i++) {
         if (modelist[i].flag) {
             int n = 0;
-            uint32 tmp = (uint32) modelist[i].flag;
+            uint32 tmp = (uint32)modelist[i].flag;
             if (modelist[i].info & MI_REGISTERED)
                 usermode_reg |= tmp;
             while (tmp >>= 1)
@@ -89,7 +89,7 @@ void mode_setup(void)
     for (i = 0; i < 256; i++) {
         if (modelist[i].flag) {
             int n = 0;
-            uint32 tmp = (uint32) modelist[i].flag;
+            uint32 tmp = (uint32)modelist[i].flag;
             if (modelist[i].info & MI_REGISTERED)
                 chanmode_reg |= tmp;
             if (modelist[i].info & MI_REGNICKS_ONLY)
@@ -111,13 +111,14 @@ void mode_setup(void)
     for (i = 0; i < 256; i++) {
         if (modelist[i].flag) {
             int n = 0;
-            uint32 tmp = (uint32) modelist[i].flag;
-            prefixtable[ (uint8)modelist[i].prefix ] = tmp;
+            uint32 tmp = (uint32)modelist[i].flag;
+            prefixtable[(uint8)modelist[i].prefix] = tmp;
             while (tmp >>= 1)
                 n++;
             if (n < 31)
                 flaglist[n] = (char)i;
-            if (modelist[i].plus_params!=1 || modelist[i].minus_params!=1) {
+            if (modelist[i].plus_params != 1 ||
+                modelist[i].minus_params != 1) {
                 log("modes: Warning: channel user mode `%c' takes %d/%d"
                     " parameters (should be 1/1)",
                     i, modelist[i].plus_params, modelist[i].minus_params);
@@ -136,7 +137,8 @@ void mode_setup(void)
 
 int32 mode_char_to_flag(char c, int which)
 {
-    if (which != MODE_USER && which != MODE_CHANNEL && which != MODE_CHANUSER){
+    if (which != MODE_USER && which != MODE_CHANNEL &&
+        which != MODE_CHANUSER) {
         log("mode_char_to_flag(): bad `which' value %d", which);
         return MODE_INVALID;
     }
@@ -151,14 +153,15 @@ int32 mode_char_to_flag(char c, int which)
 
 int mode_char_to_params(char c, int which)
 {
-    ModeData *ptr;
+    ModeData* ptr;
 
-    if (which != MODE_USER && which != MODE_CHANNEL && which != MODE_CHANUSER){
+    if (which != MODE_USER && which != MODE_CHANNEL &&
+        which != MODE_CHANUSER) {
         log("mode_char_to_params(): bad `which' value %d", which);
         return -1;
     }
     ptr = &modetable[which][(uint8)c];
-    return ptr->plus_params<<8 | ptr->minus_params;
+    return ptr->plus_params << 8 | ptr->minus_params;
 }
 
 /*************************************************************************/
@@ -170,10 +173,11 @@ int mode_char_to_params(char c, int which)
 
 char mode_flag_to_char(int32 f, int which)
 {
-    char *flaglist;
+    char* flaglist;
     int n = 0, tmp = f;
 
-    if (which != MODE_USER && which != MODE_CHANNEL && which != MODE_CHANUSER){
+    if (which != MODE_USER && which != MODE_CHANNEL &&
+        which != MODE_CHANUSER) {
         log("mode_flag_to_char(): bad `which' value %d", which);
         return 0;
     }
@@ -191,18 +195,19 @@ char mode_flag_to_char(int32 f, int which)
 /* Return the flag set corresponding to the given string of mode characters
  * in the given mode set.  If MODE_NOERROR is set in `which', invalid mode
  * characters are ignored; if not set, (CMODE_INVALID | modechar) is
- * returned for the first invalid mode character found.  
+ * returned for the first invalid mode character found.
  */
 
-int32 mode_string_to_flags(const char *s, int which)
+int32 mode_string_to_flags(const char* s, int which)
 {
     int noerror = (which & MODE_NOERROR);
     int32 flags = 0;
-    const ModeData *modelist;
+    const ModeData* modelist;
 
     which &= ~MODE_NOERROR;
-    if (which != MODE_USER && which != MODE_CHANNEL && which != MODE_CHANUSER){
-        log("mode_string_to_flags(): bad `which' value %d", which|noerror);
+    if (which != MODE_USER && which != MODE_CHANNEL &&
+        which != MODE_CHANUSER) {
+        log("mode_string_to_flags(): bad `which' value %d", which | noerror);
         return 0;
     }
     modelist = modetable[which];
@@ -231,14 +236,15 @@ int32 mode_string_to_flags(const char *s, int which)
  * overwritten on the next call.
  */
 
-char *mode_flags_to_string(int32 flags, int which)
+char* mode_flags_to_string(int32 flags, int which)
 {
     static char buf[32];
-    char *s = buf;
+    char* s = buf;
     int n = 0;
-    const char *flaglist;
+    const char* flaglist;
 
-    if (which != MODE_USER && which != MODE_CHANNEL && which != MODE_CHANUSER){
+    if (which != MODE_USER && which != MODE_CHANNEL &&
+        which != MODE_CHANUSER) {
         log("mode_flags_to_string(): bad `which' value %d", which);
         *buf = 0;
         return buf;

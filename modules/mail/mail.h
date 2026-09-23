@@ -10,6 +10,8 @@
 #ifndef MAIL_H
 #define MAIL_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 /* Completion callback type: */

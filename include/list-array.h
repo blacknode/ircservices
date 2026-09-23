@@ -11,6 +11,8 @@
 #ifndef LIST_ARRAY_H
 #define LIST_ARRAY_H
 
+#include "defs.h"
+
 /*************************************************************************/
 
 /* Comments on the efficiency of lists vs. arrays:
@@ -138,14 +140,14 @@ int main(int ac, char **av)
 /* Insert `node' into the beginning of `list'.  Insertion is performed in
  * constant time. */
 
-#define LIST_INSERT(node_,list)         \
-    do {                                \
-        typeof(list) _node = (node_);   \
-        _node->next = (list);           \
-        _node->prev = NULL;             \
-        if (list)                       \
-            (list)->prev = _node;       \
-        (list) = _node;                 \
+#define LIST_INSERT(node_, list)                                              \
+    do {                                                                      \
+        typeof(list) _node = (node_);                                         \
+        _node->next = (list);                                                 \
+        _node->prev = NULL;                                                   \
+        if (list)                                                             \
+            (list)->prev = _node;                                             \
+        (list) = _node;                                                       \
     } while (0)
 
 /*************************************************************************/
@@ -153,18 +155,18 @@ int main(int ac, char **av)
 /* Append `node' to the end of `list'.  Insertion is performed in linear
  * time with the length of the list. */
 
-#define LIST_APPEND(node_,list)                 \
-    do {                                        \
-        typeof(list) _node = (node_);           \
-        typeof(_node) *_nextptr = &(list);      \
-        typeof(_node) _prev = NULL;             \
-        while (*_nextptr) {                     \
-            _prev = *_nextptr;                  \
-            _nextptr = &((*_nextptr)->next);    \
-        }                                       \
-        *_nextptr = _node;                      \
-        _node->prev = _prev;                    \
-        _node->next = NULL;                     \
+#define LIST_APPEND(node_, list)                                              \
+    do {                                                                      \
+        typeof(list) _node = (node_);                                         \
+        typeof(_node)* _nextptr = &(list);                                    \
+        typeof(_node) _prev = NULL;                                           \
+        while (*_nextptr) {                                                   \
+            _prev = *_nextptr;                                                \
+            _nextptr = &((*_nextptr)->next);                                  \
+        }                                                                     \
+        *_nextptr = _node;                                                    \
+        _node->prev = _prev;                                                  \
+        _node->next = NULL;                                                   \
     } while (0)
 
 /*************************************************************************/
@@ -178,39 +180,38 @@ int main(int ac, char **av)
  * `node' is inserted after it.  Insertion is performed in linear time
  * with the length of the list. */
 
-#define LIST_INSERT_ORDERED(node_,list,compare,field)   \
-    do {                                                \
-        typeof(list) _node = (node_);                   \
-        typeof(_node) _ptr, _prev;                      \
-        for (_ptr = (list), _prev = NULL; _ptr;         \
-             _prev = _ptr, _ptr = _ptr->next            \
-        ) {                                             \
-            if (compare(_node->field, _ptr->field) < 0) \
-                break;                                  \
-        }                                               \
-        _node->next = _ptr;                             \
-        _node->prev = _prev;                            \
-        if (_ptr)                                       \
-            _ptr->prev = _node;                         \
-        if (_prev)                                      \
-            _prev->next = _node;                        \
-        else                                            \
-            (list) = _node;                             \
+#define LIST_INSERT_ORDERED(node_, list, compare, field)                      \
+    do {                                                                      \
+        typeof(list) _node = (node_);                                         \
+        typeof(_node) _ptr, _prev;                                            \
+        for (_ptr = (list), _prev = NULL; _ptr;                               \
+             _prev = _ptr, _ptr = _ptr->next) {                               \
+            if (compare(_node->field, _ptr->field) < 0)                       \
+                break;                                                        \
+        }                                                                     \
+        _node->next = _ptr;                                                   \
+        _node->prev = _prev;                                                  \
+        if (_ptr)                                                             \
+            _ptr->prev = _node;                                               \
+        if (_prev)                                                            \
+            _prev->next = _node;                                              \
+        else                                                                  \
+            (list) = _node;                                                   \
     } while (0)
 
 /*************************************************************************/
 
 /* Remove `node' from `list'.  Removal is performed in constant time. */
 
-#define LIST_REMOVE(node_,list)                 \
-    do {                                        \
-        typeof(list) _node = (node_);           \
-        if (_node->next)                        \
-            _node->next->prev = _node->prev;    \
-        if (_node->prev)                        \
-            _node->prev->next = _node->next;    \
-        else                                    \
-            (list) = _node->next;               \
+#define LIST_REMOVE(node_, list)                                              \
+    do {                                                                      \
+        typeof(list) _node = (node_);                                         \
+        if (_node->next)                                                      \
+            _node->next->prev = _node->prev;                                  \
+        if (_node->prev)                                                      \
+            _node->prev->next = _node->next;                                  \
+        else                                                                  \
+            (list) = _node->next;                                             \
     } while (0)
 
 /*************************************************************************/
@@ -219,7 +220,7 @@ int main(int ac, char **av)
  * macro has the same properties as a for() loop.  `iter' must be an
  * lvalue. */
 
-#define LIST_FOREACH(iter,list) \
+#define LIST_FOREACH(iter, list)                                              \
     for ((iter) = (list); (iter); (iter) = (iter)->next)
 
 /*************************************************************************/
@@ -228,7 +229,7 @@ int main(int ac, char **av)
  * element, ensuring proper operation even when the current element is
  * deleted.  `iter' and `temp' must be lvalues. */
 
-#define LIST_FOREACH_SAFE(iter,list,temp) \
+#define LIST_FOREACH_SAFE(iter, list, temp)                                   \
     for ((iter) = (list); (iter) && (temp = (iter)->next, 1); (iter) = temp)
 
 /*************************************************************************/
@@ -241,12 +242,13 @@ int main(int ac, char **av)
  * strcmp()-like function (see LIST_INSERT_ORDERED).  The search is
  * performed in linear time, disregarding the comparison function. */
 
-#define LIST_SEARCH(list,field,target,compare,result)   \
-    do {                                                \
-        LIST_FOREACH ((result), (list)) {               \
-            if (compare((result)->field, (target)) == 0)\
-                break;                                  \
-        }                                               \
+#define LIST_SEARCH(list, field, target, compare, result)                     \
+    do {                                                                      \
+        LIST_FOREACH((result), (list))                                        \
+        {                                                                     \
+            if (compare((result)->field, (target)) == 0)                      \
+                break;                                                        \
+        }                                                                     \
     } while (0)
 
 /*************************************************************************/
@@ -254,12 +256,13 @@ int main(int ac, char **av)
 /* Search `list' as LIST_SEARCH does, but for a scalar value.  The search
  * is performed in linear time. */
 
-#define LIST_SEARCH_SCALAR(list,field,target,result)    \
-    do {                                                \
-        LIST_FOREACH ((result), (list)) {               \
-            if ((result)->field == (target))            \
-                break;                                  \
-        }                                               \
+#define LIST_SEARCH_SCALAR(list, field, target, result)                       \
+    do {                                                                      \
+        LIST_FOREACH((result), (list))                                        \
+        {                                                                     \
+            if ((result)->field == (target))                                  \
+                break;                                                        \
+        }                                                                     \
     } while (0)
 
 /*************************************************************************/
@@ -268,15 +271,16 @@ int main(int ac, char **av)
  * The search is performed in linear time, disregarding the comparison
  * function. */
 
-#define LIST_SEARCH_ORDERED(list,field,target,compare,result)   \
-    do {                                                        \
-        LIST_FOREACH ((result), (list)) {                       \
-            int i = compare((result)->field, (target));         \
-            if (i > 0)                                          \
-                (result) = NULL;                                \
-            if (i >= 0)                                         \
-                break;                                          \
-        }                                                       \
+#define LIST_SEARCH_ORDERED(list, field, target, compare, result)             \
+    do {                                                                      \
+        LIST_FOREACH((result), (list))                                        \
+        {                                                                     \
+            int i = compare((result)->field, (target));                       \
+            if (i > 0)                                                        \
+                (result) = NULL;                                              \
+            if (i >= 0)                                                       \
+                break;                                                        \
+        }                                                                     \
     } while (0)
 
 /*************************************************************************/
@@ -284,15 +288,16 @@ int main(int ac, char **av)
 /* Search `list' as LIST_SEARCH_ORDERED does, but for a scalar value.  The
  * search is performed in linear time. */
 
-#define LIST_SEARCH_ORDERED_SCALAR(list,field,target,result)    \
-    do {                                                        \
-        LIST_FOREACH ((result), (list)) {                       \
-            int i = (result)->field - (target);                 \
-            if (i > 0)                                          \
-                (result) = NULL;                                \
-            if (i >= 0)                                         \
-                break;                                          \
-        }                                                       \
+#define LIST_SEARCH_ORDERED_SCALAR(list, field, target, result)               \
+    do {                                                                      \
+        LIST_FOREACH((result), (list))                                        \
+        {                                                                     \
+            int i = (result)->field - (target);                               \
+            if (i > 0)                                                        \
+                (result) = NULL;                                              \
+            if (i >= 0)                                                       \
+                break;                                                        \
+        }                                                                     \
     } while (0)
 
 /*************************************************************************/
@@ -307,10 +312,10 @@ int main(int ac, char **av)
 /* Extend a variable-length array by one entry.  Execution time is no
  * greater than linear with the length of the array. */
 
-#define ARRAY2_EXTEND(array,size)                               \
-    do {                                                        \
-        (size)++;                                               \
-        (array) = srealloc((array), sizeof(*(array)) * (size)); \
+#define ARRAY2_EXTEND(array, size)                                            \
+    do {                                                                      \
+        (size)++;                                                             \
+        (array) = srealloc((array), sizeof(*(array)) * (size));               \
     } while (0)
 
 /*************************************************************************/
@@ -318,14 +323,14 @@ int main(int ac, char **av)
 /* Insert a slot at position `index' in a variable-length array.
  * Execution time is linear with the length of the array. */
 
-#define ARRAY2_INSERT(array,size,index_)                        \
-    do {                                                        \
-        unsigned int _index = (index_);                         \
-        (size)++;                                               \
-        (array) = srealloc((array), sizeof(*(array)) * (size)); \
-        if (_index < (size)-1)                                  \
-            memmove(&(array)[_index+1], &(array)[_index],       \
-                    sizeof(*(array)) * (((size)-1)-_index));    \
+#define ARRAY2_INSERT(array, size, index_)                                    \
+    do {                                                                      \
+        unsigned int _index = (index_);                                       \
+        (size)++;                                                             \
+        (array) = srealloc((array), sizeof(*(array)) * (size));               \
+        if (_index < (size) - 1)                                              \
+            memmove(&(array)[_index + 1], &(array)[_index],                   \
+                    sizeof(*(array)) * (((size) - 1) - _index));              \
     } while (0)
 
 /*************************************************************************/
@@ -333,21 +338,21 @@ int main(int ac, char **av)
 /* Delete entry number `index' from a variable-length array.  Execution
  * time is linear with the length of the array. */
 
-#define ARRAY2_REMOVE(array,size,index_)                        \
-    do {                                                        \
-        unsigned int _index = (index_);                         \
-        (size)--;                                               \
-        if (_index < (size))                                    \
-            memmove(&(array)[_index], &(array)[_index]+1,       \
-                    sizeof(*(array)) * ((size)-_index));        \
-        (array) = srealloc((array), sizeof(*(array)) * (size)); \
+#define ARRAY2_REMOVE(array, size, index_)                                    \
+    do {                                                                      \
+        unsigned int _index = (index_);                                       \
+        (size)--;                                                             \
+        if (_index < (size))                                                  \
+            memmove(&(array)[_index], &(array)[_index] + 1,                   \
+                    sizeof(*(array)) * ((size) - _index));                    \
+        (array) = srealloc((array), sizeof(*(array)) * (size));               \
     } while (0)
 
 /*************************************************************************/
 
 /* Iterate over every element in a variable-length array. */
 
-#define ARRAY2_FOREACH(iter,array,size) \
+#define ARRAY2_FOREACH(iter, array, size)                                     \
     for ((iter) = 0; (iter) < (size); (iter)++)
 
 /*************************************************************************/
@@ -357,12 +362,13 @@ int main(int ac, char **av)
  * be set equal to `size'.  The search is performed in linear time,
  * disregarding the comparison function. */
 
-#define ARRAY2_SEARCH(array,size,field,target,compare,result)   \
-    do {                                                        \
-        ARRAY2_FOREACH ((result), (array), (size)) {            \
-            if (compare((array)[(result)].field, (target)) == 0)\
-                break;                                          \
-        }                                                       \
+#define ARRAY2_SEARCH(array, size, field, target, compare, result)            \
+    do {                                                                      \
+        ARRAY2_FOREACH((result), (array), (size))                             \
+        {                                                                     \
+            if (compare((array)[(result)].field, (target)) == 0)              \
+                break;                                                        \
+        }                                                                     \
     } while (0)
 
 /*************************************************************************/
@@ -371,12 +377,13 @@ int main(int ac, char **av)
  * not have fields.  The search is performed in linear time, disregarding
  * the comparison function. */
 
-#define ARRAY2_SEARCH_PLAIN(array,size,target,compare,result)   \
-    do {                                                        \
-        ARRAY2_FOREACH ((result), (array), (size)) {            \
-            if (compare((array)[(result)], (target)) == 0)      \
-                break;                                          \
-        }                                                       \
+#define ARRAY2_SEARCH_PLAIN(array, size, target, compare, result)             \
+    do {                                                                      \
+        ARRAY2_FOREACH((result), (array), (size))                             \
+        {                                                                     \
+            if (compare((array)[(result)], (target)) == 0)                    \
+                break;                                                        \
+        }                                                                     \
     } while (0)
 
 /*************************************************************************/
@@ -384,12 +391,13 @@ int main(int ac, char **av)
 /* Search a variable-length array for a scalar value.  The search is
  * performed in linear time. */
 
-#define ARRAY2_SEARCH_SCALAR(array,size,field,target,result)    \
-    do {                                                        \
-        ARRAY2_FOREACH ((result), (array), (size)) {            \
-            if ((array)[(result)].field == (target))            \
-                break;                                          \
-        }                                                       \
+#define ARRAY2_SEARCH_SCALAR(array, size, field, target, result)              \
+    do {                                                                      \
+        ARRAY2_FOREACH((result), (array), (size))                             \
+        {                                                                     \
+            if ((array)[(result)].field == (target))                          \
+                break;                                                        \
+        }                                                                     \
     } while (0)
 
 /*************************************************************************/
@@ -397,12 +405,13 @@ int main(int ac, char **av)
 /* Search a variable-length array for a scalar value, when the array
  * elements do not have fields.  The search is performed in linear time. */
 
-#define ARRAY2_SEARCH_PLAIN_SCALAR(array,size,target,result)    \
-    do {                                                        \
-        ARRAY2_FOREACH ((result), (array), (size)) {            \
-            if ((array)[(result)] == (target))                  \
-                break;                                          \
-        }                                                       \
+#define ARRAY2_SEARCH_PLAIN_SCALAR(array, size, target, result)               \
+    do {                                                                      \
+        ARRAY2_FOREACH((result), (array), (size))                             \
+        {                                                                     \
+            if ((array)[(result)] == (target))                                \
+                break;                                                        \
+        }                                                                     \
     } while (0)
 
 /*************************************************************************/
@@ -411,23 +420,23 @@ int main(int ac, char **av)
 /* Perform the ARRAY2_* actions on an array `array' whose size is stored in
  * `array_count'. */
 
-#define ARRAY_EXTEND(array)       ARRAY2_EXTEND(array,array##_count)
-#define ARRAY_INSERT(array,index) ARRAY2_INSERT(array,array##_count,index)
-#define ARRAY_REMOVE(array,index) ARRAY2_REMOVE(array,array##_count,index)
-#define ARRAY_FOREACH(iter,array) ARRAY2_FOREACH(iter,array,array##_count)
-#define ARRAY_SEARCH(array,field,target,compare,result) \
-    ARRAY2_SEARCH(array,array##_count,field,target,compare,result)
-#define ARRAY_SEARCH_PLAIN(array,target,compare,result) \
-    ARRAY2_SEARCH_PLAIN(array,array##_count,target,compare,result)
-#define ARRAY_SEARCH_SCALAR(array,field,target,result) \
-    ARRAY2_SEARCH_SCALAR(array,array##_count,field,target,result)
-#define ARRAY_SEARCH_PLAIN_SCALAR(array,target,result) \
-    ARRAY2_SEARCH_PLAIN_SCALAR(array,array##_count,target,result)
+#define ARRAY_EXTEND(array)        ARRAY2_EXTEND(array, array##_count)
+#define ARRAY_INSERT(array, index) ARRAY2_INSERT(array, array##_count, index)
+#define ARRAY_REMOVE(array, index) ARRAY2_REMOVE(array, array##_count, index)
+#define ARRAY_FOREACH(iter, array) ARRAY2_FOREACH(iter, array, array##_count)
+#define ARRAY_SEARCH(array, field, target, compare, result)                   \
+    ARRAY2_SEARCH(array, array##_count, field, target, compare, result)
+#define ARRAY_SEARCH_PLAIN(array, target, compare, result)                    \
+    ARRAY2_SEARCH_PLAIN(array, array##_count, target, compare, result)
+#define ARRAY_SEARCH_SCALAR(array, field, target, result)                     \
+    ARRAY2_SEARCH_SCALAR(array, array##_count, field, target, result)
+#define ARRAY_SEARCH_PLAIN_SCALAR(array, target, result)                      \
+    ARRAY2_SEARCH_PLAIN_SCALAR(array, array##_count, target, result)
 
 /*************************************************************************/
 /*************************************************************************/
 
-#endif  /* LIST_ARRAY_H */
+#endif /* LIST_ARRAY_H */
 
 /*
  * Local variables:

@@ -15,8 +15,8 @@
 #include "modules/operserv/operserv.h"
 #include "modules/chanserv/chanserv.h"
 
-#include "nickserv.h"
-#include "ns-local.h"
+#include "modules/nickserv/nickserv.h"
+#include "modules/nickserv/ns-local.h"
 
 /*************************************************************************/
 

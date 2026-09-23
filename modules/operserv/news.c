@@ -15,8 +15,8 @@
 #include "databases.h"
 #include "language.h"
 
-#include "operserv.h"
-#include "news.h"
+#include "modules/operserv/operserv.h"
+#include "modules/operserv/news.h"
 
 /*************************************************************************/
 

@@ -10,6 +10,8 @@
 #ifndef MASKDATA_H
 #define MASKDATA_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 /* This structure and the corresponding functions are used by the autokill,

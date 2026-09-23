@@ -7,24 +7,24 @@
  * details.
  */
 
-#include "services.h"
 #include "modules.h"
+#include "services.h"
 
 /*************************************************************************/
 
 /* Maximum number of tries to randomly select a new guest nick when the
  * first one chosen is in use before giving up.
  */
-#define MAKEGUESTNICK_TRIES     1000
+#define MAKEGUESTNICK_TRIES 1000
 
 /*************************************************************************/
 
-#define add_user  static add_user
-#define del_user  static del_user
+#undef HASH_MODIFY_STATIC
+#define HASH_MODIFY_STATIC static
 #include "hash.h"
 DEFINE_HASH(user, User, nick)
-#undef add_user
-#undef del_user
+#undef HASH_MODIFY_STATIC
+#define HASH_MODIFY_STATIC HASH_STATIC
 
 int32 usercnt = 0, opcnt = 0;
 
@@ -40,21 +40,20 @@ static int cb_chan_kick = -1;
 
 /*************************************************************************/
 
-int user_init(int ac, char **av)
+int user_init(int ac, char** av)
 {
-    cb_check               = register_callback("user check");
-    cb_create              = register_callback("user create");
+    cb_check = register_callback("user check");
+    cb_create = register_callback("user create");
     cb_servicestamp_change = register_callback("user servicestamp change");
-    cb_nickchange1         = register_callback("user nickchange (before)");
-    cb_nickchange2         = register_callback("user nickchange (after)");
-    cb_delete              = register_callback("user delete");
-    cb_mode                = register_callback("user MODE");
-    cb_chan_part           = register_callback("channel PART");
-    cb_chan_kick           = register_callback("channel KICK");
-    if (cb_check < 0 || cb_create < 0 || cb_servicestamp_change < 0
-     || cb_nickchange1 < 0 || cb_nickchange2 < 0 || cb_delete < 0
-     || cb_mode < 0 || cb_chan_part < 0 || cb_chan_kick < 0
-    ) {
+    cb_nickchange1 = register_callback("user nickchange (before)");
+    cb_nickchange2 = register_callback("user nickchange (after)");
+    cb_delete = register_callback("user delete");
+    cb_mode = register_callback("user MODE");
+    cb_chan_part = register_callback("channel PART");
+    cb_chan_kick = register_callback("channel KICK");
+    if (cb_check < 0 || cb_create < 0 || cb_servicestamp_change < 0 ||
+        cb_nickchange1 < 0 || cb_nickchange2 < 0 || cb_delete < 0 ||
+        cb_mode < 0 || cb_chan_part < 0 || cb_chan_kick < 0) {
         log("user_init: register_callback() failed\n");
         return 0;
     }
@@ -65,7 +64,7 @@ int user_init(int ac, char **av)
 
 void user_cleanup(void)
 {
-    User *u;
+    User* u;
 
     for (u = first_user(); u; u = next_user())
         del_user(u);
@@ -88,9 +87,9 @@ void user_cleanup(void)
  * overall list, and return it.  Always successful.
  */
 
-static User *new_user(const char *nick)
+static User* new_user(const char* nick)
 {
-    User *user;
+    User* user;
 
     user = scalloc(sizeof(User), 1);
     if (!nick)
@@ -105,7 +104,7 @@ static User *new_user(const char *nick)
 
 /* Change the nickname of a user, and move pointers as necessary. */
 
-static void change_user_nick(User *user, const char *nick)
+static void change_user_nick(User* user, const char* nick)
 {
     del_user(user);
     strbcpy(user->nick, nick);
@@ -116,7 +115,7 @@ static void change_user_nick(User *user, const char *nick)
 
 /* Remove and free a User structure. */
 
-static void delete_user(User *user)
+static void delete_user(User* user)
 {
     struct u_chanlist *c, *c2;
     struct u_chaninfolist *ci, *ci2;
@@ -130,13 +129,15 @@ static void delete_user(User *user)
     free(user->ipaddr);
     free(user->realname);
     free(user->fakehost);
+    free(user->account);
     free(user->id_nicks);
-    LIST_FOREACH_SAFE (c, user->chans, c2) {
+    LIST_FOREACH_SAFE(c, user->chans, c2)
+    {
         chan_deluser(user, c->chan);
         free(c);
     }
-    LIST_FOREACH_SAFE (ci, user->id_chans, ci2)
-        free(ci);
+    LIST_FOREACH_SAFE(ci, user->id_chans, ci2)
+    free(ci);
 #define next snext
 #define prev sprev
     if (user->server)
@@ -154,7 +155,7 @@ static void delete_user(User *user)
  * deletes the User structure.
  */
 
-void quit_user(User *user, const char *quitmsg, int is_kill)
+void quit_user(User* user, const char* quitmsg, int is_kill)
 {
     call_callback_3(cb_delete, user, quitmsg, is_kill);
     delete_user(user);
@@ -164,26 +165,26 @@ void quit_user(User *user, const char *quitmsg, int is_kill)
 
 /* Return statistics.  Pointers are assumed to be valid. */
 
-void get_user_stats(long *nusers, long *memuse)
+void get_user_stats(long* nusers, long* memuse)
 {
     long count = 0, mem = 0;
-    User *user;
-    struct u_chanlist *uc;
-    struct u_chaninfolist *uci;
+    User* user;
+    struct u_chanlist* uc;
+    struct u_chaninfolist* uci;
 
     for (user = first_user(); user; user = next_user()) {
         count++;
         mem += sizeof(*user);
         if (user->username)
-            mem += strlen(user->username)+1;
+            mem += strlen(user->username) + 1;
         if (user->host)
-            mem += strlen(user->host)+1;
+            mem += strlen(user->host) + 1;
         if (user->realname)
-            mem += strlen(user->realname)+1;
-        LIST_FOREACH (uc, user->chans)
-            mem += sizeof(*uc);
-        LIST_FOREACH (uci, user->id_chans)
-            mem += sizeof(*uci);
+            mem += strlen(user->realname) + 1;
+        LIST_FOREACH(uc, user->chans)
+        mem += sizeof(*uc);
+        LIST_FOREACH(uci, user->id_chans)
+        mem += sizeof(*uci);
     }
     *nusers = count;
     *memuse = mem;
@@ -196,8 +197,8 @@ void get_user_stats(long *nusers, long *memuse)
 /* Part a user from a channel given the user's u_chanlist entry for the
  * channel. */
 
-static void part_channel_uc(User *user, struct u_chanlist *uc, int callback,
-                            const char *param, const char *source)
+static void part_channel_uc(User* user, struct u_chanlist* uc, int callback,
+                            const char* param, const char* source)
 {
     call_callback_4(callback, uc->chan, user, param, source);
     chan_deluser(user, uc->chan);
@@ -228,14 +229,14 @@ static void part_channel_uc(User *user, struct u_chanlist *uc, int callback,
  * Return 1 if message was accepted, 0 if rejected (AKILL/session limit).
  */
 
-int do_nick(const char *source, int ac, char **av)
+int do_nick(const char* source, int ac, char** av)
 {
-    User *user;
+    User* user;
 
     if (!*source) {
         /* This is a new user; create a User structure for it. */
 
-        int reconnect = 0;  /* Is user reconnecting after a split? */
+        int reconnect = 0; /* Is user reconnecting after a split? */
 
         log_debug(1, "new user: %s", av[0]);
 
@@ -260,7 +261,8 @@ int do_nick(const char *source, int ac, char **av)
         if (ac >= 8 && av[7]) {
             user->servicestamp = strtoul(av[7], NULL, 10);
             reconnect = (user->servicestamp != 0);
-        } else {
+        }
+        else {
             user->servicestamp = (uint32)user->signon;
             /* Unfortunately, we have no way to tell whether the user is
              * new or not */
@@ -329,25 +331,26 @@ int do_nick(const char *source, int ac, char **av)
              * include a '+' before the mode letters, but allow strings
              * without the '+' for robustness. */
             char buf[BUFSIZE];
-            char *newav[2];
+            char* newav[2];
             newav[0] = user->nick;
             if (*av[9] == '+') {
                 newav[1] = av[9];
-            } else {
+            }
+            else {
                 snprintf(buf, sizeof(buf), "+%s", av[9]);
                 newav[1] = buf;
             }
             do_umode(user->nick, 2, newav);
         }
-
-    } else {
+    }
+    else {
         /* An old user changing nicks. */
         char oldnick[NICKMAX];
 
         user = get_user(source);
         if (!user) {
-            log_debug(1, "user: NICK from nonexistent nick %s: %s",
-                      source, merge_args(ac, av));
+            log_debug(1, "user: NICK from nonexistent nick %s: %s", source,
+                      merge_args(ac, av));
             return 0;
         }
         log_debug(1, "%s changes nick to %s", source, av[0]);
@@ -371,19 +374,19 @@ int do_nick(const char *source, int ac, char **av)
  *      av[0] = channels to join
  */
 
-void do_join(const char *source, int ac, char **av)
+void do_join(const char* source, int ac, char** av)
 {
-    User *user;
+    User* user;
     char *s, *t;
 
     user = get_user(source);
     if (!user) {
-        log_debug(1, "user: JOIN from nonexistent user %s: %s",
-                  source, merge_args(ac, av));
+        log_debug(1, "user: JOIN from nonexistent user %s: %s", source,
+                  merge_args(ac, av));
         return;
     }
     t = av[0];
-    while (*(s=t)) {
+    while (*(s = t)) {
         t = s + strcspn(s, ",");
         if (*t)
             *t++ = 0;
@@ -403,19 +406,19 @@ void do_join(const char *source, int ac, char **av)
  *      av[1] = reason (optional)
  */
 
-void do_part(const char *source, int ac, char **av)
+void do_part(const char* source, int ac, char** av)
 {
-    User *user;
+    User* user;
     char *s, *t;
 
     user = get_user(source);
     if (!user) {
-        log_debug(1, "user: PART from nonexistent user %s: %s",
-                  source, merge_args(ac, av));
+        log_debug(1, "user: PART from nonexistent user %s: %s", source,
+                  merge_args(ac, av));
         return;
     }
     t = av[0];
-    while (*(s=t)) {
+    while (*(s = t)) {
         t = s + strcspn(s, ",");
         if (*t)
             *t++ = 0;
@@ -438,20 +441,20 @@ void do_part(const char *source, int ac, char **av)
  * will not be modified.
  */
 
-void do_kick(const char *source, int ac, char **av)
+void do_kick(const char* source, int ac, char** av)
 {
-    User *user;
+    User* user;
     char *s, *t;
 
     t = av[1];
-    while (*(s=t)) {
+    while (*(s = t)) {
         t = s + strcspn(s, ",");
         if (*t)
             *t++ = 0;
         user = get_user(s);
         if (!user) {
-            log_debug(1, "user: KICK for nonexistent user %s on %s: %s",
-                      s, av[0], merge_args(ac-2, av+2));
+            log_debug(1, "user: KICK for nonexistent user %s on %s: %s", s,
+                      av[0], merge_args(ac - 2, av + 2));
             continue;
         }
         log_debug(1, "kicking %s from %s", s, av[0]);
@@ -469,11 +472,11 @@ void do_kick(const char *source, int ac, char **av)
  *      av[1] = modes
  */
 
-void do_umode(const char *source, int ac, char **av)
+void do_umode(const char* source, int ac, char** av)
 {
-    User *user;
+    User* user;
     char *modestr, *s;
-    int add = 1;                /* 1 if adding modes, 0 if deleting */
+    int add = 1; /* 1 if adding modes, 0 if deleting */
 
     user = get_user(av[0]);
     if (!user) {
@@ -494,10 +497,12 @@ void do_umode(const char *source, int ac, char **av)
         if (modechar == '+') {
             add = 1;
             continue;
-        } else if (modechar == '-') {
+        }
+        else if (modechar == '-') {
             add = 0;
             continue;
-        } else if (add < 0) {
+        }
+        else if (add < 0) {
             continue;
         }
 
@@ -507,10 +512,10 @@ void do_umode(const char *source, int ac, char **av)
         if (flag == MODE_INVALID)
             flag = 0;
         params = mode_char_to_params(modechar, MODE_USER);
-        params = (params >> (add*8)) & 0xFF;
+        params = (params >> (add * 8)) & 0xFF;
         if (ac < params) {
-            log("user: MODE %s %s: missing parameter(s) for %c%c",
-                user->nick, modestr, add ? '+' : '-', modechar);
+            log("user: MODE %s %s: missing parameter(s) for %c%c", user->nick,
+                modestr, add ? '+' : '-', modechar);
             break;
         }
 
@@ -539,14 +544,14 @@ void do_umode(const char *source, int ac, char **av)
  * argument string will not be modified.
  */
 
-void do_quit(const char *source, int ac, char **av)
+void do_quit(const char* source, int ac, char** av)
 {
-    User *user;
+    User* user;
 
     user = get_user(source);
     if (!user) {
-        log_debug(1, "user: QUIT from nonexistent user %s: %s",
-                  source, merge_args(ac, av));
+        log_debug(1, "user: QUIT from nonexistent user %s: %s", source,
+                  merge_args(ac, av));
         return;
     }
     log_debug(1, "%s quits", source);
@@ -562,9 +567,9 @@ void do_quit(const char *source, int ac, char **av)
  * argument strings will not be modified.
  */
 
-void do_kill(const char *source, int ac, char **av)
+void do_kill(const char* source, int ac, char** av)
 {
-    User *user;
+    User* user;
 
     user = get_user(av[0]);
     if (!user)
@@ -580,10 +585,10 @@ void do_kill(const char *source, int ac, char **av)
  * join succeeded, NULL otherwise.
  */
 
-Channel *join_channel(User *user, const char *channel, int32 modes)
+Channel* join_channel(User* user, const char* channel, int32 modes)
 {
-    Channel *c = chan_adduser(user, channel, modes);
-    struct u_chanlist *uc;
+    Channel* c = chan_adduser(user, channel, modes);
+    struct u_chanlist* uc;
 
     if (!c)
         return NULL;
@@ -597,10 +602,10 @@ Channel *join_channel(User *user, const char *channel, int32 modes)
 
 /* Part a user from a channel. */
 
-int part_channel(User *user, const char *channel, int callback,
-                 const char *param, const char *source)
+int part_channel(User* user, const char* channel, int callback,
+                 const char* param, const char* source)
 {
-    struct u_chanlist *uc;
+    struct u_chanlist* uc;
     LIST_SEARCH(user->chans, chan->name, channel, irc_stricmp, uc);
     if (uc)
         part_channel_uc(user, uc, callback, param, source);
@@ -612,11 +617,11 @@ int part_channel(User *user, const char *channel, int callback,
 /* Part a user from all channels s/he is in.  Assumes cb_chan_part, an
  * empty `param' string, and the user as source. */
 
-void part_all_channels(User *user)
+void part_all_channels(User* user)
 {
     struct u_chanlist *uc, *nextuc;
-    LIST_FOREACH_SAFE (uc, user->chans, nextuc)
-        part_channel_uc(user, uc, cb_chan_part, "", user->nick);
+    LIST_FOREACH_SAFE(uc, user->chans, nextuc)
+    part_channel_uc(user, uc, cb_chan_part, "", user->nick);
 }
 
 /*************************************************************************/
@@ -629,7 +634,7 @@ void part_all_channels(User *user)
 
 /* Is the given user an oper? */
 
-int is_oper(const User *user)
+int is_oper(const User* user)
 {
     return user != NULL && (user->mode & UMODE_o);
 }
@@ -640,9 +645,9 @@ int is_oper(const User *user)
  * channel if so, NULL if not.
  */
 
-Channel *is_on_chan(const User *user, const char *chan)
+Channel* is_on_chan(const User* user, const char* chan)
 {
-    struct u_chanlist *c;
+    struct u_chanlist* c;
 
     if (!user || !chan)
         return NULL;
@@ -654,10 +659,10 @@ Channel *is_on_chan(const User *user, const char *chan)
 
 /* Is the given user a channel operator on the given channel? */
 
-int is_chanop(const User *user, const char *chan)
+int is_chanop(const User* user, const char* chan)
 {
-    Channel *c = chan ? get_channel(chan) : NULL;
-    struct c_userlist *cu;
+    Channel* c = chan ? get_channel(chan) : NULL;
+    struct c_userlist* cu;
 
     if (!user || !chan || !c)
         return 0;
@@ -669,10 +674,10 @@ int is_chanop(const User *user, const char *chan)
 
 /* Is the given user voiced (channel mode +v) on the given channel? */
 
-int is_voiced(const User *user, const char *chan)
+int is_voiced(const User* user, const char* chan)
 {
-    Channel *c = chan ? get_channel(chan) : NULL;
-    struct c_userlist *cu;
+    Channel* c = chan ? get_channel(chan) : NULL;
+    struct c_userlist* cu;
 
     if (!user || !chan || !c)
         return 0;
@@ -691,9 +696,9 @@ int is_voiced(const User *user, const char *chan)
  * Note that CIDR matching on IP addresses is _not_ performed.
  */
 
-int match_usermask(const char *mask, const User *user)
+int match_usermask(const char* mask, const User* user)
 {
-    char *mask2;
+    char* mask2;
     char *nick, *username, *host;
     int match_user, match_host, result;
 
@@ -705,7 +710,8 @@ int match_usermask(const char *mask, const User *user)
     if (strchr(mask2, '!')) {
         nick = strtok(mask2, "!");
         username = strtok(NULL, "@");
-    } else {
+    }
+    else {
         nick = NULL;
         username = strtok(mask2, "@");
     }
@@ -721,9 +727,10 @@ int match_usermask(const char *mask, const User *user)
     if (user->ipaddr)
         match_host |= match_wild_nocase(host, user->ipaddr);
     if (nick) {
-        result = match_wild_nocase(nick, user->nick) &&
-                 match_user && match_host;
-    } else {
+        result =
+            match_wild_nocase(nick, user->nick) && match_user && match_host;
+    }
+    else {
         result = match_user && match_host;
     }
     free(mask2);
@@ -737,9 +744,9 @@ int match_usermask(const char *mask, const User *user)
  * missing parts.  Assumes `mask' is a non-empty string.
  */
 
-void split_usermask(const char *mask, char **nick, char **user, char **host)
+void split_usermask(const char* mask, char** nick, char** user, char** host)
 {
-    char *mask2 = sstrdup(mask);
+    char* mask2 = sstrdup(mask);
     char *mynick, *myuser, *myhost;
 
     mynick = mask2;
@@ -754,15 +761,15 @@ void split_usermask(const char *mask, char **nick, char **user, char **host)
         mynick = NULL;
         myuser = mask2;
         myhost = strchr(mask2, '@');
-        if (myhost)  /* Paranoia */
+        if (myhost) /* Paranoia */
             *myhost++ = 0;
     }
     if (!mynick || !*mynick)
-        mynick = (char *)"*";
+        mynick = (char*)"*";
     if (!myuser || !*myuser)
-        myuser = (char *)"*";
+        myuser = (char*)"*";
     if (!myhost || !*myhost)
-        myhost = (char *)"*";
+        myhost = (char*)"*";
     *nick = sstrdup(mynick);
     *user = sstrdup(myuser);
     *host = sstrdup(myhost);
@@ -782,7 +789,7 @@ void split_usermask(const char *mask, char **nick, char **user, char **host)
  * use_fakehost is nonzero.
  */
 
-char *create_mask(const User *user, int use_fakehost)
+char* create_mask(const User* user, int use_fakehost)
 {
     char *mask, *s, *end, *host;
 
@@ -795,23 +802,23 @@ char *create_mask(const User *user, int use_fakehost)
      */
     end = mask = smalloc(strlen(user->username) + strlen(host) + 2);
     end += sprintf(end, "%s@", user->username);
-    if (strspn(host, "0123456789.") == strlen(host)
-                && (s = strchr(host, '.'))
-                && (s = strchr(s+1, '.'))
-                && (s = strchr(s+1, '.'))
-                && (   !strchr(s+1, '.'))) {    /* IP addr */
+    if (strspn(host, "0123456789.") == strlen(host) &&
+        (s = strchr(host, '.')) && (s = strchr(s + 1, '.')) &&
+        (s = strchr(s + 1, '.')) && (!strchr(s + 1, '.'))) { /* IP addr */
         s = sstrdup(host);
         *strrchr(s, '.') = 0;
         sprintf(end, "%s.*", s);
         free(s);
-    } else {
-        if ((s = strchr(host+1, '.')) && strchr(s+1, '.')) {
-            s = sstrdup(s-1);
+    }
+    else {
+        if ((s = strchr(host + 1, '.')) && strchr(s + 1, '.')) {
+            s = sstrdup(s - 1);
             *s = '*';
-        } else {
+        }
+        else {
             s = sstrdup(host);
         }
-        strcpy(end, s);  /* safe: see above */
+        strcpy(end, s); /* safe: see above */
         free(s);
     }
     return mask;
@@ -837,13 +844,13 @@ char *create_mask(const User *user, int use_fakehost)
  * restarted.
  */
 
-char *make_guest_nick(void)
+char* make_guest_nick(void)
 {
-    static char nickbuf[NICKMAX+1];     /* +1 to check for overrun */
-    static uint32 counter = 0;          /* Unique suffix counter */
-    int tries;                          /* Tries to find an unused nick */
-    int prefixlen;                      /* Length of nick prefix */
-    uint32 suffixmod;                   /* Modulo for suffix counter */
+    static char nickbuf[NICKMAX + 1]; /* +1 to check for overrun */
+    static uint32 counter = 0;        /* Unique suffix counter */
+    int tries;                        /* Tries to find an unused nick */
+    int prefixlen;                    /* Length of nick prefix */
+    uint32 suffixmod;                 /* Modulo for suffix counter */
     int i;
 
     /* Sanity checks on nick prefix length */
@@ -853,11 +860,13 @@ char *make_guest_nick(void)
          * ourselves out of the water. */
         fatal("make_guest_nick(): protocol_nickmax too small (%d)",
               protocol_nickmax);
-    } else if (prefixlen+4 > protocol_nickmax) {
+    }
+    else if (prefixlen + 4 > protocol_nickmax) {
         /* Reserve at least 4 digits for the suffix */
-        prefixlen = protocol_nickmax-4;
+        prefixlen = protocol_nickmax - 4;
         log("warning: make_guest_nick(): GuestNickPrefix too long,"
-            " shortening to %d characters", prefixlen);
+            " shortening to %d characters",
+            prefixlen);
         GuestNickPrefix[prefixlen] = 0;
     }
 
@@ -867,8 +876,9 @@ char *make_guest_nick(void)
         suffixmod = 1;
         while (i-- > 0)
             suffixmod *= 10;
-    } else {
-        suffixmod = 0;  /* no modulo */
+    }
+    else {
+        suffixmod = 0; /* no modulo */
     }
 
     /* Actually generate the nick.  If the nick already exists, generate a
@@ -877,13 +887,14 @@ char *make_guest_nick(void)
      * up with. */
     tries = 0;
     for (;;) {
-        if (counter == 0)       /* initialize to random the first time */
+        if (counter == 0) /* initialize to random the first time */
             counter = rand();
-        if (suffixmod)          /* strip down to right number of digits */
+        if (suffixmod) /* strip down to right number of digits */
             counter %= suffixmod;
-        if (counter == 0)       /* if rand() gave us 0 or N*suffixmod... */
-            counter = 1;        /* ... use 1 instead */
-        i = snprintf(nickbuf, sizeof(nickbuf), "%s%u", GuestNickPrefix, counter);
+        if (counter == 0) /* if rand() gave us 0 or N*suffixmod... */
+            counter = 1;  /* ... use 1 instead */
+        i = snprintf(nickbuf, sizeof(nickbuf), "%s%u", GuestNickPrefix,
+                     counter);
         if (i > protocol_nickmax) {
             log("BUG: make_guest_nick() generated %s but nickmax == %d!",
                 nickbuf, protocol_nickmax);
@@ -903,7 +914,7 @@ char *make_guest_nick(void)
     /* Increment the unique suffix counter modulo suffixmod, and avoid 0
      * (which would cause a reset to a random value) */
     counter++;
-    if (counter == suffixmod)  /* because suffixmod==0 if no modulo */
+    if (counter == suffixmod) /* because suffixmod==0 if no modulo */
         counter = 1;
 
     /* Return the nick */
@@ -918,13 +929,13 @@ char *make_guest_nick(void)
  * followed by between 1 and 10 digits inclusive.
  */
 
-int is_guest_nick(const char *nick)
+int is_guest_nick(const char* nick)
 {
     int prefixlen = strlen(GuestNickPrefix);
     int nicklen = strlen(nick);
-    return nicklen >= prefixlen+1 && nicklen <= prefixlen+10
-        && irc_strnicmp(nick, GuestNickPrefix, prefixlen) == 0
-        && strspn(nick+prefixlen, "1234567890") == nicklen-prefixlen;
+    return nicklen >= prefixlen + 1 && nicklen <= prefixlen + 10 &&
+           irc_strnicmp(nick, GuestNickPrefix, prefixlen) == 0 &&
+           strspn(nick + prefixlen, "1234567890") == nicklen - prefixlen;
 }
 
 /*************************************************************************/

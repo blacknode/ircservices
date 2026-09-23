@@ -7,9 +7,9 @@
  * details.
  */
 
-#include "services.h"
 #include "language.h"
 #include "modules.h"
+#include "services.h"
 #include "timeout.h"
 #include <string.h>
 
@@ -24,10 +24,10 @@ static char clear_channel_sender[NICKMAX] = {0};
 /*************************************************************************/
 /*************************************************************************/
 
-int actions_init(int ac, char **av)
+int actions_init(int ac, char** av)
 {
     cb_clear_channel = register_callback("clear channel");
-    cb_set_topic     = register_callback("set topic");
+    cb_set_topic = register_callback("set topic");
     if (cb_clear_channel < 0 || cb_set_topic < 0) {
         log("actions_init: register_callback() failed\n");
         return 0;
@@ -55,7 +55,7 @@ void actions_cleanup(void)
  * killed, and 0 otherwise.
  */
 
-int bad_password(const char *service, User *u, const char *what)
+int bad_password(const char* service, User* u, const char* what)
 {
     time_t now = time(NULL);
 
@@ -65,8 +65,8 @@ int bad_password(const char *service, User *u, const char *what)
     if (!BadPassLimit)
         return 0;
 
-    if (BadPassTimeout > 0 && u->bad_pw_time > 0
-                        && now >= u->bad_pw_time + BadPassTimeout)
+    if (BadPassTimeout > 0 && u->bad_pw_time > 0 &&
+        now >= u->bad_pw_time + BadPassTimeout)
         u->bad_pw_count = 0;
     u->bad_pw_count++;
     u->bad_pw_time = now;
@@ -75,7 +75,8 @@ int bad_password(const char *service, User *u, const char *what)
         snprintf(buf, sizeof(buf), "Too many invalid passwords (%s)", what);
         kill_user(NULL, u->nick, buf);
         return 2;
-    } else if (u->bad_pw_count == BadPassLimit-1) {
+    }
+    else if (u->bad_pw_count == BadPassLimit - 1) {
         if (service)
             notice_lang(service, u, PASSWORD_WARNING);
         return 1;
@@ -95,14 +96,14 @@ int bad_password(const char *service, User *u, const char *what)
  * support it.
  */
 
-static void clear_modes(const char *sender, Channel *chan);
-static void clear_bans(const char *sender, Channel *chan, User *u);
-static void clear_umodes(const char *sender, Channel *chan, int32 modes);
-static void clear_users(const char *sender, Channel *chan, const char *reason);
+static void clear_modes(const char* sender, Channel* chan);
+static void clear_bans(const char* sender, Channel* chan, User* u);
+static void clear_umodes(const char* sender, Channel* chan, int32 modes);
+static void clear_users(const char* sender, Channel* chan, const char* reason);
 
-void clear_channel(Channel *chan, int what, const void *param)
+void clear_channel(Channel* chan, int what, const void* param)
 {
-    const char *sender =
+    const char* sender =
         *clear_channel_sender ? clear_channel_sender : ServerName;
 
     if (call_callback_4(cb_clear_channel, sender, chan, what, param) > 0) {
@@ -111,7 +112,7 @@ void clear_channel(Channel *chan, int what, const void *param)
     }
 
     if (what & CLEAR_USERS) {
-        clear_users(sender, chan, (const char *)param);
+        clear_users(sender, chan, (const char*)param);
         /* Once we kick all the users, nothing else will matter */
         return;
     }
@@ -119,13 +120,13 @@ void clear_channel(Channel *chan, int what, const void *param)
     if (what & CLEAR_MODES)
         clear_modes(sender, chan);
     if (what & CLEAR_BANS)
-        clear_bans(sender, chan, (User *)param);
+        clear_bans(sender, chan, (User*)param);
     if (what & CLEAR_UMODES)
         clear_umodes(sender, chan, (int32)(long)param);
-    set_cmode(NULL, chan);      /* Flush modes out */
+    set_cmode(NULL, chan); /* Flush modes out */
 }
 
-static void clear_modes(const char *sender, Channel *chan)
+static void clear_modes(const char* sender, Channel* chan)
 {
     char buf[BUFSIZE];
     snprintf(buf, sizeof(buf), "-%s",
@@ -133,18 +134,18 @@ static void clear_modes(const char *sender, Channel *chan)
     set_cmode(sender, chan, buf, chan->key);
 }
 
-static void clear_bans(const char *sender, Channel *chan, User *u)
+static void clear_bans(const char* sender, Channel* chan, User* u)
 {
     int i, count;
-    char **bans;
+    char** bans;
 
     if (!chan->bans_count)
         return;
 
     /* Save original ban info */
     count = chan->bans_count;
-    bans = smalloc(sizeof(char *) * count);
-    memcpy(bans, chan->bans, sizeof(char *) * count);
+    bans = smalloc(sizeof(char*) * count);
+    memcpy(bans, chan->bans, sizeof(char*) * count);
 
     for (i = 0; i < count; i++) {
         if (!u || match_usermask(bans[i], u))
@@ -153,13 +154,14 @@ static void clear_bans(const char *sender, Channel *chan, User *u)
     free(bans);
 }
 
-static void clear_umodes(const char *sender, Channel *chan, int32 modes)
+static void clear_umodes(const char* sender, Channel* chan, int32 modes)
 {
-    struct c_userlist *cu;
+    struct c_userlist* cu;
 
-    LIST_FOREACH (cu, chan->users) {
-        int32 to_clear = cu->mode & modes;  /* modes we need to clear */
-        int32 flag = 1;                     /* mode we're clearing now */
+    LIST_FOREACH(cu, chan->users)
+    {
+        int32 to_clear = cu->mode & modes; /* modes we need to clear */
+        int32 flag = 1;                    /* mode we're clearing now */
         while (to_clear) {
             if (flag == MODE_INVALID) {
                 log("BUG: hit invalid flag in clear_umodes!"
@@ -179,22 +181,22 @@ static void clear_umodes(const char *sender, Channel *chan, int32 modes)
     }
 }
 
-static void clear_users(const char *sender, Channel *chan, const char *reason)
+static void clear_users(const char* sender, Channel* chan, const char* reason)
 {
-    char *av[3];
+    char* av[3];
     struct c_userlist *cu, *next;
 
     /* Prevent anyone from coming back in.  The ban will disappear
      * once everyone's gone. */
     set_cmode(sender, chan, "+b", "*!*@*");
-    set_cmode(NULL, chan);      /* Flush modes out */
+    set_cmode(NULL, chan); /* Flush modes out */
 
     av[0] = chan->name;
-    av[2] = (char *)reason;
-    LIST_FOREACH_SAFE (cu, chan->users, next) {
+    av[2] = (char*)reason;
+    LIST_FOREACH_SAFE(cu, chan->users, next)
+    {
         av[1] = cu->user->nick;
-        send_channel_cmd(sender, "KICK %s %s :%s",
-                         av[0], av[1], av[2]);
+        send_channel_cmd(sender, "KICK %s %s :%s", av[0], av[1], av[2]);
         do_kick(sender, 3, av);
     }
 }
@@ -207,14 +209,15 @@ static void clear_users(const char *sender, Channel *chan, const char *reason)
  * nickname was set, in a static buffer.
  */
 
-const char *set_clear_channel_sender(const char *newsender)
+const char* set_clear_channel_sender(const char* newsender)
 {
     static char oldsender[NICKMAX];
     strbcpy(oldsender, clear_channel_sender);
     if (newsender != PTR_INVALID) {
         if (newsender) {
             strbcpy(clear_channel_sender, newsender);
-        } else {
+        }
+        else {
             *clear_channel_sender = 0;
         }
     }
@@ -227,9 +230,9 @@ const char *set_clear_channel_sender(const char *newsender)
  * generate the kill, or NULL for a server-generated kill.
  */
 
-void kill_user(const char *source, const char *user, const char *reason)
+void kill_user(const char* source, const char* user, const char* reason)
 {
-    char *av[2];
+    char* av[2];
 
     if (!user || !*user)
         return;
@@ -239,7 +242,7 @@ void kill_user(const char *source, const char *user, const char *reason)
         reason = "";
     char buf[BUFSIZE + strlen(source) + strlen(reason) + 3];
     snprintf(buf, sizeof(buf), "%s (%s)", source, reason);
-    av[0] = (char *)user;
+    av[0] = (char*)user;
     av[1] = buf;
     send_cmd(source, "KILL %s :%s", user, av[1]);
     do_kill(source, 2, av);
@@ -251,8 +254,8 @@ void kill_user(const char *source, const char *user, const char *reason)
  * nick to use to send the TOPIC message; if NULL, the server name is used.
  */
 
-void set_topic(const char *source, Channel *c, const char *topic,
-               const char *setter, time_t t)
+void set_topic(const char* source, Channel* c, const char* topic,
+               const char* setter, time_t t)
 {
     if (!source)
         source = ServerName;
@@ -287,50 +290,50 @@ void set_topic(const char *source, Channel *c, const char *topic,
  *       snprintf() or the like) before being passed.
  */
 
-#define MAXMODES 6  /* Maximum number of mode parameters */
+#define MAXMODES 6 /* Maximum number of mode parameters */
 
-#define MAXPARAMSLEN \
-    (510- NICKMAX -    6   - CHANMAX  -(3+31+2*MAXMODES)-MAXMODES)
+#define MAXPARAMSLEN                                                          \
+    (510 - NICKMAX - 6 - CHANMAX - (3 + 31 + 2 * MAXMODES) - MAXMODES)
 /*       |:sender| | MODE | |#channel|    | -...+...|    { param}*
  * Note that "-...+..." can contain at most 31 (binary) plus 2*MAXMODES
  * (MAXMODES modes with parameters plus +/-) characters. */
 
 static struct modedata {
     time_t used;
-    Channel *channel;
+    Channel* channel;
     char sender[NICKMAX];
     int32 binmodes_on;
     int32 binmodes_off;
-    char opmodes[MAXMODES*2+1];
-    char params[MAXMODES][MAXPARAMSLEN+1];
+    char opmodes[MAXMODES * 2 + 1];
+    char params[MAXMODES][MAXPARAMSLEN + 1];
     int nopmodes, nparams, paramslen;
-    Timeout *timeout;   /* For timely flushing */
+    Timeout* timeout; /* For timely flushing */
 } modedata[MERGE_CHANMODES_MAX];
 
-static void possibly_remove_mode(struct modedata *md, char mode,
-                                 const char *user);
-static void add_mode_with_params(struct modedata *md, char mode, int is_add,
-                                 int params, const char *parambuf, int len);
-static void flush_cmode(struct modedata *md);
-static void flush_cmode_callback(Timeout *t);
+static void possibly_remove_mode(struct modedata* md, char mode,
+                                 const char* user);
+static void add_mode_with_params(struct modedata* md, char mode, int is_add,
+                                 int params, const char* parambuf, int len);
+static void flush_cmode(struct modedata* md);
+static void flush_cmode_callback(Timeout* t);
 
 /*************************************************************************/
 
-void set_cmode(const char *sender, Channel *channel, ...)
+void set_cmode(const char* sender, Channel* channel, ...)
 {
     va_list args;
     const char *modes, *modes_orig;
-    struct modedata *md;
+    struct modedata* md;
     int which = -1, add;
     int i;
     char c;
-
 
     /* If `sender' is NULL, flush out pending modes for the channel (for
      * all channels if `channel' is also NULL) and return. */
     if (!sender) {
         for (i = 0; i < MERGE_CHANMODES_MAX; i++) {
-            if (modedata[i].used && (!channel || modedata[i].channel==channel))
+            if (modedata[i].used &&
+                (!channel || modedata[i].channel == channel))
                 flush_cmode(&modedata[i]);
         }
         return;
@@ -339,7 +342,7 @@ void set_cmode(const char *sender, Channel *channel, ...)
     /* Get the mode string from the argument list; save the original value
      * for error messages. */
     va_start(args, channel);
-    modes = modes_orig = va_arg(args, const char *);
+    modes = modes_orig = va_arg(args, const char*);
 
     /* See if we already have pending modes for the channel; if so, reuse
      * that entry (if the entry is for a different sender, flush out the
@@ -383,19 +386,20 @@ void set_cmode(const char *sender, Channel *channel, ...)
     md->channel = channel;
 
     /* Loop through and process all modes in the mode string. */
-    add = -2;  /* -2 means we haven't warned about a missing leading +/- yet */
+    add = -2; /* -2 means we haven't warned about a missing leading +/- yet */
     while ((c = *modes++) != 0) {
         int32 flag;
         int params, is_chanuser;
 
-        log_debug(2, "set_cmode(%s,%s): char=%c(%02X)",
-                  sender, channel->name, c<0x20||c>0x7E ? '.' : c, c);
+        log_debug(2, "set_cmode(%s,%s): char=%c(%02X)", sender, channel->name,
+                  c < 0x20 || c > 0x7E ? '.' : c, c);
 
         /* + and - are handled specially. */
         if (c == '+') {
             add = 1;
             continue;
-        } else if (c == '-') {
+        }
+        else if (c == '-') {
             add = 0;
             continue;
         }
@@ -423,10 +427,10 @@ void set_cmode(const char *sender, Channel *channel, ...)
                 continue;
             }
         }
-        params = (params >> (add*8)) & 0xFF;
+        params = (params >> (add * 8)) & 0xFF;
 
-        if (params) {  /* Mode with parameters */
-            char parambuf[BUFSIZE];  /* for putting the parameters in */
+        if (params) {               /* Mode with parameters */
+            char parambuf[BUFSIZE]; /* for putting the parameters in */
             int len = 0;
 
             if (params > MAXMODES) {
@@ -437,11 +441,11 @@ void set_cmode(const char *sender, Channel *channel, ...)
             /* Merge all the parameters into a single string (with no
              * leading whitespace) */
             for (i = 0; i < params; i++) {
-                const char *s = va_arg(args, const char *);
-                log_debug(2, "set_cmode(%s,%s):    param=%s",
-                          sender, channel->name, s);
-                len += snprintf(parambuf+len,  sizeof(parambuf)-len,
-                                "%s%s", len ? " " : "", s);
+                const char* s = va_arg(args, const char*);
+                log_debug(2, "set_cmode(%s,%s):    param=%s", sender,
+                          channel->name, s);
+                len += snprintf(parambuf + len, sizeof(parambuf) - len, "%s%s",
+                                len ? " " : "", s);
             }
             if (flag != MODE_INVALID) {
                 /* If it's a binary mode, see if we've set this mode before.
@@ -456,17 +460,19 @@ void set_cmode(const char *sender, Channel *channel, ...)
                 }
             }
             add_mode_with_params(md, c, add, params, parambuf, len);
-        } else {  /* Binary mode */
+        }
+        else { /* Binary mode */
             /* Note that `flag' should already be set to this value, since
              * all channel user modes take parameters and thus will never
              * get here, but just in case... */
             flag = mode_char_to_flag(c, MODE_CHANNEL);
             if (add) {
-                md->binmodes_on  |=  flag;
+                md->binmodes_on |= flag;
                 md->binmodes_off &= ~flag;
-            } else {
-                md->binmodes_off |=  flag;
-                md->binmodes_on  &= ~flag;
+            }
+            else {
+                md->binmodes_off |= flag;
+                md->binmodes_on &= ~flag;
             }
         }
     }
@@ -475,8 +481,8 @@ void set_cmode(const char *sender, Channel *channel, ...)
 
     if (MergeChannelModes) {
         if (!md->timeout) {
-            md->timeout = add_timeout_ms(MergeChannelModes,
-                                         flush_cmode_callback, 0);
+            md->timeout =
+                add_timeout_ms(MergeChannelModes, flush_cmode_callback, 0);
             md->timeout->data = md;
         }
     }
@@ -490,17 +496,17 @@ void set_cmode(const char *sender, Channel *channel, ...)
  * string pointed to by `user'.
  */
 
-static void possibly_remove_mode(struct modedata *md, char mode,
-                                 const char *user)
+static void possibly_remove_mode(struct modedata* md, char mode,
+                                 const char* user)
 {
     int i;
-    char *s;
+    char* s;
 
-    log_debug(2, "possibly_remove_mode %c from %.*s%s%s",
-              mode, md->nopmodes*2, md->opmodes,
-              user ? " for user " : "", user ? user : "");
-    for (i = md->nopmodes-1; i >= 0; i--) {
-        if (md->opmodes[i*2+1] == mode) {
+    log_debug(2, "possibly_remove_mode %c from %.*s%s%s", mode,
+              md->nopmodes * 2, md->opmodes, user ? " for user " : "",
+              user ? user : "");
+    for (i = md->nopmodes - 1; i >= 0; i--) {
+        if (md->opmodes[i * 2 + 1] == mode) {
             /* We've already set this mode once */
             if (user) {
                 /* Only remove the old mode if the nick matches */
@@ -510,20 +516,20 @@ static void possibly_remove_mode(struct modedata *md, char mode,
             /* Remove the mode */
             log_debug(2, "   removing mode %d/%d", i, md->nopmodes);
             md->nopmodes--;
-            s = md->opmodes + (i*2);
-            memmove(s, s+2, strlen(s+2)+1);
+            s = md->opmodes + (i * 2);
+            memmove(s, s + 2, strlen(s + 2) + 1);
             /* Count parameters for this mode and decrement total by count */
             md->nparams--;
-            s = md->params[i]-1;
-            while ((s = strchr(s+1, ' ')) != NULL)
+            s = md->params[i] - 1;
+            while ((s = strchr(s + 1, ' ')) != NULL)
                 md->nparams--;
             /* Move parameter pointers */
             if (i < md->nopmodes) {
-                memmove(md->params+i, md->params+i+1,
-                        sizeof(md->params[0])*(md->nopmodes-i));
+                memmove(md->params + i, md->params + i + 1,
+                        sizeof(md->params[0]) * (md->nopmodes - i));
             }
             /* Clear tail slot */
-            memset(md->params+md->nopmodes, 0, sizeof(md->params[0]));
+            memset(md->params + md->nopmodes, 0, sizeof(md->params[0]));
         }
     }
 }
@@ -535,23 +541,24 @@ static void possibly_remove_mode(struct modedata *md, char mode,
  * parameter list, and `len' is strlen(parambuf).
  */
 
-static void add_mode_with_params(struct modedata *md, char mode, int is_add,
-                                 int params, const char *parambuf, int len)
+static void add_mode_with_params(struct modedata* md, char mode, int is_add,
+                                 int params, const char* parambuf, int len)
 {
-    char *s;
+    char* s;
 
     if (len < 0) {
         log("add_mode_with_params(): BUG: parameter length < 0 (%d)", len);
         len = 0;
     }
-    log_debug(2, "add_mode_with_params: current=%.*s mode=%c add=%d"
-              " params=%d[%.*s]", md->nopmodes*2, md->opmodes, mode, is_add,
-              params, len, parambuf);
+    log_debug(2,
+              "add_mode_with_params: current=%.*s mode=%c add=%d"
+              " params=%d[%.*s]",
+              md->nopmodes * 2, md->opmodes, mode, is_add, params, len,
+              parambuf);
 
     /* Check for overflow of parameter count or length */
-    if (md->nparams+params > MAXMODES
-     || md->paramslen+1+len > MAXPARAMSLEN
-    ) {
+    if (md->nparams + params > MAXMODES ||
+        md->paramslen + 1 + len > MAXPARAMSLEN) {
         /* Doesn't fit, so flush modes out first */
         struct modedata mdtmp = *md;
         log_debug(2, "add_mode_with_params: ...flushing first");
@@ -560,14 +567,14 @@ static void add_mode_with_params(struct modedata *md, char mode, int is_add,
         md->channel = mdtmp.channel;
         md->used = time(NULL);
     }
-    s = md->opmodes + 2*md->nopmodes;
+    s = md->opmodes + 2 * md->nopmodes;
     *s++ = is_add ? '+' : '-';
     *s++ = mode;
-    if (len > sizeof(md->params[0])-1) {
+    if (len > sizeof(md->params[0]) - 1) {
         log("set_cmode(): Parameter string for mode %c%c is too long,"
             " truncating to %d characters",
-            is_add ? '+' : '-', mode, sizeof(md->params[0])-1);
-        len = sizeof(md->params[0])-1;
+            is_add ? '+' : '-', mode, sizeof(md->params[0]) - 1);
+        len = sizeof(md->params[0]) - 1;
     }
     if (len > 0)
         memcpy(md->params[md->nopmodes], parambuf, len);
@@ -589,10 +596,10 @@ static void add_mode_with_params(struct modedata *md, char mode, int is_add,
  * `clear' is nonzero, clear the entry, else leave it alone.
  */
 
-static void flush_cmode(struct modedata *md)
+static void flush_cmode(struct modedata* md)
 {
     char buf[BUFSIZE], *s;
-    char *argv[MAXMODES+2];
+    char* argv[MAXMODES + 2];
     int len = 0, i;
     char lastc = 0;
 
@@ -613,22 +620,22 @@ static void flush_cmode(struct modedata *md)
 
     if (debug >= 2) {
         char onbuf[512];
-        strbcpy(onbuf, mode_flags_to_string(md->binmodes_on,MODE_CHANNEL));
+        strbcpy(onbuf, mode_flags_to_string(md->binmodes_on, MODE_CHANNEL));
         log_debug(2, "flush_cmode(%s): bin_on=%s bin_off=%s opmodes=%d(%.*s)",
                   md->channel->name, onbuf,
                   mode_flags_to_string(md->binmodes_off, MODE_CHANNEL),
-                  md->nopmodes, md->nopmodes*2, md->opmodes);
+                  md->nopmodes, md->nopmodes * 2, md->opmodes);
     }
 
     /* Note that - must come before + because some servers (Unreal, others?)
      * ignore +s if followed by -p. */
     if (md->binmodes_off) {
-        len += snprintf(buf+len, sizeof(buf)-len, "-%s",
+        len += snprintf(buf + len, sizeof(buf) - len, "-%s",
                         mode_flags_to_string(md->binmodes_off, MODE_CHANNEL));
         lastc = '-';
     }
     if (md->binmodes_on) {
-        len += snprintf(buf+len, sizeof(buf)-len, "+%s",
+        len += snprintf(buf + len, sizeof(buf) - len, "+%s",
                         mode_flags_to_string(md->binmodes_on, MODE_CHANNEL));
         lastc = '+';
     }
@@ -637,24 +644,27 @@ static void flush_cmode(struct modedata *md)
         if (*s == lastc) {
             /* +/- matches last mode change */
             s++;
-        } else {
-            if (len < sizeof(buf)-1)
+        }
+        else {
+            if (len < sizeof(buf) - 1)
                 buf[len++] = *s;
             else
                 fatal("BUG: buf too small in flush_cmode() (1)");
             lastc = *s++;
         }
-        if (len < sizeof(buf)-1) {
+        if (len < sizeof(buf) - 1) {
             buf[len++] = *s;
             buf[len] = 0;
-        } else {
+        }
+        else {
             fatal("BUG: buf too small in flush_cmode() (2)");
         }
         s++;
     }
     for (i = 0; i < md->nopmodes; i++) {
         if (*md->params[i])
-            len += snprintf(buf+len, sizeof(buf)-len, " %s", md->params[i]);
+            len +=
+                snprintf(buf + len, sizeof(buf) - len, " %s", md->params[i]);
     }
 
     /* Actually send the command */
@@ -670,7 +680,7 @@ static void flush_cmode(struct modedata *md)
     argv[0] = md->channel->name;
     s = buf;
     for (i = 0; i <= md->nparams; i++) {
-        argv[i+1] = s;
+        argv[i + 1] = s;
         s = strchr(s, ' ');
         if (!s) {
             md->nparams = i;
@@ -682,9 +692,9 @@ static void flush_cmode(struct modedata *md)
      * and try to use/flush it */
     md->channel = NULL;
     /* Adjust our idea of the channel modes */
-    do_cmode(md->sender, md->nparams+2, argv);
+    do_cmode(md->sender, md->nparams + 2, argv);
 
-  done:
+done:
     /* Clear entry and return */
     memset(md, 0, sizeof(*md));
 }
@@ -695,9 +705,9 @@ static void flush_cmode(struct modedata *md)
  * `MergeChannelModes' seconds of inactivity.
  */
 
-static void flush_cmode_callback(Timeout *t)
+static void flush_cmode_callback(Timeout* t)
 {
-    flush_cmode((struct modedata *)t->data);
+    flush_cmode((struct modedata*)t->data);
 }
 
 /*************************************************************************/

@@ -17,7 +17,7 @@
 #include "modules/chanserv/chanserv.h"
 #include "modules/operserv/operserv.h"
 
-#include "memoserv.h"
+#include "modules/memoserv/memoserv.h"
 
 /*************************************************************************/
 

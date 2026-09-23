@@ -15,8 +15,8 @@
 #include "modules/mail/mail.h"
 #include "modules/operserv/operserv.h"
 
-#include "nickserv.h"
-#include "ns-local.h"
+#include "modules/nickserv/nickserv.h"
+#include "modules/nickserv/ns-local.h"
 
 /*************************************************************************/
 

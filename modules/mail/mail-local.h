@@ -10,6 +10,9 @@
 #ifndef MAIL_LOCAL_H
 #define MAIL_LOCAL_H
 
+#include "services.h"
+#include "modules/mail/mail.h"
+
 #ifndef TIMEOUT_H
 # include "timeout.h"
 #endif

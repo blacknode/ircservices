@@ -70,11 +70,11 @@ static int read_index_file(void)
     }
     while (fgets(buf, sizeof(buf), f))
         numstrings++;
-    if (!(stringnames = calloc(sizeof(char *), numstrings))) {
+    if (!(stringnames = calloc(numstrings, sizeof(char *)))) {
         perror("calloc(stringnames)");
         return -1;
     }
-    if (!(strings = calloc(sizeof(char *), numstrings))) {
+    if (!(strings = calloc(numstrings, sizeof(char *)))) {
         perror("calloc(strings)");
         return -1;
     }

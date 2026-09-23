@@ -10,6 +10,8 @@
 #ifndef HTTP_H
 #define HTTP_H
 
+#include "services.h"
+
 #ifndef TIMEOUT_H
 # include "timeout.h"
 #endif

@@ -14,10 +14,10 @@
 #include "databases.h"
 #include "language.h"
 
-#include "operserv.h"
+#include "modules/operserv/operserv.h"
 #define NEED_MAKE_REASON
-#include "maskdata.h"
-#include "sline.h"
+#include "modules/operserv/maskdata.h"
+#include "modules/operserv/sline.h"
 
 /*************************************************************************/
 

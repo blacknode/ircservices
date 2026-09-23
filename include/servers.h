@@ -10,26 +10,29 @@
 #ifndef SERVERS_H
 #define SERVERS_H
 
+#include "types.h"
+
 /*************************************************************************/
 
 struct server_ {
-    Server *next, *prev;        /* Use to navigate the entire server list */
-    Server *hub;                /* Server's hub from our point of view */
-    Server *child, *sibling;    /* Server's children from our P.O.V. */
+    Server *next, *prev;     /* Use to navigate the entire server list */
+    Server* hub;             /* Server's hub from our point of view */
+    Server *child, *sibling; /* Server's children from our P.O.V. */
 
-    int fake;                   /* Is this a "fake" (root/juped) server? */
-    char *name;                 /* Server's name */
-    time_t t_join;              /* Time server joined us (0 == not here). */
+    int fake;        /* Is this a "fake" (root/juped) server? */
+    char* name;      /* Server's name */
+    char numeric[3]; /* P10 server numeric ("" if none) */
+    time_t t_join;   /* Time server joined us (0 == not here). */
 
-    User *userlist;             /* List of users on server.  NOTE: this is
-                                 * linked via snext/sprev, not next/prev. */
+    User* userlist; /* List of users on server.  NOTE: this is
+                     * linked via snext/sprev, not next/prev. */
 
-    ServerStats *stats;
+    ServerStats* stats;
 };
 
 /*************************************************************************/
 
-#endif  /* SERVERS_H */
+#endif /* SERVERS_H */
 
 /*
  * Local variables:

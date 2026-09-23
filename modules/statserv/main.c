@@ -16,7 +16,7 @@
 #include "language.h"
 #include "modules/operserv/operserv.h"
 
-#include "statserv.h"
+#include "modules/statserv/statserv.h"
 
 /*************************************************************************/
 
@@ -56,12 +56,16 @@ static Command cmds[] = {
 
 #define HASHFUNC(key) DEFAULT_HASHFUNC(key)
 #define EXPIRE_CHECK(node) 0
-#define add_serverstats   static _add_serverstats
-#define del_serverstats   static _del_serverstats
+#undef HASH_MODIFY_STATIC
+#define HASH_MODIFY_STATIC static
+#define add_serverstats   _add_serverstats
+#define del_serverstats   _del_serverstats
 #include "hash.h"
 DEFINE_HASH(serverstats, ServerStats, name);
 #undef add_serverstats
 #undef del_serverstats
+#undef HASH_MODIFY_STATIC
+#define HASH_MODIFY_STATIC HASH_STATIC
 
 static void *alloc_serverstats(void)
 {

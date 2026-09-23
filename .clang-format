@@ -1,0 +1,15 @@
+# Matches the existing style of the code base (Emacs "stroustrup", 4 spaces,
+# no tabs, 79 columns).  Format new code with it; reformatting old files
+# wholesale only makes history harder to read.
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Never
+ColumnLimit: 79
+BreakBeforeBraces: Stroustrup
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+IndentCaseLabels: true
+SortIncludes: CaseSensitive
+AlignConsecutiveMacros: AcrossComments
+PointerAlignment: Left
+ReferenceAlignment: Left

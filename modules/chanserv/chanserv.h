@@ -10,11 +10,13 @@
 #ifndef CHANSERV_H
 #define CHANSERV_H
 
+#include "services.h"
+
 #ifndef ENCRYPT_H
 # include "encrypt.h"
 #endif
 #ifndef NICKSERV_H
-# include "../nickserv/nickserv.h"
+# include "modules/nickserv/nickserv.h"
 #endif
 
 /*************************************************************************/

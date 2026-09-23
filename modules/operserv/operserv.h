@@ -10,6 +10,8 @@
 #ifndef OPERSERV_H
 #define OPERSERV_H
 
+#include "services.h"
+
 /*************************************************************************/
 
 /* Constants for use with get_operserv_data(): */

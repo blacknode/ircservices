@@ -1,0 +1,3 @@
+# The default preset (cmake --preset default) writes build/compile_commands.json.
+CompileFlags:
+  CompilationDatabase: build

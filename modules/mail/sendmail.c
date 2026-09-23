@@ -11,8 +11,8 @@
 #include "modules.h"
 #include "conffile.h"
 #include "language.h"
-#include "mail.h"
-#include "mail-local.h"
+#include "modules/mail/mail.h"
+#include "modules/mail/mail-local.h"
 #include <sys/wait.h>  /* for WIFEXITED(), etc. */
 
 /*************************************************************************/

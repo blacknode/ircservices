@@ -10,7 +10,11 @@
 #ifndef SOCKETS_H
 #define SOCKETS_H
 
-#include <sys/socket.h>  /* for struct sockaddr */
+#include <stdarg.h>
+#include <sys/socket.h> /* for struct sockaddr */
+
+#include "config.h" /* int32, uint32, uint64 */
+#include <stdint.h>
 
 /*************************************************************************/
 
@@ -105,6 +109,12 @@
  *      The void * parameter is the parameter passed to swrite_trigger().
  */
 
+/*
+ * The waiting itself is done by an event engine (src/engine.h): epoll,
+ * kqueue, poll or select, whichever is the best the platform offers.
+ * sock_engine_name() says which one is in use.
+ */
+
 /*************************************************************************/
 
 /* Minimum (also initial) buffer size for socket; also serves as the
@@ -119,7 +129,7 @@ struct socket_;
 typedef struct socket_ Socket;
 
 /* Type of socket callback functions. */
-typedef void (*SocketCallback)(Socket *s, void *param);
+typedef void (*SocketCallback)(Socket* s, void* param);
 
 /* Identifiers for callback functions (used with sock_setcb()). */
 typedef enum {
@@ -132,53 +142,55 @@ typedef enum {
 } SocketCallbackID;
 
 /* Values of parameter to disconnect callback. */
-#define DISCONN_LOCAL    ((void *)1)    /* disconn() function called */
-#define DISCONN_REMOTE   ((void *)2)    /* Transmission error */
-#define DISCONN_CONNFAIL ((void *)3)    /* Connection attempt failed */
+#define DISCONN_LOCAL    ((void*)1) /* disconn() function called */
+#define DISCONN_REMOTE   ((void*)2) /* Transmission error */
+#define DISCONN_CONNFAIL ((void*)3) /* Connection attempt failed */
 
 /*************************************************************************/
 
 extern void sock_set_buflimits(uint32 per_conn, uint32 total);
 extern void sock_set_rto(int msec);
 
-extern Socket *sock_new(void);
-extern void sock_free(Socket *s);
-extern void sock_setcb(Socket *s, SocketCallbackID which, SocketCallback func);
-extern int sock_isconn(const Socket *s);
-extern int sock_remote(const Socket *s, struct sockaddr *sa, int *lenptr);
-extern void sock_set_blocking(Socket *s, int blocking);
-extern int sock_get_blocking(const Socket *s);
-extern void sock_set_wto(Socket *s, int seconds);
-extern void sock_mute(Socket *s);
-extern void sock_unmute(Socket *s);
-extern uint32 read_buffer_len(const Socket *s);
-extern uint32 write_buffer_len(const Socket *s);
-extern int sock_rwstat(const Socket *s, uint64 *read_ret, uint64 *written_ret);
-extern int sock_bufstat(const Socket *s, uint32 *socksize_ret,
-                        uint32 *totalsize_ret, int *ratio1_ret,
-                        int *ratio2_ret);
+extern Socket* sock_new(void);
+extern void sock_free(Socket* s);
+extern void sock_setcb(Socket* s, SocketCallbackID which, SocketCallback func);
+extern int sock_isconn(const Socket* s);
+extern int sock_remote(const Socket* s, struct sockaddr* sa, int* lenptr);
+extern void sock_set_blocking(Socket* s, int blocking);
+extern int sock_get_blocking(const Socket* s);
+extern void sock_set_wto(Socket* s, int seconds);
+extern void sock_mute(Socket* s);
+extern void sock_unmute(Socket* s);
+extern uint32 read_buffer_len(const Socket* s);
+extern uint32 write_buffer_len(const Socket* s);
+extern int sock_rwstat(const Socket* s, uint64* read_ret, uint64* written_ret);
+extern int sock_bufstat(const Socket* s, uint32* socksize_ret,
+                        uint32* totalsize_ret, int* ratio1_ret,
+                        int* ratio2_ret);
 
 extern void check_sockets(void);
+extern const char* sock_engine_name(void);
 
-extern int conn(Socket *s, const char *host, int port, const char *lhost,
+extern int conn(Socket* s, const char* host, int port, const char* lhost,
                 int lport);
-extern int disconn(Socket *s);
-extern int open_listener(Socket *s, const char *host, int port, int backlog);
-extern int close_listener(Socket *s);
-extern int32 sread(Socket *s, char *buf, int32 len);
-extern int32 swrite(Socket *s, const char *buf, int32 len);
-extern int32 swritemap(Socket *s, const char *buf, int32 len);
-extern int swrite_trigger(Socket *s, void *param);
-extern int sgetc(Socket *s);
-extern char *sgets(char *buf, int32 len, Socket *s);
-extern char *sgets2(char *buf, int32 len, Socket *s);
-extern int sputs(const char *str, Socket *s);
-extern int sockprintf(Socket *s, const char *fmt,...);
-extern int vsockprintf(Socket *s, const char *fmt, va_list args);
+extern int disconn(Socket* s);
+extern int open_listener(Socket* s, const char* host, int port, int backlog);
+extern int close_listener(Socket* s);
+extern int32 sread(Socket* s, char* buf, int32 len);
+extern int32 swrite(Socket* s, const char* buf, int32 len);
+extern int swrite_trigger(Socket* s, void* param);
+extern int sgetc(Socket* s);
+extern char* sgets(char* buf, int32 len, Socket* s);
+extern char* sgets2(char* buf, int32 len, Socket* s);
+extern int sputs(const char* str, Socket* s);
+extern int sockprintf(Socket* s, const char* fmt, ...)
+    __attribute__((format(printf, 2, 3)));
+extern int vsockprintf(Socket* s, const char* fmt, va_list args)
+    __attribute__((format(printf, 2, 0)));
 
 /*************************************************************************/
 
-#endif  /* SOCKETS_H */
+#endif /* SOCKETS_H */
 
 /*
  * Local variables:

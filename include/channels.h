@@ -10,50 +10,52 @@
 #ifndef CHANNELS_H
 #define CHANNELS_H
 
+#include "types.h"
+
 /*************************************************************************/
 
 struct channel_ {
     Channel *next, *prev;
 
     char name[CHANMAX];
-    ChannelInfo *ci;                    /* Corresponding ChannelInfo */
-    time_t creation_time;               /* When channel was created */
+    ChannelInfo* ci;      /* Corresponding ChannelInfo */
+    time_t creation_time; /* When channel was created */
 
-    char *topic;
-    char topic_setter[NICKMAX];         /* Who set the topic */
-    time_t topic_time;                  /* When topic was set */
+    char* topic;
+    char topic_setter[NICKMAX]; /* Who set the topic */
+    time_t topic_time;          /* When topic was set */
 
-    int32 mode;                         /* CMODE_* (binary) channel modes */
-    int32 limit;                        /* 0 if none */
-    char *key;                          /* NULL if none */
-    char *link;                         /* +L (Unreal, trircd) */
-    char *flood;                        /* +f (Unreal, etc.) */
-    int32 joindelay;                    /* +J (trircd) */
-    int32 joinrate1, joinrate2;         /* +j (Bahamut) */
+    int32 mode;                 /* CMODE_* (binary) channel modes */
+    int32 limit;                /* 0 if none */
+    char* key;                  /* NULL if none */
+    char* link;                 /* +L (Unreal, trircd) */
+    char* flood;                /* +f (Unreal, etc.) */
+    int32 joindelay;            /* +J (trircd) */
+    int32 joinrate1, joinrate2; /* +j (Bahamut) */
 
-    char **bans;
+    char** bans;
     int32 bans_count;
-    char **excepts;
+    char** excepts;
     int32 excepts_count;
-    char **invites;
+    char** invites;
     int32 invites_count;
 
     struct c_userlist {
         struct c_userlist *next, *prev;
-        User *user;
-        int32 mode;                     /* CUMODE_* modes (chanop, voice) */
-        int16 flags;                    /* CUFLAG_* flags (below) */
-    } *users;
+        User* user;
+        int32 mode;  /* CUMODE_* modes (chanop, voice) */
+        int16 flags; /* CUFLAG_* flags (below) */
+    }* users;
 
-    time_t server_modetime;             /* Time of last server MODE */
-    time_t chanserv_modetime;           /* Time of last check_modes() */
-    int16 server_modecount;             /* Number of server MODEs this second*/
-    int16 chanserv_modecount;           /* Number of check_mode()'s this sec */
-    int16 bouncy_modes;                 /* Did we fail to set modes here? */
+    time_t server_modetime;   /* Time of last server MODE */
+    time_t chanserv_modetime; /* Time of last check_modes() */
+    int16 server_modecount;   /* Number of server MODEs this second*/
+    int16 chanserv_modecount; /* Number of check_mode()'s this sec */
+    int16 bouncy_modes;       /* Did we fail to set modes here? */
 };
 
 /* Set by ChanServ if it deops a user on joining a channel */
-#define CUFLAG_DEOPPED          0x0001
+#define CUFLAG_DEOPPED 0x0001
 
 /*************************************************************************/
 

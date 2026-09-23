@@ -13,7 +13,7 @@
 
 /* ignore_init: Initialize ignore-related fields of a new User structure. */
 
-void ignore_init(User *u)
+void ignore_init(User* u)
 {
     u->ignore = 0;
     u->lastcmd = time_msec();
@@ -41,7 +41,7 @@ void ignore_init(User *u)
  *                the user's ignore level at any time.
  */
 
-void ignore_update(User *u, uint32 msec)
+void ignore_update(User* u, uint32 msec)
 {
     time_t now;
     uint32 now_msec;
@@ -55,7 +55,8 @@ void ignore_update(User *u, uint32 msec)
     if (now - u->lastcmd_s > 1000000) {
         /* Millisecond counter may have overflowed, just reset to 0 */
         u->ignore = 0;
-    } else {
+    }
+    else {
         double zerolen = (now_msec - msec) - u->lastcmd;
         if (zerolen > 0)
             u->ignore *= pow(2, -(zerolen / IgnoreDecay));
@@ -63,11 +64,11 @@ void ignore_update(User *u, uint32 msec)
     if (msec) {
         double factor;
         while (msec > IgnoreDecay) {
-            u->ignore = u->ignore*0.5 + 0.5;
+            u->ignore = u->ignore * 0.5 + 0.5;
             msec -= IgnoreDecay;
         }
         factor = pow(2, -((double)msec / IgnoreDecay));
-        u->ignore = u->ignore*factor + (1-factor);
+        u->ignore = u->ignore * factor + (1 - factor);
     }
     u->lastcmd = now_msec;
     u->lastcmd_s = now;

@@ -7,14 +7,14 @@
  * details.
  */
 
-#include "services.h"
-#include "modules.h"
 #include "encrypt.h"
+#include "modules.h"
+#include "services.h"
 
 /*************************************************************************/
 
 /* List of available ciphers. */
-static CipherInfo *cipherlist;
+static CipherInfo* cipherlist;
 
 /*************************************************************************/
 /*************************************************************************/
@@ -31,7 +31,7 @@ static CipherInfo *cipherlist;
  *    -1 on other error
  */
 
-static int default_encrypt(const char *src, int len, char *dest, int size)
+static int default_encrypt(const char* src, int len, char* dest, int size)
 {
     if (size < PASSMAX) {
         return PASSMAX;
@@ -51,7 +51,7 @@ static int default_encrypt(const char *src, int len, char *dest, int size)
  *    -1 on other error
  */
 
-static int default_decrypt(const char *src, char *dest, int size)
+static int default_decrypt(const char* src, char* dest, int size)
 {
     int passlen;
     for (passlen = 0; passlen < PASSMAX; passlen++) {
@@ -59,8 +59,8 @@ static int default_decrypt(const char *src, char *dest, int size)
             break;
         }
     }
-    if (size < passlen+1) {
-        return passlen+1 - size;
+    if (size < passlen + 1) {
+        return passlen + 1 - size;
     }
     memset(dest, 0, size);
     memcpy(dest, src, passlen);
@@ -76,11 +76,12 @@ static int default_decrypt(const char *src, char *dest, int size)
  *    -1 if an error occurred while checking
  */
 
-static int default_check_password(const char *plaintext, const char *password)
+static int default_check_password(const char* plaintext, const char* password)
 {
     if (strncmp(plaintext, password, PASSMAX) == 0) {
         return 1;
-    } else {
+    }
+    else {
         return 0;
     }
 }
@@ -96,9 +97,9 @@ static int default_check_password(const char *plaintext, const char *password)
  * (smalloc() will throw a signal if memory cannot be allocated).
  */
 
-Password *new_password(void)
+Password* new_password(void)
 {
-    Password *password = smalloc(sizeof(*password));
+    Password* password = smalloc(sizeof(*password));
     init_password(password);
     return password;
 }
@@ -110,7 +111,7 @@ Password *new_password(void)
  * allocating a new one, and the structure pointer is not returned.
  */
 
-void init_password(Password *password)
+void init_password(Password* password)
 {
     memset(password->password, 0, sizeof(password->password));
     password->cipher = NULL;
@@ -123,14 +124,14 @@ void init_password(Password *password)
  * disposed of after calling set_password().
  */
 
-void set_password(Password *password,
-                  const char password_buffer[PASSMAX],
-                  const char *cipher)
+void set_password(Password* password, const char password_buffer[PASSMAX],
+                  const char* cipher)
 {
     memcpy(password->password, password_buffer, PASSMAX);
     if (cipher) {
         password->cipher = sstrdup(cipher);
-    } else {
+    }
+    else {
         password->cipher = NULL;
     }
 }
@@ -141,13 +142,14 @@ void set_password(Password *password,
  * The destination password comes first, a la memcpy().
  */
 
-void copy_password(Password *to, const Password *from)
+void copy_password(Password* to, const Password* from)
 {
     clear_password(to);
     memcpy(to->password, from->password, sizeof(to->password));
     if (from->cipher) {
         to->cipher = sstrdup(from->cipher);
-    } else {
+    }
+    else {
         to->cipher = NULL;
     }
 }
@@ -161,10 +163,10 @@ void copy_password(Password *to, const Password *from)
  * not NULL).
  */
 
-void clear_password(Password *password)
+void clear_password(Password* password)
 {
     memset(password->password, 0, sizeof(password->password));
-    free((char *)password->cipher);
+    free((char*)password->cipher);
     password->cipher = NULL;
 }
 
@@ -174,7 +176,7 @@ void clear_password(Password *password)
  * if NULL is given.
  */
 
-void free_password(Password *password)
+void free_password(Password* password)
 {
     if (password) {
         clear_password(password);
@@ -191,13 +193,13 @@ void free_password(Password *password)
  *    -1 on other error
  */
 
-int encrypt_password(const char *plaintext, int len, Password *password)
+int encrypt_password(const char* plaintext, int len, Password* password)
 {
     encrypt_func_t low_encrypt = default_encrypt;
     int res;
 
     if (EncryptionType) {
-        CipherInfo *ci;
+        CipherInfo* ci;
         LIST_SEARCH(cipherlist, name, EncryptionType, strcmp, ci);
         if (!ci) {
             log("encrypt_password(): cipher `%s' not available!",
@@ -219,11 +221,13 @@ int encrypt_password(const char *plaintext, int len, Password *password)
             }
         }
         return 0;
-    } else {
+    }
+    else {
         clear_password(password);
-        if (res > 0) {  /* buffer too small */
+        if (res > 0) { /* buffer too small */
             return -2;
-        } else {
+        }
+        else {
             return -1;
         }
     }
@@ -239,12 +243,12 @@ int encrypt_password(const char *plaintext, int len, Password *password)
  *    -1 on other error
  */
 
-int decrypt_password(const Password *password, char *dest, int size)
+int decrypt_password(const Password* password, char* dest, int size)
 {
     decrypt_func_t low_decrypt = default_decrypt;
 
     if (password->cipher) {
-        CipherInfo *ci;
+        CipherInfo* ci;
         LIST_SEARCH(cipherlist, name, password->cipher, strcmp, ci);
         if (!ci) {
             log("decrypt_password(): cipher `%s' not available!",
@@ -265,12 +269,12 @@ int decrypt_password(const Password *password, char *dest, int size)
  *    -1 if an error occurred while checking
  */
 
-int check_password(const char *plaintext, const Password *password)
+int check_password(const char* plaintext, const Password* password)
 {
     check_password_func_t low_check_password = default_check_password;
 
     if (password->cipher) {
-        CipherInfo *ci;
+        CipherInfo* ci;
         LIST_SEARCH(cipherlist, name, password->cipher, strcmp, ci);
         if (!ci) {
             log("check_password(): cipher `%s' not available!",
@@ -291,7 +295,7 @@ int check_password(const char *plaintext, const Password *password)
 
 /* Register a new cipher. */
 
-void register_cipher(CipherInfo *ci)
+void register_cipher(CipherInfo* ci)
 {
     LIST_INSERT(ci, cipherlist);
 }
@@ -300,10 +304,11 @@ void register_cipher(CipherInfo *ci)
 
 /* Unregister a cipher.  Does nothing if the cipher was not registered. */
 
-void unregister_cipher(CipherInfo *ci)
+void unregister_cipher(CipherInfo* ci)
 {
-    CipherInfo *ci2;
-    LIST_FOREACH (ci2, cipherlist) {
+    CipherInfo* ci2;
+    LIST_FOREACH(ci2, cipherlist)
+    {
         if (ci2 == ci) {
             LIST_REMOVE(ci, cipherlist);
             break;
