@@ -36,7 +36,7 @@ void check_modes(Channel *c)
     char newmode[3];
     int flag;
 
-    if (!c || c->bouncy_modes)
+    if (!c || c->bouncy_modes || c->ci_pending)
         return;
 
     if (!NoBouncyModes) {
@@ -145,8 +145,9 @@ void check_chan_user_modes(const char *source, struct c_userlist *u,
     int is_servermode = (!source || strchr(source, '.') != NULL);
     int32 res;  /* result from check_access_cumode() */
 
-    /* Don't change modes on unregistered or forbidden channels */
-    if (!ci || (ci->flags & CF_VERBOTEN))
+    /* Don't change modes on unregistered or forbidden channels (nor on
+     * channels whose record is on its way: see chan_record_ready()) */
+    if (!ci || (ci->flags & CF_VERBOTEN) || c->ci_pending)
         return;
 
     /* Don't reverse mode changes made by Services (because we already
@@ -292,13 +293,23 @@ static void timeout_leave(Timeout *to)
 int check_kick(User *user, const char *chan, int on_join)
 {
     Channel *c = get_channel(chan);
-    ChannelInfo *ci = get_channelinfo(chan);
+    ChannelInfo *ci;
     int i;
     char *mask, *s;
     const char *reason;
     char reasonbuf[BUFSIZE];
     int stay;
 
+    /* No lookup here: this runs for every JOIN on the network.  A channel
+     * that exists has its record, if any, in c->ci; one being created has
+     * it in memory already or it is fetched in the background, and its
+     * users are checked when it arrives (chan_record_ready()). */
+    if (c && c->ci_pending)
+        return 0;
+    if (c)
+        ci = c->ci ? hold_channelinfo(c->ci) : NULL;
+    else
+        ci = peek_channelinfo(chan);
 
     if (CSForbidShortChannel && strcmp(chan, "#") == 0) {
         mask = sstrdup("*!*@*");

@@ -1020,6 +1020,13 @@ static void do_all_directives(int action, ConfigDirective* directives)
             if (d->params[i].flags & CF_ALLOCED) {
                 free(*(void**)d->params[i].ptr);
                 d->params[i].flags &= ~CF_ALLOCED;
+                /* If nothing replaces it below (a string directive that is
+                 * gone from the file after a REHASH), the variable must not
+                 * be left pointing at freed memory: it goes back to what
+                 * it was before it was first configured. */
+                *(void**)d->params[i].ptr =
+                    (d->params[i].flags & CF_SAVED) ? d->params[i].prev.ptrval
+                                                    : NULL;
             }
 
             /* Don't do anything if we're copying new values and this

@@ -122,7 +122,7 @@ void add_ns_timeout(NickInfo *ni, int type, time_t delay)
     t->ni = ni;
     t->to = to;
     t->type = type;
-    ni->usecount++;  /* make sure it isn't deleted when we're not looking */
+    hold_nickinfo(ni);  /* make sure it isn't released while we wait */
 }
 
 /*************************************************************************/

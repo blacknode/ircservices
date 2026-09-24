@@ -13,7 +13,9 @@
 #                                  .c file below it (recursively) is
 #                                  compiled in, and .h files are private
 #                                  headers.  <name>/<name>.c is the main
-#                                  source file of the module.
+#                                  source file of the module, and
+#                                  <name>/migrations/ holds its SQL
+#                                  migrations, if any.
 #   modules/<type>/*.h             headers shared by the modules of <type>
 #                                  (and by other modules that talk to
 #                                  them); include them from the tree root,
@@ -67,6 +69,15 @@ function(services_add_module type name)
   # private symbols (see RENAME_SYMBOL in include/modules.h), so it has to
   # be a valid C identifier.
   string(MAKE_C_IDENTIFIER "${type}_${name}" target)
+
+  # A directory module may ship SQL migrations in <name>/migrations/; they
+  # are compiled in as the array `module_migrations' (see
+  # cmake/ServicesMigrations.cmake and docs/readme.migrations).
+  if(arg_DIRECTORY AND IS_DIRECTORY "${arg_DIRECTORY}/migrations")
+    services_add_migrations("${type}/${name}" "${arg_DIRECTORY}/migrations"
+      module_migrations migrations_source)
+    list(APPEND arg_SOURCES "${migrations_source}")
+  endif()
 
   add_library(${target} MODULE ${arg_SOURCES})
   target_link_libraries(${target} PRIVATE services_config

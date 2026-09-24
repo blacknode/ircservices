@@ -9,6 +9,12 @@ protocol module to choose or load.
 * CMake 3.20+ (3.21+ for the presets), Ninja or Make
 * A C99 compiler (GCC or Clang) on a POSIX system
 * GNU Bison 3.6+ and flex 2.6+ (the configuration file parser)
+* libpq, jansson and hiredis, with headers (the database and cache drivers):
+  `apt install libpq-dev libjansson-dev libhiredis-dev`,
+  `dnf install libpq-devel jansson-devel hiredis-devel`,
+  `pacman -S postgresql-libs jansson hiredis`
+* At run time: a PostgreSQL server (and optionally Redis); see
+  `docs/readme.database`
 * Optional: `crypt(3)` for the `encryption/unix-crypt` module
 
 ## Build
@@ -33,10 +39,10 @@ In-source builds are refused. Presets (`CMakePresets.json`):
 | cache variable          | default                           | meaning |
 |-------------------------|-----------------------------------|---------|
 | `SERVICES_PROGRAM`      | `ircservices`                     | executable name |
-| `SERVICES_DATA_DIR`     | `<prefix>/lib/<program>`          | configuration, databases, modules, languages |
+| `SERVICES_DATA_DIR`     | `<prefix>/lib/<program>`          | configuration, modules, languages, log |
 | `SERVICES_BIN_DIR`      | `<data dir>/bin`                  | where the executable goes |
 | `SERVICES_ENGINE`       | `auto`                            | socket event engine: `auto`, `epoll`, `kqueue`, `poll`, `select` |
-| `SERVICES_SORTED_LISTS` | `ON`                              | keep nick/channel lists sorted |
+| `SERVICES_SORTED_LISTS` | `OFF`                             | keep user/channel lists sorted; hashes on the first two characters only, slow on large networks |
 | `SERVICES_WARNINGS`     | `ON`                              | `-Wall -Wextra` and friends |
 | `SERVICES_MEMCHECKS`    | `OFF`                             | allocation checks |
 | `SERVICES_SHOWALLOCS`   | `OFF`                             | log allocations (needs MEMCHECKS) |
@@ -48,7 +54,8 @@ In-source builds are refused. Presets (`CMakePresets.json`):
 
 ```
 CMakeLists.txt          wires the tree together
-cmake/                  ServicesOptions / ServicesPlatform / ServicesModules,
+cmake/                  ServicesOptions / ServicesPlatform / ServicesModules /
+                        ServicesDependencies (libpq, jansson, hiredis),
                         config.h.in, version.c.in
 include/                core headers; every header includes what it uses
                         (types.h is the bottom of the include graph)
@@ -59,6 +66,11 @@ src/                    the core executable (src/CMakeLists.txt)
   conf_lexer.l,         configuration file scanner and grammar (flex/bison);
   conf_parser.y,        conffile.c holds the parsed tree, its lookup API
   conffile.c            and the binding of directive tables
+  worker.c              worker threads (pool, dedicated workers)
+  db.c, cache.c         database and cache APIs (db.h, cache.h)
+  databases.c           registry of the Services tables
+  postgres/             PostgreSQL driver and table store (from ircu2)
+  redis/                Redis driver (from ircu2)
 modules/                loadable modules (modules/CMakeLists.txt)
 lang/                   message catalogs; langstrs.h is generated from lang/index
 data/                   example configuration files
@@ -149,7 +161,7 @@ What P10 changes for the service modules:
 
 ```sh
 cd <SERVICES_DATA_DIR>
-cp example-ircservices.conf ircservices.conf   # edit (uplink, ServicesRoot, ...)
+cp example-ircservices.conf ircservices.conf   # edit (uplink, database, ServicesRoot, ...)
 bin/ircservices -nofork -debug                 # foreground, verbose log
 ```
 

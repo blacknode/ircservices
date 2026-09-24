@@ -342,6 +342,43 @@ static void my_free_serverstats(ServerStats *ss)
 
 /*************************************************************************/
 
+/* A channel founded by (or left to) a nick group that was deleted. */
+
+typedef struct {
+    uint32 nickgroup;
+    const char *nick;
+} DelnickArg;
+
+static int delnick_chan_one(ChannelInfo *ci, void *arg_)
+{
+    DelnickArg *arg = arg_;
+
+    if (ci->successor == arg->nickgroup)
+        ci->successor = 0;
+    if (ci->founder == arg->nickgroup) {
+        if (ci->successor) {
+            NickGroupInfo *ngi2 = get_nickgroupinfo(ci->successor);
+            if (ngi2) {
+                error("Giving channel %s (owned by deleted nick %s) to %s",
+                      ci->name, arg->nick, ngi_mainnick(ngi2));
+                ci->founder = ci->successor;
+                ci->successor = 0;
+                put_nickgroupinfo(ngi2);
+            } else {
+                error("Dropping channel %s (owned by deleted nick %s,"
+                      " invalid successor %u)", ci->name, arg->nick,
+                      ci->successor);
+                del_channelinfo(ci);
+            }
+        } else {
+            error("Dropping channel %s (owned by deleted nick %s, no"
+                  " successor)", ci->name, arg->nick);
+            del_channelinfo(ci);
+        }
+    }
+    return 0;
+}
+
 /* Unlink and free a nickname, and remove it from its associated nickname
  * group, if any.  If the nickname is the last in its group, remove the
  * group as well, along with any channels owned by the group (unless the
@@ -360,39 +397,15 @@ static void my_delnick(NickInfo *ni)
                 if (ngi->mainnick > i || ngi->mainnick >= ngi->nicks_count)
                     ngi->mainnick--;
                 if (!ngi->nicks_count) {
-                    ChannelInfo *ci;
+                    char where[] = "t.founder = $2::bigint"
+                                   " or t.successor = $2::bigint";
+                    char idbuf[16];
+                    const char *params[1] = { idbuf };
+                    DelnickArg arg = { ni->nickgroup, ni->nick };
                     del_nickgroupinfo(ngi);  /* also frees */
-                    for (ci = first_channelinfo(); ci;
-                         ci = next_channelinfo()
-                    ) {
-                        if (ci->successor == ni->nickgroup)
-                            ci->successor = 0;
-                        if (ci->founder == ni->nickgroup) {
-                            if (ci->successor) {
-                                NickGroupInfo *ngi2 =
-                                    get_nickgroupinfo(ci->successor);
-                                if (ngi2) {
-                                    error("Giving channel %s (owned by deleted"
-                                          " nick %s) to %s", ci->name,
-                                          ni->nick, ngi_mainnick(ngi2));
-                                    ci->founder = ci->successor;
-                                    ci->successor = 0;
-                                    put_nickgroupinfo(ngi2);
-                                } else {
-                                    error("Dropping channel %s (owned by"
-                                          " deleted nick %s, invalid successor"
-                                          " %u)", ci->name, ni->nick,
-                                          ci->successor);
-                                    del_channelinfo(ci);
-                                }
-                            } else {  /* !ci->successor */
-                                error("Dropping channel %s (owned by deleted"
-                                      " nick %s, no successor)",
-                                      ci->name, ni->nick);
-                                del_channelinfo(ci);
-                            }  /* if (ci->successor) */
-                        }  /* if (ci->founder == ni->nickgroup) */
-                    }  /* for all channels */
+                    snprintf(idbuf, sizeof(idbuf), "%u", arg.nickgroup);
+                    foreach_channelinfo(where, params, 1, delnick_chan_one,
+                                        &arg);
                 }  /* if (!ngi->nicks_count) */
                 else {
                     put_nickgroupinfo(ngi);
@@ -2446,7 +2459,7 @@ static void merge_data(int flags)
             error("Nick group %u imported", ngi->id);
         }
         LIST_REMOVE(ngi, ngi_list);
-        add_nickgroupinfo(ngi);
+        put_nickgroupinfo(add_nickgroupinfo(ngi));
     }
 
     LIST_FOREACH_SAFE (ni, ni_list, ni2) {
@@ -2454,14 +2467,13 @@ static void merge_data(int flags)
         if (oldni) {
             if ((flags & XMLI_NICKCOLL_MASK) == XMLI_NICKCOLL_OVERWRITE) {
                 error("Overwriting nick %s", oldni->nick);
-                my_delnick(oldni);
+                my_delnick(oldni);  /* also frees */
             } else {
                 fatal("BUG: Colliding nick %s not removed!", ni->nick);
             }
-            put_nickinfo(oldni);
         }
         LIST_REMOVE(ni, ni_list);
-        add_nickinfo(ni);
+        put_nickinfo(add_nickinfo(ni));
         error("Nick %s imported", ni->nick);
     }
 
@@ -2484,11 +2496,11 @@ static void merge_data(int flags)
                     error("Overwriting channel %s", oldci->name);
                     del_channelinfo(oldci);  /* also frees */
                 } else {
-                    fatal("BUG: Colliding nick %s not removed!", ni->nick);
+                    fatal("BUG: Colliding channel %s not removed!",
+                          ci->name);
                 }
-                put_channelinfo(oldci);
             }
-            add_channelinfo(ci);
+            put_channelinfo(add_channelinfo(ci));
             error("Channel %s imported", ci->name);
         }
     }

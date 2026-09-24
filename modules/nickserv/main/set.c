@@ -69,7 +69,7 @@ void do_set(User *u)
     } else {
         ni = u->ni;
         if (ni)
-            ni->usecount++;
+            hold_nickinfo(ni);
     }
     if (cmd && stricmp(cmd, "INFO") != 0) {
         param = strtok(param, " ");
@@ -208,7 +208,7 @@ void do_unset(User *u)
     } else {
         ni = u->ni;
         if (ni)
-            ni->usecount++;
+            hold_nickinfo(ni);
     }
     if (!cmd || extra) {
         syntax_error(s_NickServ, u, "UNSET", syntax_msg);

@@ -40,122 +40,10 @@ static Command cmds[] = {
 };
 
 /*************************************************************************/
-/**************************** Database stuff *****************************/
-/*************************************************************************/
 
-/*
- * Implementation note:
- *
- * Ideally, we would implement the autojoin database as e.g. a hash table
- * completely separate from the nickgroup table, with each record
- * consisting of a nickgroup ID and array of channels; in fact, if we had
- * a working SELECT-like function, we could just have one channel per
- * record and iterate through all matches for a particular ID.  Aside from
- * having to hook into the nickgroup delete function to ensure thaat
- * autojoin records are deleted along with nickgroup data, this would make
- * the autojoin database completely independent.
- *
- * However, saving autojoin data using the database/version4 module would
- * no longer work correctly, because the database code would have no easy
- * way to know whether the table even existed, and would also require the
- * table's get() function to be exported from this module (or else have to
- * use first()/next() for _every_ nickgroup to find the appropriate
- * autojoin data, if any).
- *
- * For this reason, the ajoin[] array has been left in the NickGroupInfo
- * structure in this version.  A proper database implementation is left as
- * an exercise for the reader.
- */
-
-/*************************************************************************/
-
-/* Temporary structure for loading/saving autojoin records */
-typedef struct {
-    uint32 nickgroup;
-    char *channel;
-} DBRecord;
-static DBRecord dbrec_static;
-
-/* Iterators for first/next routines */
-static NickGroupInfo *db_ngi_iterator;
-static int db_array_iterator;
-
-/*************************************************************************/
-
-/* Table access routines */
-
-static void *new_autojoin(void)
-{
-    return memset(&dbrec_static, 0, sizeof(dbrec_static));
-}
-
-static void free_autojoin(void *record)
-{
-    free(((DBRecord *)record)->channel);
-}
-
-static void insert_autojoin(void *record)
-{
-    DBRecord *dbrec = record;
-    NickGroupInfo *ngi = get_nickgroupinfo(dbrec->nickgroup);
-    if (!ngi) {
-        module_log("Discarding autojoin record for missing nickgroup %u: %s",
-                   dbrec->nickgroup, dbrec->channel);
-        free_autojoin(record);
-    } else {
-        ARRAY_EXTEND(ngi->ajoin);
-        ngi->ajoin[ngi->ajoin_count-1] = dbrec->channel;
-    }
-}
-
-static void *next_autojoin(void)
-{
-    while (db_ngi_iterator
-        && db_array_iterator >= db_ngi_iterator->ajoin_count
-    ) {
-        db_ngi_iterator = next_nickgroupinfo();
-        db_array_iterator = 0;
-    }
-    if (db_ngi_iterator) {
-        dbrec_static.nickgroup = db_ngi_iterator->id;
-        dbrec_static.channel = db_ngi_iterator->ajoin[db_array_iterator++];
-        return &dbrec_static;
-    } else {
-        return NULL;
-    }
-}
-
-static void *first_autojoin(void)
-{
-    db_ngi_iterator = first_nickgroupinfo();
-    db_array_iterator = 0;
-    return next_autojoin();
-}
-
-/*************************************************************************/
-
-/* Database table definition */
-
-#define FIELD(name,type,...) \
-    { #name, type, offsetof(DBRecord,name) , ##__VA_ARGS__ }
-
-static DBField autojoin_dbfields[] = {
-    FIELD(nickgroup, DBTYPE_UINT32),
-    FIELD(channel,   DBTYPE_STRING),
-    { NULL }
-};
-
-static DBTable autojoin_dbtable = {
-    .name    = "nick-autojoin",
-    .newrec  = new_autojoin,
-    .freerec = free_autojoin,
-    .insert  = insert_autojoin,
-    .first   = first_autojoin,
-    .next    = next_autojoin,
-    .fields  = autojoin_dbfields,
-};
-
-#undef FIELD
+/* The autojoin list of a nickname group is part of the group's record, which
+ * nickserv/main keeps in the database (see include/store.h): nothing to
+ * load or save here. */
 
 /*************************************************************************/
 /******************************* Callbacks *******************************/
@@ -403,12 +291,6 @@ int init_module()
         return 0;
     }
 
-    if (!register_dbtable(&autojoin_dbtable)) {
-        module_log("Unable to register database table");
-        exit_module(0);
-        return 0;
-    }
-
     mod = find_module("chanserv/main");
     if (mod)
         do_load_module(mod, "chanserv/main");
@@ -422,8 +304,6 @@ int exit_module(int shutdown_unused)
 {
     if (module_chanserv)
         do_unload_module(module_chanserv);
-
-    unregister_dbtable(&autojoin_dbtable);
 
     if (module_nickserv) {
         remove_callback(module_nickserv, "HELP", do_help);

@@ -7,14 +7,21 @@
  * details.
  */
 
+#include "cache.h"
 #include "conffile.h"
 #include "databases.h"
+#include "db.h"
+#include "migration.h"
+#include "store.h"
 #include "language.h"
 #include "messages.h"
 #include "modules.h"
 #include "p10.h"
 #include "services.h"
 #include "version.h"
+#include "worker.h"
+
+#include "drivers.h"
 
 #include <grp.h>
 #include <sys/resource.h>
@@ -51,7 +58,6 @@ char* ServiceHost;
 char* LogFilename;
 char PIDFilename[PATH_MAX + 1];
 char* MOTDFilename;
-char* LockFilename;
 
 int16 DefTimeZone;
 
@@ -65,6 +71,8 @@ int32 BadPassWarning;
 int32 IgnoreDecay;
 double IgnoreThreshold;
 time_t UpdateTimeout;
+int32 WorkerThreads;
+int32 WorkerQueueMax;
 time_t WarningTimeout;
 int32 ReadTimeout;
 int32 TimeoutCheck;
@@ -125,7 +133,6 @@ static ConfigDirective uplink_directives[] = {
 
 /* files { }: files in the data directory, and the process owning them. */
 static ConfigDirective files_directives[] = {
-    {"lock", {{CD_STRING, CF_DIRREQ, &LockFilename}}},
     {"log", {{CD_STRING, CF_DIRREQ, &LogFilename}}},
     {"motd", {{CD_STRING, CF_DIRREQ, &MOTDFilename}}},
     {"pid", {{CD_FUNC, 0, do_PIDFilename}}},
@@ -174,6 +181,16 @@ static ConfigDirective netbuffer_directives[] = {
       {CD_POSINT, CF_OPTIONAL, &NetBufferSize}}},
     {NULL}};
 
+static ConfigDirective workers_directives[] = {
+    {"queue_max", {{CD_POSINT, 0, &WorkerQueueMax}}},
+    {"threads", {{CD_POSINT, 0, &WorkerThreads}}},
+    {NULL}};
+
+/* The directive tables of the database and redis blocks live beside the
+ * code that uses them. */
+extern ConfigDirective db_directives[];
+extern ConfigDirective cache_directives[];
+
 /* Every block the core reads (a NULL name is the top level). */
 static const struct {
     const char* block;
@@ -186,6 +203,9 @@ static const struct {
     {"options", options_directives},
     {"timeouts", timeouts_directives},
     {"netbuffer", netbuffer_directives},
+    {"database", db_directives},
+    {"redis", cache_directives},
+    {"workers", workers_directives},
 };
 
 /*************************************************************************/
@@ -264,12 +284,27 @@ static int load_config(void)
 {
     if (!conf_load(IRCSERVICES_CONF))
         return 0;
-    if (!configure_core(CONFIGURE_READ)) {
+    if (!configure_core(CONFIGURE_READ) || !cache_config_ok()) {
         conf_discard();
         return 0;
     }
     conf_commit();
     configure_core(CONFIGURE_SET);
+    /* Publish the database, cache and worker settings: a changed database
+     * block restarts the connection pools, a changed redis block the cache
+     * connections, and a changed workers block resizes the pool (which
+     * only exists once Services have forked; see init()). */
+    db_config_apply();
+    cache_config_apply();
+    if (WorkerThreads > WORKER_MAX_THREADS) {
+        config_error(IRCSERVICES_CONF, 0,
+                     "workers: at most %d threads; using %d",
+                     WORKER_MAX_THREADS, WORKER_MAX_THREADS);
+        WorkerThreads = WORKER_MAX_THREADS;
+    }
+    worker_configure(WorkerThreads ? WorkerThreads : WORKER_DEFAULT_THREADS,
+                     WorkerQueueMax ? WorkerQueueMax
+                                    : WORKER_DEFAULT_QUEUE_MAX);
     check_toplevel_blocks();
     return 1;
 }
@@ -935,10 +970,6 @@ static int parse_options(int ac, char** av, int call_modules)
                 if (!call_modules)
                     noakill = 1;
             }
-            else if (strcmp(s, "forceload") == 0) {
-                if (!call_modules)
-                    forceload = 1;
-            }
             else if (strcmp(s, "encrypt-all") == 0) {
                 if (!call_modules)
                     encrypt_all = 1;
@@ -975,10 +1006,6 @@ static int parse_options(int ac, char** av, int call_modules)
                       "limit exceptions, etc.)\n"
                       "       -noakill                Disables autokill "
                       "checking\n"
-                      "       -forceload              Try to load as much of "
-                      "the databases as\n"
-                      "                                   possible, even if "
-                      "errors are encountered\n"
                       "       -encrypt-all            Re-encrypt all "
                       "passwords on startup\n"
                       "Other options may be available depending on loaded "
@@ -1171,11 +1198,28 @@ int init(int ac, char** av)
         return -1;
     }
 
+    /* Switch on the database and cache drivers, so that modules can use
+     * db.h and cache.h from their init_module() on.  Their connection
+     * threads only start once Services have forked (see below). */
+    if (!pg_driver_init() || !redis_driver_init()) {
+        log("init(): Unable to register the database drivers");
+        return -1;
+    }
+
     /* Call other initialization routines.  These are mainly (right now
-     * only) for adding callbacks. */
+     * only) for adding callbacks.  database_init() opens the database, and
+     * fails if it cannot be reached. */
     if (!user_init(ac, av) || !channel_init(ac, av) || !server_init(ac, av) ||
         !process_init(ac, av) || !messages_init(ac, av) ||
         !actions_init(ac, av) || !database_init(ac, av)) {
+        return -1;
+    }
+
+    /* The entity store: Redis in front of PostgreSQL, for the modules'
+     * records.  After the database (which it needs claimed), before the
+     * modules (which register their types when they load). */
+    if (!store_init()) {
+        log("init(): Unable to start the entity store");
         return -1;
     }
 
@@ -1254,6 +1298,17 @@ int init(int ac, char** av)
      * Everything from here down needs to be done in the child process
      * (when forking).
      */
+
+    /* Start the worker threads: the database and cache connections, table
+     * saves, migrations.  Not before, because a thread does not survive a
+     * fork; connections asked for while the modules were loading were held
+     * until now (see worker_spawn_owned()). */
+    if (!worker_init(WorkerThreads ? WorkerThreads : WORKER_DEFAULT_THREADS,
+                     WorkerQueueMax ? WorkerQueueMax
+                                    : WORKER_DEFAULT_QUEUE_MAX)) {
+        log("init(): Unable to start the worker threads");
+        return -1;
+    }
 
     /* Write our PID to the PID file (if one is configured). */
     if (*PIDFilename && !write_pidfile())
@@ -1462,7 +1517,15 @@ void cleanup(void)
         strbcpy(quitmsg, "Terminating, reason unknown");
     log("%s", quitmsg);
     set_cmode(NULL, NULL);
+    /* Let the last save finish while its tables are still registered, and
+     * write every record that changed. */
+    database_flush();
+    store_collect();
+    store_flush_all();
+    store_wait(db_conf_save_timeout());
     unload_all_modules();
+    store_collect();
+    store_wait(db_conf_save_timeout());
     if (servsock) {
         if (sock_isconn(servsock)) {
             send_cmd(ServerName, "SQUIT %s :%s", ServerName, quitmsg);
@@ -1471,6 +1534,14 @@ void cleanup(void)
         sock_free(servsock);
     }
     lang_cleanup();
+    /* The drivers stop their connections (failing whatever is still in
+     * flight) before the worker threads go, and the database is closed
+     * last, releasing this copy's claim on it. */
+    store_shutdown();
+    cache_shutdown();
+    db_shutdown();
+    migration_shutdown();
+    worker_shutdown();
     database_cleanup();
     p10_cleanup();
     actions_cleanup();

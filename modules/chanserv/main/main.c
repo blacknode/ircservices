@@ -7,12 +7,18 @@
  * details.
  */
 
+#include <jansson.h>
+
 #include "services.h"
 #include "modules.h"
 #include "conffile.h"
 #include "commands.h"
 #include "databases.h"
+#include "db.h"
 #include "encrypt.h"
+#include "migration.h"
+#include "store.h"
+#include "timeout.h"
 #include "language.h"
 #include "modules/nickserv/nickserv.h"
 #include "modules/operserv/operserv.h"
@@ -254,209 +260,20 @@ static int check_expire_channel(ChannelInfo *ci)
 
 /*************************************************************************/
 
-#define HASH_STATIC static
-#define HASHFUNC(key) DEFAULT_HASHFUNC(key+1)
-#define EXPIRE_CHECK(node) check_expire_channel(node)
-#include "hash.h"
-DEFINE_HASH(channelinfo_, ChannelInfo, name);
+/* ChanServ's records live in the entity store (include/store.h), like
+ * NickServ's: the database is the truth, Redis a copy, and memory holds
+ * only the channels in use (a channel that exists on the network pins its
+ * record through c->ci).  The tables are created by this module's
+ * migrations (migrations/). */
 
-EXPORT_FUNC(add_channelinfo)
-ChannelInfo *add_channelinfo(ChannelInfo *ci)
-{
-    add_channelinfo_(ci);
-    ci->usecount = 1;
-    return ci;
-}
+MODULE_MIGRATIONS_AUTO;
 
-EXPORT_FUNC(del_channelinfo)
-void del_channelinfo(ChannelInfo *ci)
-{
-    del_channelinfo_(ci);
-    free_channelinfo(ci);
-}
+/* How often expired channels (and suspensions) are looked for, and how
+ * many are handled per round. */
+#define EXPIRE_INTERVAL  600
+#define EXPIRE_BATCH     500
 
-EXPORT_FUNC(get_channelinfo)
-ChannelInfo *get_channelinfo(const char *chan)
-{
-    ChannelInfo *ci;
-    if ((ci = get_channelinfo_(chan)) != NULL)
-        ci->usecount++;
-    return ci;
-}
-
-EXPORT_FUNC(put_channelinfo)
-ChannelInfo *put_channelinfo(ChannelInfo *ci)
-{
-    if (ci) {
-        if (ci->usecount > 0)
-            ci->usecount--;
-        else
-            module_log_debug(1, "BUG: put_channelinfo(%s) with usecount==0",
-                             ci->name);
-    }
-    return ci;
-}
-
-EXPORT_FUNC(first_channelinfo)
-ChannelInfo *first_channelinfo(void)
-{
-    return first_channelinfo_();
-}
-
-EXPORT_FUNC(next_channelinfo)
-ChannelInfo *next_channelinfo(void)
-{
-    return next_channelinfo_();
-}
-
-/*************************************************************************/
-
-/* Free all memory used by database tables. */
-
-static void clean_dbtables(void)
-{
-    ChannelInfo *ci;
-    int save_noexpire = noexpire;
-
-    noexpire = 1;
-    for (ci = first_channelinfo(); ci; ci = next_channelinfo())
-        free_channelinfo(ci);
-    noexpire = save_noexpire;
-}
-
-/*************************************************************************/
-
-/* Helper functions for loading and saving database tables. */
-
-static ChanAccess dbuse_chan_access;
-static AutoKick dbuse_chan_akick;
-static ChannelInfo *dbuse_ci_iterator;
-static int dbuse_ca_iterator, dbuse_ak_iterator;
-
-/************************************/
-
-static void insert_channel(void *record)
-{
-    ChannelInfo *ci = add_channelinfo(record);
-    count_chan(ci);
-    put_channelinfo(ci);
-}
-
-/************************************/
-
-static ChanAccess *new_chan_access(void) {
-    return memset(&dbuse_chan_access, 0, sizeof(dbuse_chan_access));
-}
-
-static void free_chan_access(ChanAccess *ca) {
-    /* nothing to do */
-}
-
-static void insert_chan_access(ChanAccess *ca) {
-    if (ca->channel) {
-        ChanAccess *ca2;
-        ARRAY_EXTEND(ca->channel->access);
-        ca2 = &ca->channel->access[ca->channel->access_count-1];
-        memcpy(ca2, ca, sizeof(*ca2));
-    } else {
-        free_chan_access(ca);
-    }
-}
-
-static ChanAccess *next_chan_access(void) {
-    while (dbuse_ci_iterator
-        && dbuse_ca_iterator >= dbuse_ci_iterator->access_count
-    ) {
-        dbuse_ci_iterator = next_channelinfo();
-        dbuse_ca_iterator = 0;
-    }
-    if (dbuse_ci_iterator)
-        return &dbuse_ci_iterator->access[dbuse_ca_iterator++];
-    else
-        return NULL;
-}
-
-static ChanAccess *first_chan_access(void) {
-    dbuse_ci_iterator = first_channelinfo();
-    dbuse_ca_iterator = 0;
-    return next_chan_access();
-}
-
-static void chan_access_get_channel(const ChanAccess *record, char **value_ret)
-{
-    *value_ret = record->channel->name;
-}
-
-static void chan_access_put_channel(ChanAccess *record, const char **value) {
-    ChannelInfo *ci = get_channelinfo(*value);
-    if (ci) {
-        record->channel = ci;
-    } else {
-        module_log("Skipping access record for missing channel %s", *value);
-        record->channel = NULL;
-    }
-    free((char *)*value);
-}
-
-/************************************/
-
-static AutoKick *new_chan_akick(void) {
-    return memset(&dbuse_chan_akick, 0, sizeof(dbuse_chan_akick));
-}
-
-static void free_chan_akick(AutoKick *ak) {
-    free(ak->mask);
-    free(ak->reason);
-}
-
-static void insert_chan_akick(AutoKick *ak) {
-    if (ak->channel) {
-        AutoKick *ak2;
-        ARRAY_EXTEND(ak->channel->akick);
-        ak2 = &ak->channel->akick[ak->channel->akick_count-1];
-        memcpy(ak2, ak, sizeof(*ak2));
-    } else {
-        free_chan_akick(ak);
-    }
-}
-
-static AutoKick *next_chan_akick(void) {
-    while (dbuse_ci_iterator
-        && dbuse_ak_iterator >= dbuse_ci_iterator->akick_count
-    ) {
-        dbuse_ci_iterator = next_channelinfo();
-        dbuse_ak_iterator = 0;
-    }
-    if (dbuse_ci_iterator)
-        return &dbuse_ci_iterator->akick[dbuse_ak_iterator++];
-    else
-        return NULL;
-}
-
-static AutoKick *first_chan_akick(void) {
-    dbuse_ci_iterator = first_channelinfo();
-    dbuse_ak_iterator = 0;
-    return next_chan_akick();
-}
-
-static void chan_akick_get_channel(const AutoKick *record, char **value_ret) {
-    *value_ret = record->channel->name;
-}
-
-static void chan_akick_put_channel(AutoKick *record, const char **value) {
-    ChannelInfo *ci = get_channelinfo(*value);
-    if (ci) {
-        record->channel = ci;
-    } else {
-        module_log("Skipping autokick record for missing channel %s", *value);
-        record->channel = NULL;
-    }
-    free((char *)*value);
-}
-
-/*************************************************************************/
-
-/* Channel database table info */
+/* Channel fields (the channels table). */
 
 #define FIELD(name,type,...) \
     { #name, type, offsetof(ChannelInfo,name) , ##__VA_ARGS__ }
@@ -528,38 +345,15 @@ static DBField chan_dbfields[] = {
 
     { NULL }
 };
-static DBTable chan_dbtable = {
-    .name    = "chan",
-    .newrec  = (void *)new_channelinfo,
-    .freerec = (void *)free_channelinfo,
-    .insert  = insert_channel,
-    .first   = (void *)first_channelinfo,
-    .next    = (void *)next_channelinfo,
-    .fields  = chan_dbfields,
-};
+/* Access list and autokick entries (channel_access, channel_akicks). */
 
 static DBField chan_access_dbfields[] = {
-    { "channel",   DBTYPE_STRING,
-      .get = (void *)chan_access_get_channel,
-      .put = (void *)chan_access_put_channel },
     { "nickgroup", DBTYPE_UINT32, offsetof(ChanAccess,nickgroup) },
     { "level",     DBTYPE_INT16,  offsetof(ChanAccess,level) },
     { NULL }
 };
-static DBTable chan_access_dbtable = {
-    .name    = "chan-access",
-    .newrec  = (void *)new_chan_access,
-    .freerec = (void *)free_chan_access,
-    .insert  = (void *)insert_chan_access,
-    .first   = (void *)first_chan_access,
-    .next    = (void *)next_chan_access,
-    .fields  = chan_access_dbfields,
-};
 
 static DBField chan_akick_dbfields[] = {
-    { "channel",   DBTYPE_STRING,
-      .get = (void *)chan_akick_get_channel,
-      .put = (void *)chan_akick_put_channel },
     { "mask",     DBTYPE_STRING, offsetof(AutoKick,mask) },
     { "reason",   DBTYPE_STRING, offsetof(AutoKick,reason) },
     { "who",      DBTYPE_BUFFER, offsetof(AutoKick,who), NICKMAX },
@@ -567,15 +361,307 @@ static DBField chan_akick_dbfields[] = {
     { "lastused", DBTYPE_TIME,   offsetof(AutoKick,lastused) },
     { NULL }
 };
-static DBTable chan_akick_dbtable = {
-    .name    = "chan-akick",
-    .newrec  = (void *)new_chan_akick,
-    .freerec = (void *)free_chan_akick,
-    .insert  = (void *)insert_chan_akick,
-    .first   = (void *)first_chan_akick,
-    .next    = (void *)next_chan_akick,
-    .fields  = chan_akick_dbfields,
+
+/*************************************************************************/
+
+/* Keys: the channel name in IRC lower case. */
+
+static void chan_normalize(const char *key, char *buf, size_t size)
+{
+    size_t n = 0;
+
+    for (; *key && n + 1 < size; key++)
+        buf[n++] = irc_tolower(*key);
+    buf[n] = 0;
+}
+
+static void chan_keyof(const void *record, char *buf, size_t size)
+{
+    chan_normalize(((const ChannelInfo *)record)->name, buf, size);
+}
+
+static json_t *chan_encode(const void *record)
+{
+    const ChannelInfo *ci = record;
+    json_t *bundle = json_object(), *main, *rows;
+    char key[CHANMAX*2];
+    int i;
+
+    chan_normalize(ci->name, key, sizeof(key));
+    main = store_encode_fields(ci, chan_dbfields);
+    json_object_set_new(main, "name_key", store_json_string(key));
+    json_object_set_new(bundle, "main", main);
+
+    /* Entries with no nickgroup (or no mask) are not in use. */
+    rows = json_array();
+    ARRAY_FOREACH (i, ci->access) {
+        json_t *row;
+        if (!ci->access[i].nickgroup)
+            continue;
+        row = store_encode_fields(&ci->access[i], chan_access_dbfields);
+        json_object_set_new(row, "channel_key", store_json_string(key));
+        json_object_set_new(row, "idx", json_integer(i));
+        json_array_append_new(rows, row);
+    }
+    json_object_set_new(bundle, "access", rows);
+    rows = json_array();
+    ARRAY_FOREACH (i, ci->akick) {
+        json_t *row;
+        if (!ci->akick[i].mask)
+            continue;
+        row = store_encode_fields(&ci->akick[i], chan_akick_dbfields);
+        json_object_set_new(row, "channel_key", store_json_string(key));
+        json_object_set_new(row, "idx", json_integer(i));
+        json_array_append_new(rows, row);
+    }
+    json_object_set_new(bundle, "akick", rows);
+    return bundle;
+}
+
+static void *chan_decode(json_t *bundle)
+{
+    ChannelInfo *ci = new_channelinfo();
+    json_t *row;
+    size_t i;
+
+    store_decode_fields(json_object_get(bundle, "main"), ci, chan_dbfields);
+    if (!*ci->name) {
+        free_channelinfo(ci);
+        return NULL;
+    }
+    json_array_foreach(json_object_get(bundle, "access"), i, row) {
+        ChanAccess *ca;
+        ARRAY_EXTEND(ci->access);
+        ca = &ci->access[ci->access_count-1];
+        memset(ca, 0, sizeof(*ca));
+        store_decode_fields(row, ca, chan_access_dbfields);
+        ca->channel = ci;
+    }
+    json_array_foreach(json_object_get(bundle, "akick"), i, row) {
+        AutoKick *ak;
+        ARRAY_EXTEND(ci->akick);
+        ak = &ci->akick[ci->akick_count-1];
+        memset(ak, 0, sizeof(*ak));
+        store_decode_fields(row, ak, chan_akick_dbfields);
+        ak->channel = ci;
+    }
+    return ci;
+}
+
+static void chan_release(void *record)
+{
+    free_channelinfo(record);
+}
+
+static const StoreChild chan_children[] = {
+    { "access", "channel_access", "channel_key", "idx" },
+    { "akick",  "channel_akicks", "channel_key", "idx" },
+    { NULL }
 };
+
+static StoreType chan_type = {
+    .name       = "channel",
+    .table      = "channels",
+    .key_column = "name_key",
+    .key_type   = "text",
+    .children   = chan_children,
+    .decode     = chan_decode,
+    .encode     = chan_encode,
+    .release    = chan_release,
+    .keyof      = chan_keyof,
+    .normalize  = chan_normalize,
+};
+
+/*************************************************************************/
+
+EXPORT_FUNC(add_channelinfo)
+ChannelInfo *add_channelinfo(ChannelInfo *ci)
+{
+    if (!store_add(&chan_type, ci))
+        return NULL;
+    return ci;
+}
+
+EXPORT_FUNC(del_channelinfo)
+void del_channelinfo(ChannelInfo *ci)
+{
+    store_delete(&chan_type, ci);
+}
+
+/* The record if it is in memory (pinned), NULL otherwise; never any I/O. */
+EXPORT_FUNC(peek_channelinfo)
+ChannelInfo *peek_channelinfo(const char *chan)
+{
+    ChannelInfo *ci = store_peek(&chan_type, chan);
+
+    if (ci && !noexpire && check_expire_channel(ci))
+        return NULL;
+    return ci;
+}
+
+EXPORT_FUNC(get_channelinfo)
+ChannelInfo *get_channelinfo(const char *chan)
+{
+    ChannelInfo *ci = store_get(&chan_type, chan);
+
+    /* Checked on every lookup, as the in-memory tables used to do. */
+    if (ci && !noexpire && check_expire_channel(ci))
+        return NULL;
+    return ci;
+}
+
+EXPORT_FUNC(put_channelinfo)
+ChannelInfo *put_channelinfo(ChannelInfo *ci)
+{
+    store_put(&chan_type, ci);
+    return ci;
+}
+
+EXPORT_FUNC(hold_channelinfo)
+ChannelInfo *hold_channelinfo(ChannelInfo *ci)
+{
+    store_hold(&chan_type, ci);
+    return ci;
+}
+
+EXPORT_FUNC(foreach_channelinfo)
+int foreach_channelinfo(const char *where, const char *const *params,
+                        int nparams, int (*fn)(ChannelInfo *ci, void *arg),
+                        void *arg)
+{
+    return store_foreach(&chan_type, where, params, nparams,
+                         (StoreEachFn)fn, arg);
+}
+
+EXPORT_FUNC(count_channelinfo)
+long count_channelinfo(const char *where, const char *const *params,
+                       int nparams)
+{
+    return store_count(&chan_type, where, params, nparams);
+}
+
+EXPORT_FUNC(prefetch_channelinfo)
+int prefetch_channelinfo(const char **names, int count,
+                         void (*done)(void *arg), void *arg)
+{
+    return store_prefetch(THIS_MODULE, &chan_type, names, count, done, arg);
+}
+
+/*************************************************************************/
+
+/* The channels a nick group founded, as ngi->channels: from the database
+ * (the channels_founder index), since not every one of them is in memory.
+ * Called where the list or its length matters. */
+
+/* Write a channel's changes now (a pending write, served to every reader
+ * at once), without unpinning it: for changes other records depend on. */
+EXPORT_FUNC(sync_channelinfo)
+void sync_channelinfo(ChannelInfo *ci)
+{
+    if (ci)
+        store_sync(&chan_type, ci);
+}
+
+EXPORT_FUNC(update_owned_channels)
+void update_owned_channels(NickGroupInfo *ngi)
+{
+    struct DbParam param = { DB_TYPE_UNKNOWN, NULL, DB_FORMAT_TEXT };
+    struct DbParam *params[] = { &param, NULL };
+    struct DbQuery query = { "select name from channels where founder = $1"
+                             " order by name_key", params };
+    struct DbResult res;
+    char id[16];
+    unsigned int i;
+
+    if (!ngi || ngi == NICKGROUPINFO_INVALID)
+        return;
+    /* A founder change is a pending write the moment it is made
+     * (count_chan()); the database has it a few milliseconds later. */
+    if (store_pending() > 0)
+        store_wait(db_conf_sync_timeout());
+    snprintf(id, sizeof(id), "%u", ngi->id);
+    param.value = id;
+    if (db_query_sync(THIS_MODULE, &query, &res) != DB_OK) {
+        module_log("cannot read the channels of nickgroup %u: %s", ngi->id,
+                   res.err.dberr_message);
+        db_result_free(&res);
+        return;
+    }
+    free(ngi->channels);
+    ngi->channels = NULL;
+    ngi->channels_count = 0;
+    for (i = 0; i < res.rows && i < MAX_CHANNELCOUNT; i++) {
+        ARRAY_EXTEND(ngi->channels);
+        strbcpy(ngi->channels[ngi->channels_count-1],
+                db_row_str(res.data, i, "name"));
+    }
+    db_result_free(&res);
+}
+
+/*************************************************************************/
+
+/* Expiration: expired channels and suspensions are looked for in the
+ * database, a batch at a time; each one found is looked up, and the lookup
+ * does the rest (check_expire_channel()). */
+
+static Timeout *expire_timeout;
+
+static void expire_found(const struct DbResult *res, void *user)
+{
+    unsigned int i;
+
+    if (res->err.dberr_code != DB_OK) {
+        module_log("expire: cannot read the database: %s",
+                   res->err.dberr_message);
+        return;
+    }
+    for (i = 0; i < db_rows(res->data); i++)
+        put_channelinfo(get_channelinfo(db_row_str(res->data, i,
+                                                   "name_key")));
+}
+
+static void expire_check(Timeout *t)
+{
+    char cutoff[32], now[32], mask[16], limit[16];
+    struct DbParam p[3];
+    struct DbParam *pl[4];
+    struct DbQuery q;
+    int i;
+
+    if (noexpire || readonly)
+        return;
+    snprintf(now, sizeof(now), "%lld", (long long)time(NULL));
+    snprintf(limit, sizeof(limit), "%d", EXPIRE_BATCH);
+    for (i = 0; i < 3; i++) {
+        p[i].type = DB_TYPE_UNKNOWN;
+        p[i].format = DB_FORMAT_TEXT;
+        pl[i] = &p[i];
+    }
+    if (CSExpire) {
+        snprintf(cutoff, sizeof(cutoff), "%lld",
+                 (long long)(time(NULL) - CSExpire));
+        snprintf(mask, sizeof(mask), "%d",
+                 CF_VERBOTEN | CF_SUSPENDED | CF_NOEXPIRE);
+        p[0].value = cutoff;
+        p[1].value = mask;
+        p[2].value = limit;
+        pl[3] = NULL;
+        q.sql = "select name_key from channels where last_used < $1::bigint"
+                " and (flags & $2::integer) = 0 order by last_used"
+                " limit $3::integer";
+        q.params = pl;
+        db_query(THIS_MODULE, &q, expire_found, NULL);
+    }
+    p[0].value = now;
+    p[1].value = limit;
+    pl[2] = NULL;
+    q.sql = "select name_key from channels where suspend_expires > 0 and"
+            " suspend_expires <= $1::bigint limit $2::integer";
+    q.params = pl;
+    db_query(THIS_MODULE, &q, expire_found, NULL);
+}
+
+/*************************************************************************/
 
 /*************************************************************************/
 /************************ Main ChanServ routines *************************/
@@ -653,10 +739,16 @@ static int chanserv_whois(const char *source, char *who, char *extra)
 
 /* Callback for newly-created channels. */
 
-static int do_channel_create(Channel *c, User *u, int32 modes)
+static int do_channel_join(Channel *c, struct c_userlist *u);
+
+/* A channel's record is looked up in the background when the channel is
+ * created (a burst creates thousands); until it arrives the channel is
+ * left alone, and whoever joined meanwhile is checked when it does. */
+
+static void chan_record_link(Channel *c, ChannelInfo *ci)
 {
-    /* Store ChannelInfo pointer in channel record */
-    c->ci = get_channelinfo(c->name);
+    /* Store ChannelInfo pointer in channel record (with its pin) */
+    c->ci = ci;
     if (c->ci) {
         /* Store return pointer in ChannelInfo record */
         c->ci->c = c;
@@ -667,7 +759,64 @@ static int do_channel_create(Channel *c, User *u, int32 modes)
      *       +r modes are cleared */
     check_modes(c);
     restore_topic(c);
+}
 
+static void chan_record_ready(void *arg)
+{
+    char *name = arg;
+    Channel *c = get_channel(name);
+    struct c_userlist *cu;
+    User **members = NULL;
+    int count = 0, i;
+
+    if (!c || !c->ci_pending) {
+        free(name);
+        return;
+    }
+    c->ci_pending = 0;
+    chan_record_link(c, get_channelinfo(name));
+
+    /* The users who joined while it was on its way: the join checks. */
+    LIST_FOREACH (cu, c->users) {
+        members = srealloc(members, sizeof(*members) * (count+1));
+        members[count++] = cu->user;
+    }
+    for (i = 0; i < count; i++) {
+        /* A kick may have emptied the channel (and freed it). */
+        if (!(c = get_channel(name)))
+            break;
+        LIST_SEARCH_SCALAR(c->users, user, members[i], cu);
+        if (!cu || check_kick(members[i], name, 0))
+            continue;
+        if ((c = get_channel(name)) != NULL)
+            do_channel_join(c, cu);
+    }
+    free(members);
+    free(name);
+}
+
+/* Start looking up the record of `c', or link it now if it is at hand. */
+static void chan_record_fetch(Channel *c)
+{
+    ChannelInfo *ci = peek_channelinfo(c->name);
+    const char *names[1];
+
+    if (ci) {
+        chan_record_link(c, ci);
+        return;
+    }
+    names[0] = c->name;
+    c->ci_pending = 1;
+    if (!prefetch_channelinfo(names, 1, chan_record_ready,
+                              sstrdup(c->name))) {
+        c->ci_pending = 0;
+        chan_record_link(c, get_channelinfo(c->name));
+    }
+}
+
+static int do_channel_create(Channel *c, User *u, int32 modes)
+{
+    chan_record_fetch(c);
     return 0;
 }
 
@@ -689,6 +838,8 @@ static int do_channel_join(Channel *c, struct c_userlist *u)
     User *user = u->user;
     ChannelInfo *ci = c->ci;
 
+    if (c->ci_pending)
+        return 0;  /* see chan_record_ready() */
     check_chan_user_modes(NULL, u, c, -1);
     if (ci && ci->entry_message)
         notice(s_ChanServ, user->nick, "(%s) %s", ci->name, ci->entry_message);
@@ -715,9 +866,11 @@ static int do_channel_part(Channel *c, User *u, const char *reason)
 static int do_channel_delete(Channel *c)
 {
     if (c->ci) {
-        put_channelinfo(c->ci);
         c->ci->c = NULL;
+        put_channelinfo(c->ci);
+        c->ci = NULL;
     }
+    c->ci_pending = 0;
     return 0;
 }
 
@@ -797,71 +950,100 @@ static int do_nick_identified(User *u, int old_authstat)
 
 /*************************************************************************/
 
-/* Remove a (deleted or expired) nickname group from all channel lists. */
+/* One channel that mentions the deleted group. */
+typedef struct {
+    uint32 id;
+    const char *oldnick;
+} NickgroupDeleteArg;
+
+static int nickgroup_delete_one(ChannelInfo *ci, void *arg_)
+{
+    NickgroupDeleteArg *arg = arg_;
+    uint32 id = arg->id;
+    int i;
+
+    if (ci->founder == id) {
+        int was_suspended = (ci->flags & CF_SUSPENDED);
+        char name_save[CHANMAX];
+        strbcpy(name_save, ci->name);
+        if (ci->successor) {
+            NickGroupInfo *ngi2 = get_ngi_id(ci->successor);
+            if (!ngi2) {
+                module_log("Unable to access successor group %u for"
+                           " deleted channel %s, deleting channel",
+                           ci->successor, ci->name);
+                goto delete;
+            }
+            if (check_channel_limit(ngi2, NULL) < 0) {
+                module_log("Transferring foundership of %s from deleted"
+                           " nick %s to successor %s", ci->name,
+                           arg->oldnick, ngi_mainnick(ngi2));
+                put_nickgroupinfo(ngi2);
+                uncount_chan(ci);
+                ci->founder = ci->successor;
+                ci->successor = 0;
+                count_chan(ci);
+            } else {
+                module_log("Successor (%s) of %s owns too many channels,"
+                           " deleting channel", ngi_mainnick(ngi2),
+                           ci->name);
+                put_nickgroupinfo(ngi2);
+                goto delete;
+            }
+        } else {
+            module_log("Deleting channel %s owned by deleted nick %s",
+                       ci->name, arg->oldnick);
+          delete:
+            delchan(ci);
+            if (was_suspended) {
+                /* Channel was suspended, so make it forbidden */
+                Channel *c;
+                module_log("Channel %s was suspended, forbidding it",
+                           name_save);
+                if (!(ci = makechan(name_save))) {
+                    module_log("makechan(%s) failed; not forbidden",
+                               name_save);
+                    return 0;
+                }
+                ci->flags |= CF_VERBOTEN;
+                if ((c = get_channel(ci->name)) != NULL) {
+                    c->ci = ci;
+                    ci->c = c;
+                } else {
+                    put_channelinfo(ci);
+                }
+            }
+            return 0;
+        }
+    }
+    if (ci->successor == id)
+        ci->successor = 0;
+    ARRAY_FOREACH (i, ci->access) {
+        if (ci->access[i].nickgroup == id)
+            ci->access[i].nickgroup = 0;
+    }
+    return 0;
+}
+
+/* Remove a (deleted or expired) nickname group from all channel lists:
+ * the channels it founded, succeeds to or has access to, found through
+ * the database's indexes rather than by going through every channel. */
 
 static int do_nickgroup_delete(const NickGroupInfo *ngi, const char *oldnick)
 {
-    int i;
-    int id = ngi->id;
-    ChannelInfo *ci;
+    NickgroupDeleteArg arg;
+    const char *params[1];
+    char id[16];
 
-    for (ci = first_channelinfo(); ci; ci = next_channelinfo()) {
-        if (ci->founder == id) {
-            int was_suspended = (ci->flags & CF_SUSPENDED);
-            char name_save[CHANMAX];
-            strbcpy(name_save, ci->name);
-            if (ci->successor) {
-                NickGroupInfo *ngi2 = get_ngi_id(ci->successor);
-                if (!ngi2) {
-                    module_log("Unable to access successor group %u for"
-                               " deleted channel %s, deleting channel",
-                               ci->successor, ci->name);
-                    goto delete;
-                } else if (check_channel_limit(ngi2, NULL) < 0) {
-                    module_log("Transferring foundership of %s from deleted"
-                               " nick %s to successor %s", ci->name,
-                               oldnick, ngi_mainnick(ngi2));
-                    put_nickgroupinfo(ngi2);
-                    uncount_chan(ci);
-                    ci->founder = ci->successor;
-                    ci->successor = 0;
-                    count_chan(ci);
-                } else {
-                    module_log("Successor (%s) of %s owns too many channels,"
-                               " deleting channel", ngi_mainnick(ngi2),
-                               ci->name);
-                    put_nickgroupinfo(ngi2);
-                    goto delete;
-                }
-            } else {
-                module_log("Deleting channel %s owned by deleted nick %s",
-                           ci->name, oldnick);
-              delete:
-                delchan(ci);
-                if (was_suspended) {
-                    /* Channel was suspended, so make it forbidden */
-                    Channel *c;
-                    module_log("Channel %s was suspended, forbidding it",
-                               name_save);
-                    ci = makechan(name_save);
-                    ci->flags |= CF_VERBOTEN;
-                    if ((c = get_channel(ci->name)) != NULL) {
-                        c->ci = ci;
-                        ci->c = c;
-                    } else {
-                        put_channelinfo(ci);
-                    }
-                }
-                continue;
-            }
-        }
-        if (ci->successor == id)
-            ci->successor = 0;
-        ARRAY_FOREACH (i, ci->access) {
-            if (ci->access[i].nickgroup == id)
-                ci->access[i].nickgroup = 0;
-        }
-    }
+    arg.id = ngi->id;
+    arg.oldnick = oldnick;
+    snprintf(id, sizeof(id), "%u", ngi->id);
+    params[0] = id;
+    foreach_channelinfo("t.founder = $2::bigint or t.successor = $2::bigint"
+                        " or exists (select 1 from channel_access a"
+                        " where a.channel_key = t.name_key"
+                        " and a.nickgroup = $2::bigint)",
+                        params, 1, nickgroup_delete_one, &arg);
     return 0;
 }
 
@@ -869,45 +1051,14 @@ static int do_nickgroup_delete(const NickGroupInfo *ngi, const char *oldnick)
 
 static int do_stats_all(User *user, const char *s_OperServ)
 {
-    int32 count, mem;
-    int i;
-    ChannelInfo *ci;
-
-    count = mem = 0;
-    for (ci = first_channelinfo(); ci; ci = next_channelinfo()) {
-        count++;
-        mem += sizeof(*ci);
-        if (ci->desc)
-            mem += strlen(ci->desc)+1;
-        if (ci->url)
-            mem += strlen(ci->url)+1;
-        if (ci->email)
-            mem += strlen(ci->email)+1;
-        if (ci->last_topic)
-            mem += strlen(ci->last_topic)+1;
-        if (ci->suspend_reason)
-            mem += strlen(ci->suspend_reason)+1;
-        mem += sizeof(ci->levels);
-        mem += ci->access_count * sizeof(*ci->access);
-        mem += ci->akick_count * sizeof(*ci->akick);
-        ARRAY_FOREACH (i, ci->akick) {
-            if (ci->akick[i].mask)
-                mem += strlen(ci->akick[i].mask)+1;
-            if (ci->akick[i].reason)
-                mem += strlen(ci->akick[i].reason)+1;
-        }
-        if (ci->mlock.key)
-            mem += strlen(ci->mlock.key)+1;
-        if (ci->mlock.link)
-            mem += strlen(ci->mlock.link)+1;
-        if (ci->mlock.flood)
-            mem += strlen(ci->mlock.flood)+1;
-        if (ci->entry_message)
-            mem += strlen(ci->entry_message)+1;
-    }
+    /* The count is the database's; the size, that of the channels in
+     * memory (the ones in use). */
     notice_lang(s_OperServ, user, OPER_STATS_ALL_CHANSERV_MEM,
-                count, (mem+512) / 1024);
-
+                (int)count_channelinfo(NULL, NULL, 0),
+                (int)((store_resident(&chan_type) * sizeof(ChannelInfo)
+                       + 512) / 1024));
+    notice_lang(s_OperServ, user, OPER_STATS_ALL_RESIDENT,
+                (int)store_resident(&chan_type));
     return 0;
 }
 
@@ -1453,26 +1604,80 @@ static void do_info(User *u)
  * -TheShadow
  */
 
+/* LIST: the pattern goes to the database, over the name and description
+ * laid out as the command shows them ("%-20s  %s"), and only candidates are
+ * looked at here -- until a page of results has been shown.  The total is
+ * then the database's count of candidates. */
+
+typedef struct {
+    User *u;
+    const char *pattern;
+    int is_servadmin;
+    int32 matchflags;
+    int skip;
+    int nchans;
+} ChanListArg;
+
+static int list_one(ChannelInfo *ci, void *arg_)
+{
+    ChanListArg *a = arg_;
+    char buf[BUFSIZE];
+
+    if (!a->is_servadmin && (ci->flags & (CF_PRIVATE | CF_VERBOTEN)))
+        return 0;
+    if (a->matchflags && !(ci->flags & a->matchflags))
+        return 0;
+    snprintf(buf, sizeof(buf), "%-20s  %s", ci->name,
+             ci->desc ? ci->desc : "");
+    if (irc_stricmp(a->pattern, ci->name) == 0
+     || match_wild_nocase(a->pattern, buf)
+    ) {
+        a->nchans++;
+        if (a->nchans > a->skip && a->nchans <= a->skip+ListMax) {
+            char noexpire_char = ' ', suspended_char = ' ';
+            if (a->is_servadmin) {
+                if (ci->flags & CF_NOEXPIRE)
+                    noexpire_char = '!';
+                if (ci->flags & CF_SUSPENDED)
+                    suspended_char = '*';
+            }
+            /* This can only be true for SADMINS - normal users will never
+             * get this far with a VERBOTEN channel.  -TheShadow */
+            if (ci->flags & CF_VERBOTEN)
+                snprintf(buf, sizeof(buf), "%-20s  [Forbidden]", ci->name);
+            if (a->nchans == 1)  /* display header before first result */
+                notice_lang(s_ChanServ, a->u, CHAN_LIST_HEADER, a->pattern);
+            notice(s_ChanServ, a->u->nick, "  %c%c%s",
+                   suspended_char, noexpire_char, buf);
+        }
+    }
+    return a->nchans >= a->skip + ListMax;
+}
+
 static void do_list(User *u)
 {
     char *pattern = strtok(NULL, " ");
     char *keyword;
-    ChannelInfo *ci;
-    int nchans;
-    char buf[BUFSIZE];
-    int is_servadmin = is_services_admin(u);
-    int32 matchflags = 0;  /* CF_ flags a chan must match one of to qualify */
-    int skip = 0;          /* number of records to skip before displaying */
-
+    ChanListArg a;
+    char like[BUFSIZE], lowered[BUFSIZE];
+    const char *params[2];
+    static const char where[] =
+        "lower(case when length(t.name) < 20 then rpad(t.name, 20)"
+        " else t.name end || '  ' || coalesce(t.\"desc\", ''))"
+        " like lower($2) or t.name_key = $3";
+    int seen;
 
     if (CSListOpersOnly && (!u || !is_oper(u))) {
         notice_lang(s_ChanServ, u, PERMISSION_DENIED);
         return;
     }
+    memset(&a, 0, sizeof(a));
+    a.u = u;
+    a.is_servadmin = is_services_admin(u);
 
     if (pattern && *pattern == '+') {
-        skip = (int)atolsafe(pattern+1, 0, INT_MAX);
-        if (skip < 0) {
+        a.skip = (int)atolsafe(pattern+1, 0, INT_MAX);
+        if (a.skip < 0) {
             syntax_error(s_ChanServ, u, "LIST",
                          is_oper(u)? CHAN_LIST_OPER_SYNTAX: CHAN_LIST_SYNTAX);
             return;
@@ -1483,70 +1688,45 @@ static void do_list(User *u)
     if (!pattern) {
         syntax_error(s_ChanServ, u, "LIST",
                      is_oper(u) ? CHAN_LIST_OPER_SYNTAX : CHAN_LIST_SYNTAX);
-    } else {
-        nchans = 0;
+        return;
+    }
+    a.pattern = pattern;
 
-        while (is_servadmin && (keyword = strtok(NULL, " "))) {
-            if (stricmp(keyword, "FORBIDDEN") == 0) {
-                matchflags |= CF_VERBOTEN;
-            } else if (stricmp(keyword, "NOEXPIRE") == 0) {
-                matchflags |= CF_NOEXPIRE;
-            } else if (stricmp(keyword, "SUSPENDED") == 0) {
-                matchflags |= CF_SUSPENDED;
-            } else {
-                syntax_error(s_ChanServ, u, "LIST",
-                     is_oper(u) ? CHAN_LIST_OPER_SYNTAX : CHAN_LIST_SYNTAX);
-            }
-        }
-
-        for (ci = first_channelinfo(); ci; ci = next_channelinfo()) {
-            if (!is_servadmin && (ci->flags & (CF_PRIVATE | CF_VERBOTEN)))
-                continue;
-            if (matchflags && !(ci->flags & matchflags))
-                continue;
-
-            snprintf(buf, sizeof(buf), "%-20s  %s", ci->name,
-                     ci->desc ? ci->desc : "");
-            if (irc_stricmp(pattern, ci->name) == 0
-             || match_wild_nocase(pattern, buf)
-            ) {
-                nchans++;
-                if (nchans > skip && nchans <= skip+ListMax) {
-                    char noexpire_char = ' ', suspended_char = ' ';
-                    if (is_servadmin) {
-                        if (ci->flags & CF_NOEXPIRE)
-                            noexpire_char = '!';
-                        if (ci->flags & CF_SUSPENDED)
-                            suspended_char = '*';
-                    }
-
-                    /* This can only be true for SADMINS - normal users
-                     * will never get this far with a VERBOTEN channel.
-                     * -TheShadow */
-                    if (ci->flags & CF_VERBOTEN) {
-                        snprintf(buf, sizeof(buf), "%-20s  [Forbidden]",
-                                 ci->name);
-                    }
-
-                    if (nchans == 1)  /* display header before first result */
-                        notice_lang(s_ChanServ, u, CHAN_LIST_HEADER, pattern);
-                    notice(s_ChanServ, u->nick, "  %c%c%s",
-                           suspended_char, noexpire_char, buf);
-                }
-            }
-        }
-        if (nchans) {
-            int count = nchans - skip;
-            if (count < 0)
-                count = 0;
-            else if (count > ListMax)
-                count = ListMax;
-            notice_lang(s_ChanServ, u, LIST_RESULTS, count, nchans);
+    while (a.is_servadmin && (keyword = strtok(NULL, " "))) {
+        if (stricmp(keyword, "FORBIDDEN") == 0) {
+            a.matchflags |= CF_VERBOTEN;
+        } else if (stricmp(keyword, "NOEXPIRE") == 0) {
+            a.matchflags |= CF_NOEXPIRE;
+        } else if (stricmp(keyword, "SUSPENDED") == 0) {
+            a.matchflags |= CF_SUSPENDED;
         } else {
-            notice_lang(s_ChanServ, u, CHAN_LIST_NO_MATCH);
+            syntax_error(s_ChanServ, u, "LIST",
+                 is_oper(u) ? CHAN_LIST_OPER_SYNTAX : CHAN_LIST_SYNTAX);
         }
     }
 
+    params[0] = store_like_pattern(pattern, like, sizeof(like));
+    chan_normalize(pattern, lowered, sizeof(lowered));
+    params[1] = lowered;
+    seen = foreach_channelinfo(where, params, 2, list_one, &a);
+    if (seen < 0) {
+        notice_lang(s_ChanServ, u, INTERNAL_ERROR);
+    } else if (a.nchans) {
+        int count = a.nchans - a.skip;
+        long total = a.nchans;
+        if (count < 0)
+            count = 0;
+        else if (count > ListMax)
+            count = ListMax;
+        if (a.nchans >= a.skip + ListMax) {
+            long candidates = count_channelinfo(where, params, 2);
+            if (candidates > total)
+                total = candidates;
+        }
+        notice_lang(s_ChanServ, u, LIST_RESULTS, count, (int)total);
+    } else {
+        notice_lang(s_ChanServ, u, CHAN_LIST_NO_MATCH);
+    }
 }
 
 /*************************************************************************/
@@ -2645,6 +2825,43 @@ static int do_reconfigure(int after_configure)
 
 /*************************************************************************/
 
+/* -encrypt-all: one channel. */
+typedef struct {
+    int done, already, failed;
+} EncryptAllCount;
+
+static int reencrypt_one(ChannelInfo *ci, void *arg)
+{
+    EncryptAllCount *counts = arg;
+    char plainbuf[PASSMAX];
+    Password newpass;
+
+    if ((EncryptionType && ci->founderpass.cipher
+         && strcmp(ci->founderpass.cipher, EncryptionType) == 0)
+     || (!EncryptionType && !ci->founderpass.cipher)
+    ) {
+        counts->already++;
+        return 0;
+    }
+    init_password(&newpass);
+    if (decrypt_password(&ci->founderpass, plainbuf, sizeof(plainbuf)) != 0) {
+        counts->failed++;
+        return 0;
+    }
+    if (encrypt_password(plainbuf, strlen(plainbuf), &newpass) != 0) {
+        memset(plainbuf, 0, sizeof(plainbuf));
+        counts->failed++;
+        return 0;
+    }
+    memset(plainbuf, 0, sizeof(plainbuf));
+    copy_password(&ci->founderpass, &newpass);
+    clear_password(&newpass);
+    counts->done++;
+    return 0;
+}
+
+/*************************************************************************/
+
 int init_module(void)
 {
     Command *cmd;
@@ -2747,13 +2964,23 @@ int init_module(void)
         return 0;
     }
 
-    if (!register_dbtable(&chan_dbtable)
-     || !register_dbtable(&chan_access_dbtable)
-     || !register_dbtable(&chan_akick_dbtable)
-    ) {
-        module_log("Unable to register database tables");
+    /* The tables exist: this module's migrations were applied when it was
+     * loaded (MODULE_MIGRATIONS_AUTO). */
+    if (!store_register(&chan_type)) {
+        module_log("Unable to register the record type");
         exit_module(0);
         return 0;
+    }
+    expire_timeout = add_timeout(EXPIRE_INTERVAL, expire_check, 1);
+
+    /* Channels that exist already (the module was loaded late, or
+     * reloaded): their records. */
+    {
+        Channel *c;
+        for (c = first_channel(); c; c = next_channel()) {
+            if (!c->ci && !c->ci_pending)
+                chan_record_fetch(c);
+        }
     }
 
     if (!init_access() || !init_check() || !init_set()) {
@@ -2762,40 +2989,11 @@ int init_module(void)
     }
 
     if (encrypt_all) {
-        ChannelInfo *ci;
-        int done = 0, already = 0, failed = 0;
+        EncryptAllCount counts = {0, 0, 0};
         module_log("Re-encrypting passwords...");
-        for (ci = first_channelinfo(); ci; ci = next_channelinfo()) {
-            if ((EncryptionType && ci->founderpass.cipher
-                 && strcmp(ci->founderpass.cipher, EncryptionType) == 0)
-             || (!EncryptionType && !ci->founderpass.cipher)
-            ) {
-                already++;
-            } else {
-                char plainbuf[PASSMAX];
-                Password newpass;
-                int res;
-
-                init_password(&newpass);
-                res = decrypt_password(&ci->founderpass, plainbuf,
-                                       sizeof(plainbuf));
-                if (res != 0) {
-                    failed++;
-                } else {
-                    res = encrypt_password(plainbuf,strlen(plainbuf),&newpass);
-                    memset(plainbuf, 0, sizeof(plainbuf));
-                    if (res != 0) {
-                        failed++;
-                    } else {
-                        copy_password(&ci->founderpass, &newpass);
-                        clear_password(&newpass);
-                        done++;
-                    }
-                }
-            }
-        }
+        foreach_channelinfo(NULL, NULL, 0, reencrypt_one, &counts);
         module_log("%d passwords re-encrypted, %d already encrypted, %d"
-                   " failed", done, already, failed);
+                   " failed", counts.done, counts.already, counts.failed);
     } /* if (encrypt_all) */
 
     if (linked)
@@ -2823,10 +3021,25 @@ int exit_module(int shutdown_unused)
     exit_check();
     exit_access();
 
-    unregister_dbtable(&chan_akick_dbtable);
-    unregister_dbtable(&chan_access_dbtable);
-    unregister_dbtable(&chan_dbtable);
-    clean_dbtables();
+    if (expire_timeout) {
+        del_timeout(expire_timeout);
+        expire_timeout = NULL;
+    }
+    /* Let go of the records the channels on the network hold, so that
+     * they are written and released before their type goes. */
+    if (chan_type.state) {
+        Channel *c;
+        for (c = first_channel(); c; c = next_channel()) {
+            c->ci_pending = 0;
+            if (c->ci) {
+                c->ci->c = NULL;
+                put_channelinfo(c->ci);
+                c->ci = NULL;
+            }
+        }
+        store_collect();
+    }
+    store_unregister(&chan_type);
 
     remove_callback(NULL, "channel TOPIC", do_channel_topic);
     remove_callback(NULL, "channel umode change", do_channel_umode_change);

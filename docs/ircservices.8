@@ -44,9 +44,6 @@ Disable all expirations.
 .B \-noakill
 Disable autokill checking.
 .TP
-.B \-forceload
-Load as much as possible from damaged databases.
-.TP
 .B \-encrypt\-all
 Re-encrypt all passwords on start-up.
 .TP
@@ -65,7 +62,9 @@ Reopen the log file.
 .SH FILES
 .TP
 .I ircservices.conf
-The configuration file, in the data directory.
+The configuration file, in the data directory.  Its
+.B database
+block names the PostgreSQL database that holds the Services data.
 .SH SEE ALSO
 The documentation in the
 .I docs
@@ -73,4 +72,5 @@ directory of the source tree:
 .IR readme.install ,
 .IR readme.config ,
 .IR readme.modules ,
+.IR readme.database ,
 .IR readme.commands .

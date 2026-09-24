@@ -146,6 +146,11 @@ extern int check_module_symbol(Module* module, const char* symname,
 /* Retrieve the name of the given module. */
 extern const char* get_module_name(const Module* module);
 
+/* The migrations the module ships, validated when it was loaded, or NULL
+ * if it ships none (see migration.h). */
+struct MigrationSet;
+extern const struct MigrationSet* get_module_migrations(const Module* module);
+
 /*************************************************************************/
 
 /* Callback-related functions: (all functions except register_callback()

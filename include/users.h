@@ -66,6 +66,9 @@ struct user_ {
         struct u_chaninfolist *next, *prev;
         char chan[CHANMAX];
     }* id_chans;
+
+    void* ns_validate; /* NickServ: nick record being fetched (the user is
+                        *    validated when it arrives) */
 };
 
 /* Status flags: */

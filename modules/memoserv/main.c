@@ -112,109 +112,10 @@ static Alias *aliases;
 static int aliases_count;
 
 /*************************************************************************/
-/**************************** Database stuff *****************************/
-/*************************************************************************/
 
-/* See nickserv/autojoin.c for why we don't create our own table. */
-
-/* Temporary structure for loading/saving access records */
-typedef struct {
-    uint32 nickgroup;
-    Memo memo;
-} DBRecord;
-static DBRecord dbrec_static;
-
-/* Iterators for first/next routines */
-static NickGroupInfo *db_ngi_iterator;
-static int db_array_iterator;
-
-/*************************************************************************/
-
-/* Table access routines */
-
-static void *new_memo(void)
-{
-    return memset(&dbrec_static, 0, sizeof(dbrec_static));
-}
-
-static void free_memo(void *record)
-{
-    free(((DBRecord *)record)->memo.channel);
-    free(((DBRecord *)record)->memo.text);
-}
-
-static void insert_memo(void *record)
-{
-    DBRecord *dbrec = record;
-    NickGroupInfo *ngi = get_nickgroupinfo(dbrec->nickgroup);
-    if (!ngi) {
-        module_log("Discarding memo for missing nickgroup %u: (%s) %s",
-                   dbrec->nickgroup, dbrec->memo.sender, dbrec->memo.text);
-        free_memo(record);
-    } else {
-        ARRAY_EXTEND(ngi->memos.memos);
-        ngi->memos.memos[ngi->memos.memos_count-1] = dbrec->memo;
-    }
-}
-
-static void *next_memo(void)
-{
-    while (db_ngi_iterator
-        && db_array_iterator >= db_ngi_iterator->memos.memos_count
-    ) {
-        db_ngi_iterator = next_nickgroupinfo();
-        db_array_iterator = 0;
-    }
-    if (db_ngi_iterator) {
-        dbrec_static.nickgroup = db_ngi_iterator->id;
-        dbrec_static.memo = db_ngi_iterator->memos.memos[db_array_iterator++];
-        return &dbrec_static;
-    } else {
-        return NULL;
-    }
-}
-
-static void *first_memo(void)
-{
-    db_ngi_iterator = first_nickgroupinfo();
-    db_array_iterator = 0;
-    return next_memo();
-}
-
-/*************************************************************************/
-
-/* Database table definition */
-
-#define FIELD(name,type,...) \
-    { #name, type, offsetof(DBRecord,name) , ##__VA_ARGS__ }
-#define FIELD_MEMO(name,type,...) \
-    { #name, type, offsetof(DBRecord,memo)+offsetof(Memo,name) , \
-      ##__VA_ARGS__ }
-
-static DBField memo_dbfields[] = {
-    FIELD(nickgroup,      DBTYPE_UINT32),
-    FIELD_MEMO(number,    DBTYPE_UINT32),
-    FIELD_MEMO(flags,     DBTYPE_INT16),
-    FIELD_MEMO(time,      DBTYPE_TIME),
-    FIELD_MEMO(firstread, DBTYPE_TIME),
-    FIELD_MEMO(sender,    DBTYPE_BUFFER, NICKMAX),
-    FIELD_MEMO(channel,   DBTYPE_STRING),
-    FIELD_MEMO(text,      DBTYPE_STRING),
-    { NULL }
-};
-
-static DBTable memo_dbtable = {
-    .name    = "memo",
-    .newrec  = new_memo,
-    .freerec = free_memo,
-    .insert  = insert_memo,
-    .first   = first_memo,
-    .next    = next_memo,
-    .fields  = memo_dbfields,
-};
-
-#undef FIELD
-#undef FIELD_MEMO
+/* The memos of a nickname group is part of the group's record, which
+ * nickserv/main keeps in the database (see include/store.h): nothing to
+ * load or save here. */
 
 /*************************************************************************/
 /***************************** Main routines *****************************/
@@ -301,27 +202,21 @@ static int memoserv_whois(const char *source, char *who, char *extra)
 
 /* Callback for users connecting to the network. */
 
-static int do_user_create(User *user, int ac, char **av)
+/* Callback for users whose nick NickServ has looked up: after connecting,
+ * or after changing nicknames (in which case only a change of nick group
+ * matters). */
+
+static int do_user_validated(User *user, int nickchange, uint32 old_nickgroup)
 {
-    if (user_recognized(user))
-        check_memos(user);
-    return 0;
-}
+    uint32 new_nickgroup;
 
-/*************************************************************************/
-
-/* Callback for users changing nicknames. */
-
-static int do_user_nickchange(User *user, const char *oldnick)
-{
-    NickInfo *old_ni;
-    uint32 old_nickgroup, new_nickgroup;
-
-    /* user->{ni,ngi} are already changed, so look it up again */
-    old_ni = get_nickinfo(oldnick);
-    old_nickgroup = old_ni ? old_ni->nickgroup : 0;
-    put_nickinfo(old_ni);
-    new_nickgroup = user->ngi ? user->ngi->id : 0;
+    if (!nickchange) {
+        if (user_recognized(user))
+            check_memos(user);
+        return 0;
+    }
+    new_nickgroup = user->ngi && user->ngi != NICKGROUPINFO_INVALID
+                  ? user->ngi->id : 0;
     if (old_nickgroup != new_nickgroup)
         check_memos(user);
     return 0;
@@ -1180,8 +1075,8 @@ static void do_set_limit(User *u, MemoInfo *mi, char *param)
     NickGroupInfo *ngi = u->ngi;
     int is_servadmin = is_services_admin(u);
 
-    ni->usecount++;
-    ngi->usecount++;
+    hold_nickinfo(ni);
+    hold_nickgroupinfo(ngi);
 
     if (is_servadmin) {
         if (p2 && stricmp(p2, "HARD") != 0) {
@@ -1323,10 +1218,10 @@ static void do_info(User *u)
         }
         ni = u->ni;
         if (ni)
-            ni->usecount++;
+            hold_nickinfo(ni);
         ngi = u->ngi;
         if (ngi)
-            ngi->usecount++;
+            hold_nickgroupinfo(ngi);
         mi = &u->ngi->memos;
     }
     max = REALMAX(mi->memomax);
@@ -1523,6 +1418,8 @@ static int do_load_module(Module *mod, const char *modname)
             module_log("Unable to register NickServ REGISTER/LINK callback");
         if (!add_callback(mod, "identified", do_nick_identified))
             module_log("Unable to register NickServ IDENTIFY callback");
+        if (!add_callback(mod, "user validated", do_user_validated))
+            module_log("Unable to register NickServ validation callback");
     } else if (strcmp(modname, "chanserv/main") == 0) {
         module_chanserv = mod;
         p_get_channelinfo = get_module_symbol(NULL, "get_channelinfo");
@@ -1544,6 +1441,7 @@ static int do_load_module(Module *mod, const char *modname)
 static int do_unload_module(Module *mod)
 {
     if (mod == module_nickserv) {
+        remove_callback(module_nickserv, "user validated", do_user_validated);
         remove_callback(module_nickserv, "identified", do_nick_identified);
         remove_callback(module_nickserv, "REGISTER/LINK check",
                         do_reglink_check);
@@ -1629,16 +1527,8 @@ int init_module(void)
      || !add_callback(NULL, "m_privmsg", memoserv)
      || !add_callback(NULL, "m_whois", memoserv_whois)
      || !add_callback(NULL, "receive message", do_receive_message)
-     || !add_callback(NULL, "user create", do_user_create)
-     || !add_callback(NULL, "user nickchange (after)", do_user_nickchange)
     ) {
         module_log("Unable to add callbacks");
-        exit_module(0);
-        return 0;
-    }
-
-    if (!register_dbtable(&memo_dbtable)) {
-        module_log("Unable to register database table");
         exit_module(0);
         return 0;
     }
@@ -1677,10 +1567,6 @@ int exit_module(int shutdown_unused)
     if (module_nickserv)
         do_unload_module(module_nickserv);
 
-    unregister_dbtable(&memo_dbtable);
-
-    remove_callback(NULL, "user nickchange (after)", do_user_nickchange);
-    remove_callback(NULL, "user create", do_user_create);
     remove_callback(NULL, "receive message", do_receive_message);
     remove_callback(NULL, "m_whois", memoserv_whois);
     remove_callback(NULL, "m_privmsg", memoserv);

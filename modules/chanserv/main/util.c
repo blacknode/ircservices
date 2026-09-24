@@ -105,9 +105,11 @@ STANDALONE_STATIC void reset_levels(ChannelInfo *ci)
  */
 
 EXPORT_FUNC(check_channel_limit)
-int check_channel_limit(const NickGroupInfo *ngi, int *max_ret)
+int check_channel_limit(NickGroupInfo *ngi, int *max_ret)
 {
     register int max, count;
+
+    update_owned_channels(ngi);
 
     max = ngi->channelmax;
     if (max == CHANMAX_DEFAULT)
@@ -183,26 +185,14 @@ int delchan(ChannelInfo *ci)
 
 /*************************************************************************/
 
-/* Mark the given channel as owned by its founder.  This updates the
- * founder's list of owned channels (ngi->channels).
+/* The given channel changed hands (or was registered or dropped): write it
+ * now, so that the founders' lists of channels, which are read from the
+ * database where they matter (update_owned_channels()), see the change.
  */
 
 void count_chan(const ChannelInfo *ci)
 {
-    NickGroupInfo *ngi = ci->founder ? get_ngi_id(ci->founder) : NULL;
-
-    if (!ngi)
-        return;
-    /* Be paranoid--this could overflow in extreme cases, though we check
-     * for that elsewhere as well. */
-    if (ngi->channels_count >= MAX_CHANNELCOUNT) {
-        module_log("count BUG: overflow in ngi->channels_count for %u (%s)"
-                   " on %s", ngi->id, ngi_mainnick(ngi), ci->name);
-        return;
-    }
-    ARRAY_EXTEND(ngi->channels);
-    strbcpy(ngi->channels[ngi->channels_count-1], ci->name);
-    put_nickgroupinfo(ngi);
+    sync_channelinfo((ChannelInfo *)ci);
 }
 
 /*************************************************************************/
@@ -211,21 +201,7 @@ void count_chan(const ChannelInfo *ci)
 
 void uncount_chan(const ChannelInfo *ci)
 {
-    NickGroupInfo *ngi = ci->founder ? get_ngi_id(ci->founder) : NULL;
-    int i;
-
-    if (!ngi)
-        return;
-    ARRAY_SEARCH_PLAIN(ngi->channels, ci->name, irc_stricmp, i);
-    if (i >= ngi->channels_count) {
-        module_log("uncount BUG: channel not found in channels[] for %u (%s)"
-                   " on %s", ngi->id,
-                   ngi->nicks_count ? ngi_mainnick(ngi) : "<unknown>",
-                   ci->name);
-        return;
-    }
-    ARRAY_REMOVE(ngi->channels, i);
-    put_nickgroupinfo(ngi);
+    sync_channelinfo((ChannelInfo *)ci);
 }
 
 /*************************************************************************/

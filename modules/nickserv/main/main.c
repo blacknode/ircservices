@@ -7,12 +7,18 @@
  * details.
  */
 
+#include <jansson.h>
+
 #include "services.h"
 #include "modules.h"
 #include "conffile.h"
 #include "commands.h"
 #include "databases.h"
+#include "db.h"
 #include "encrypt.h"
+#include "migration.h"
+#include "store.h"
+#include "timeout.h"
 #include "language.h"
 #include "modules/operserv/operserv.h"
 
@@ -59,6 +65,29 @@ EXPORT_VAR(char *,s_NickServ)
 static int    NSHelpWarning;
 static int    NSEnableDropEmail;
 static time_t NSDropEmailExpire;
+
+/*************************************************************************/
+
+/* The channels a nick group founded (ngi->channels) are kept by ChanServ,
+ * in the database, and read when they are needed.  Resolved at each call:
+ * ChanServ comes and goes independently of us. */
+
+static void refresh_owned_channels(NickGroupInfo *ngi)
+{
+    Module *mod = find_module("chanserv/main");
+    void (*p_update)(NickGroupInfo *);
+
+    if (!mod) {
+        free(ngi->channels);
+        ngi->channels = NULL;
+        ngi->channels_count = 0;
+        return;
+    }
+    p_update = (void (*)(NickGroupInfo *))
+        get_module_symbol(mod, "update_owned_channels");
+    if (p_update)
+        p_update(ngi);
+}
 
 /*************************************************************************/
 
@@ -163,9 +192,12 @@ static int check_expire_nick(NickInfo *ni)
     NickGroupInfo *ngi;
     time_t now = time(NULL);
 
-    if (u && user_id_or_rec(u)) {
+    /* Not on every lookup: a last-seen time that moved every second would
+     * be a database write every time the record is looked at.  The time is
+     * set exactly when the user leaves (cancel_user()). */
+    if (u && user_id_or_rec(u) && now - ni->last_seen >= 300) {
         module_log_debug(2, "updating last seen time for %s", u->nick);
-        ni->last_seen = time(NULL);
+        ni->last_seen = now;
     }
     ngi = ni->nickgroup ? get_ngi_id(ni->nickgroup) : NULL;
     if (!*p_ServicesRoot || irc_stricmp(ni->nick, *p_ServicesRoot) != 0) {
@@ -203,158 +235,35 @@ static int check_expire_nick(NickInfo *ni)
 
 /*************************************************************************/
 
-#include "hash.h"
+/* NickServ's records live in the entity store (include/store.h): the
+ * database is the truth, Redis a copy, and memory holds only the nicks and
+ * groups somebody is using.  get_*() pins a record, put_*() lets it go;
+ * there is no longer any way to go through every record in memory, and
+ * the few things that must look at many records ask the database
+ * (store_foreach(), store_count()).  The tables are created by this
+ * module's migrations (migrations/). */
 
-#undef HASH_STATIC
-#define HASH_STATIC static
-#undef EXPIRE_CHECK
-#define EXPIRE_CHECK(node) check_expire_nick(node)
-DEFINE_HASH(nickinfo_, NickInfo, nick)
+MODULE_MIGRATIONS_AUTO;
 
-EXPORT_FUNC(add_nickinfo)
-NickInfo *add_nickinfo(NickInfo *ni)
-{
-    add_nickinfo_(ni);
-    ni->usecount = 1;
-    return ni;
-}
-
-EXPORT_FUNC(del_nickinfo)
-void del_nickinfo(NickInfo *ni)
-{
-    del_nickinfo_(ni);
-    free_nickinfo(ni);
-}
-
-EXPORT_FUNC(get_nickinfo)
-NickInfo *get_nickinfo(const char *nick)
-{
-    NickInfo *ni;
-    if ((ni = get_nickinfo_(nick)) != NULL)
-        ni->usecount++;
-    return ni;
-}
-
-EXPORT_FUNC(put_nickinfo)
-NickInfo *put_nickinfo(NickInfo *ni)
-{
-    if (ni) {
-        if (ni->usecount > 0)
-            ni->usecount--;
-        else
-            module_log_debug(1, "BUG: put_nickinfo(%s) with usecount==0",
-                             ni->nick);
-    }
-    return ni;
-}
-
-EXPORT_FUNC(first_nickinfo)
-NickInfo *first_nickinfo(void)
-{
-    return first_nickinfo_();
-}
-
-EXPORT_FUNC(next_nickinfo)
-NickInfo *next_nickinfo(void)
-{
-    return next_nickinfo_();
-}
-
-/*************************************************************************/
-
-#undef HASH_STATIC
-#define HASH_STATIC static
-#undef HASHFUNC
-#define HASHFUNC(key) (((uint32)(key)*31) % HASHSIZE)
-#undef EXPIRE_CHECK
-#define EXPIRE_CHECK(node) 0
-DEFINE_HASH_SCALAR(nickgroupinfo_, NickGroupInfo, id, uint32);
-
-EXPORT_FUNC(add_nickgroupinfo)
-NickGroupInfo *add_nickgroupinfo(NickGroupInfo *ngi)
-{
-    add_nickgroupinfo_(ngi);
-    ngi->usecount = 1;
-    return ngi;
-}
-
-EXPORT_FUNC(del_nickgroupinfo)
-void del_nickgroupinfo(NickGroupInfo *ngi)
-{
-    del_nickgroupinfo_(ngi);
-    free_nickgroupinfo(ngi);
-}
-
-EXPORT_FUNC(get_nickgroupinfo)
-NickGroupInfo *get_nickgroupinfo(uint32 id)
-{
-    NickGroupInfo *ngi;
-    if ((ngi = get_nickgroupinfo_(id)) != NULL)
-        ngi->usecount++;
-    return ngi;
-}
-
-EXPORT_FUNC(put_nickgroupinfo)
-NickGroupInfo *put_nickgroupinfo(NickGroupInfo *ngi)
-{
-    if (ngi) {
-        if (ngi->usecount > 0)
-            ngi->usecount--;
-        else
-            module_log_debug(1, "BUG: put_nickgroupinfo(%u) with usecount==0",
-                             ngi->id);
-    }
-    return ngi;
-}
-
-EXPORT_FUNC(first_nickgroupinfo)
-NickGroupInfo *first_nickgroupinfo(void)
-{
-    return first_nickgroupinfo_();
-}
-
-EXPORT_FUNC(next_nickgroupinfo)
-NickGroupInfo *next_nickgroupinfo(void)
-{
-    return next_nickgroupinfo_();
-}
-
-/*************************************************************************/
-
-/* Free all memory used by database tables. */
-
-static void clean_dbtables(void)
-{
-    NickInfo *ni;
-    NickGroupInfo *ngi;
-    int save_noexpire = noexpire;
-
-    noexpire = 1;
-    for (ni = first_nickinfo(); ni; ni = next_nickinfo())
-        free_nickinfo(ni);
-    for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo())
-        free_nickgroupinfo(ngi);
-    noexpire = save_noexpire;
-}
-
-/*************************************************************************/
+/* How often expired nicknames and suspensions are looked for, and how many
+ * are handled per round. */
+#define EXPIRE_INTERVAL  600
+#define EXPIRE_BATCH     500
 
 /* Database load/save helpers */
-
-/************************************/
 
 static void db_get_mainnick(const void *record, void **value_ret)
 {
     NickGroupInfo *ngi = (NickGroupInfo *)record;
     memset((char *)value_ret, 0, NICKMAX);
-    strscpy((char *)value_ret, ngi->nicks[ngi->mainnick], NICKMAX);
+    if (ngi->nicks_count > 0 && ngi->mainnick < ngi->nicks_count)
+        strscpy((char *)value_ret, ngi->nicks[ngi->mainnick], NICKMAX);
 }
 
 static void db_put_mainnick(void *record, const void *value)
 {
     NickGroupInfo *ngi = (NickGroupInfo *)record;
     int i;
-    /* ngi->nicks_count is 0 here, but just to be safe... */
     ARRAY_FOREACH (i, ngi->nicks) {
         if (irc_stricmp((const char *)value, ngi->nicks[i]) == 0) {
             ngi->mainnick = i;
@@ -366,84 +275,7 @@ static void db_put_mainnick(void *record, const void *value)
     strbcpy(ngi->nicks[ngi->mainnick], (const char *)value);
 }
 
-static void *db_new_nickgroup(void)
-{
-    return new_nickgroupinfo(NULL);
-}
-
-static void insert_nickgroup(void *record)
-{
-    NickGroupInfo *ngi = add_nickgroupinfo(record);
-    put_nickgroupinfo(ngi);
-}
-
-/************************************/
-
-static void insert_nick(void *record)
-{
-    NickInfo *ni = add_nickinfo(record);
-    if (ni->nickgroup) {
-        NickGroupInfo *ngi = get_nickgroupinfo(ni->nickgroup);
-        if (ngi) {
-            int i;
-            /* Don't re-add the main nick */
-            ARRAY_SEARCH_PLAIN(ngi->nicks, ni->nick, irc_stricmp, i);
-            if (i >= ngi->nicks_count) {
-                ARRAY_EXTEND(ngi->nicks);
-                strbcpy(ngi->nicks[ngi->nicks_count-1], ni->nick);
-            }
-        }
-    }
-    put_nickinfo(ni);
-}
-
-static int db_postload_nick(void)
-{
-    /* Check that main nicknames loaded from the nickgroup table actually
-     * exist (disable expiration while we do this) */
-    int saved_noexpire = noexpire;
-    noexpire = 1;
-    NickGroupInfo *ngi;
-    for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-        if (ngi->nicks_count == 0) {
-            module_log("Nickgroup %u has no nicks, deleting", ngi->id);
-            delgroup(ngi);
-        } else {
-            NickInfo *ni;
-            if (ngi->mainnick >= ngi->nicks_count) {
-                module_log("Nickgroup %u has invalid main nick index %u,"
-                           " resetting to 0 (%s)", ngi->id, ngi->mainnick,
-                           ngi->nicks[0]);
-                ngi->mainnick = 0;
-            }
-            ni = get_nickinfo(ngi->nicks[ngi->mainnick]);
-            if (!ni || ni->nickgroup != ngi->id) {
-                module_log("main nick %s in nickgroup %u %s, clearing",
-                           ngi->nicks[ngi->mainnick], ngi->id,
-                           !ni ? "does not exist" : "has wrong nickgroup ID");
-                ARRAY_REMOVE(ngi->nicks, ngi->mainnick);
-                if (ngi->nicks_count == 0) {
-                    module_log("... nickgroup %u is now empty, dropping",
-                               ngi->id);
-                    delgroup(ngi);
-                } else {
-                    module_log("... resetting main nick to 0 (%s)",
-                               ngi->nicks[0]);
-                    ngi->mainnick = 0;
-                }
-            }
-            put_nickinfo(ni);
-        }
-    }
-    noexpire = saved_noexpire;
-
-    /* Return success */
-    return 1;
-}
-
-/*************************************************************************/
-
-/* Nickgroup database table info */
+/* Nickgroup fields (the nickgroups table) */
 
 #define FIELD(name,type,...) \
     { #name, type, offsetof(NickGroupInfo,name) , ##__VA_ARGS__ }
@@ -470,22 +302,11 @@ static DBField nickgroup_dbfields[] = {
     FIELD(channelmax,      DBTYPE_INT16),
     { "memos.memomax",     DBTYPE_INT16,
       offsetof(NickGroupInfo,memos) + offsetof(MemoInfo,memomax) },
-
     { NULL }
 };
-static DBTable nickgroup_dbtable = {
-    .name    = "nickgroup",
-    .newrec  = db_new_nickgroup,
-    .freerec = (void *)free_nickgroupinfo,
-    .insert  = insert_nickgroup,
-    .first   = (void *)first_nickgroupinfo,
-    .next    = (void *)next_nickgroupinfo,
-    .fields  = nickgroup_dbfields,
-};
 #undef FIELD
-#undef FIELD_SUSPINFO
 
-/* Nickname database table info */
+/* Nickname fields (the nicks table) */
 
 #define FIELD(name,type,...) \
     { #name, type, offsetof(NickInfo,name) , ##__VA_ARGS__ }
@@ -502,17 +323,454 @@ static DBField nick_dbfields[] = {
     FIELD(id_stamp,        DBTYPE_UINT32),
     { NULL }
 };
-static DBTable nick_dbtable = {
-    .name    = "nick",
-    .newrec  = (void *)new_nickinfo,
-    .freerec = (void *)free_nickinfo,
-    .insert  = insert_nick,
-    .first   = (void *)first_nickinfo,
-    .next    = (void *)next_nickinfo,
-    .fields  = nick_dbfields,
-    .postload= db_postload_nick,
+#undef FIELD
+
+/* Memo fields (the nickgroup_memos table) */
+
+#define FIELD(name,type,...) \
+    { #name, type, offsetof(Memo,name) , ##__VA_ARGS__ }
+static DBField memo_dbfields[] = {
+    FIELD(number,    DBTYPE_UINT32),
+    FIELD(flags,     DBTYPE_INT16),
+    FIELD(time,      DBTYPE_TIME),
+    FIELD(firstread, DBTYPE_TIME),
+    FIELD(sender,    DBTYPE_BUFFER, NICKMAX),
+    FIELD(channel,   DBTYPE_STRING),
+    FIELD(text,      DBTYPE_STRING),
+    { NULL }
 };
 #undef FIELD
+
+/*************************************************************************/
+
+/* Keys: a nick is looked up IRC-case-insensitively, so its key is the
+ * nick in IRC lower case; a group's key is its ID. */
+
+static void nick_normalize(const char *key, char *buf, size_t size)
+{
+    size_t n = 0;
+
+    for (; *key && n + 1 < size; key++)
+        buf[n++] = irc_tolower(*key);
+    buf[n] = 0;
+}
+
+static void nick_keyof(const void *record, char *buf, size_t size)
+{
+    nick_normalize(((const NickInfo *)record)->nick, buf, size);
+}
+
+static void ngi_keyof(const void *record, char *buf, size_t size)
+{
+    snprintf(buf, size, "%u", ((const NickGroupInfo *)record)->id);
+}
+
+/* A nick: the one row. */
+
+static json_t *nick_encode(const void *record)
+{
+    const NickInfo *ni = record;
+    json_t *bundle = json_object(), *row;
+    char key[NICKMAX*2];
+
+    row = store_encode_fields(ni, nick_dbfields);
+    nick_normalize(ni->nick, key, sizeof(key));
+    json_object_set_new(row, "nick_key", store_json_string(key));
+    json_object_set_new(bundle, "main", row);
+    return bundle;
+}
+
+static void *nick_decode(json_t *bundle)
+{
+    NickInfo *ni = new_nickinfo();
+
+    store_decode_fields(json_object_get(bundle, "main"), ni, nick_dbfields);
+    if (!*ni->nick) {
+        free_nickinfo(ni);
+        return NULL;
+    }
+    return ni;
+}
+
+static void nick_release(void *record)
+{
+    free_nickinfo(record);
+}
+
+/* A group: its row, the names of its nicks (read-only here: they belong to
+ * the nick records), and its lists -- access masks, autojoin channels,
+ * memos, memo ignores. */
+
+/* A list of strings as rows {nickgroup, idx, <column>: string}. */
+static json_t *strings_encode(uint32 id, char **list, int count,
+                              const char *column)
+{
+    json_t *rows = json_array();
+    int i;
+
+    for (i = 0; i < count; i++) {
+        json_t *row = json_object();
+        json_object_set_new(row, "nickgroup", json_integer(id));
+        json_object_set_new(row, "idx", json_integer(i));
+        json_object_set_new(row, column, store_json_string(list[i]));
+        json_array_append_new(rows, row);
+    }
+    return rows;
+}
+
+static void strings_decode(json_t *rows, const char *column,
+                           char ***list_ret, int16 *count_ret)
+{
+    size_t i;
+    json_t *row;
+    char **list = NULL;
+    int16 count = 0;
+
+    json_array_foreach(rows, i, row) {
+        char *s = store_dup_string(json_object_get(row, column));
+        if (!s)
+            continue;
+        list = srealloc(list, sizeof(*list) * (count+1));
+        list[count++] = s;
+    }
+    *list_ret = list;
+    *count_ret = count;
+}
+
+static json_t *ngi_encode(const void *record)
+{
+    const NickGroupInfo *ngi = record;
+    json_t *bundle = json_object(), *nicks = json_array(), *memos;
+    int i;
+
+    json_object_set_new(bundle, "main",
+                        store_encode_fields(ngi, nickgroup_dbfields));
+    ARRAY_FOREACH (i, ngi->nicks) {
+        json_t *row = json_object();
+        char key[NICKMAX*2];
+        nick_normalize(ngi->nicks[i], key, sizeof(key));
+        json_object_set_new(row, "nick", store_json_string(ngi->nicks[i]));
+        json_object_set_new(row, "nick_key", store_json_string(key));
+        json_array_append_new(nicks, row);
+    }
+    json_object_set_new(bundle, "nicks", nicks);
+    json_object_set_new(bundle, "access",
+                        strings_encode(ngi->id, ngi->access,
+                                       ngi->access_count, "mask"));
+    json_object_set_new(bundle, "ajoin",
+                        strings_encode(ngi->id, ngi->ajoin,
+                                       ngi->ajoin_count, "channel"));
+    json_object_set_new(bundle, "memo_ignore",
+                        strings_encode(ngi->id, ngi->ignore,
+                                       ngi->ignore_count, "mask"));
+    memos = json_array();
+    ARRAY_FOREACH (i, ngi->memos.memos) {
+        json_t *row = store_encode_fields(&ngi->memos.memos[i],
+                                          memo_dbfields);
+        json_object_set_new(row, "nickgroup", json_integer(ngi->id));
+        json_object_set_new(row, "idx", json_integer(i));
+        json_array_append_new(memos, row);
+    }
+    json_object_set_new(bundle, "memos", memos);
+    return bundle;
+}
+
+static void *ngi_decode(json_t *bundle)
+{
+    NickGroupInfo *ngi = new_nickgroupinfo(NULL);
+    json_t *rows, *row;
+    size_t i;
+
+    /* The nicks first: the main row's `mainnick' is looked up in them. */
+    json_array_foreach(json_object_get(bundle, "nicks"), i, row) {
+        const char *nick = json_string_value(json_object_get(row, "nick"));
+        if (!nick)
+            continue;
+        ARRAY_EXTEND(ngi->nicks);
+        strbcpy(ngi->nicks[ngi->nicks_count-1], nick);
+    }
+    store_decode_fields(json_object_get(bundle, "main"), ngi,
+                        nickgroup_dbfields);
+    if (!ngi->id) {
+        free_nickgroupinfo(ngi);
+        return NULL;
+    }
+    strings_decode(json_object_get(bundle, "access"), "mask",
+                   &ngi->access, &ngi->access_count);
+    strings_decode(json_object_get(bundle, "ajoin"), "channel",
+                   &ngi->ajoin, &ngi->ajoin_count);
+    strings_decode(json_object_get(bundle, "memo_ignore"), "mask",
+                   &ngi->ignore, &ngi->ignore_count);
+    rows = json_object_get(bundle, "memos");
+    json_array_foreach(rows, i, row) {
+        Memo *m;
+        ARRAY_EXTEND(ngi->memos.memos);
+        m = &ngi->memos.memos[ngi->memos.memos_count-1];
+        memset(m, 0, sizeof(*m));
+        store_decode_fields(row, m, memo_dbfields);
+    }
+    return ngi;
+}
+
+static void ngi_release(void *record)
+{
+    free_nickgroupinfo(record);
+}
+
+static const StoreChild ngi_children[] = {
+    { "nicks",       "nicks",                 "nickgroup", "nick_key",
+      "nick, nick_key", 1 },
+    { "access",      "nickgroup_access",      "nickgroup", "idx" },
+    { "ajoin",       "nickgroup_ajoin",       "nickgroup", "idx" },
+    { "memos",       "nickgroup_memos",       "nickgroup", "idx" },
+    { "memo_ignore", "nickgroup_memo_ignore", "nickgroup", "idx" },
+    { NULL }
+};
+
+static StoreType nick_type = {
+    .name       = "nick",
+    .table      = "nicks",
+    .key_column = "nick_key",
+    .key_type   = "text",
+    .decode     = nick_decode,
+    .encode     = nick_encode,
+    .release    = nick_release,
+    .keyof      = nick_keyof,
+    .normalize  = nick_normalize,
+};
+
+static StoreType ngi_type = {
+    .name       = "nickgroup",
+    .table      = "nickgroups",
+    .key_column = "id",
+    .key_type   = "bigint",
+    .children   = ngi_children,
+    .decode     = ngi_decode,
+    .encode     = ngi_encode,
+    .release    = ngi_release,
+    .keyof      = ngi_keyof,
+};
+
+/*************************************************************************/
+
+EXPORT_FUNC(add_nickinfo)
+NickInfo *add_nickinfo(NickInfo *ni)
+{
+    if (!store_add(&nick_type, ni))
+        return NULL;
+    return ni;
+}
+
+EXPORT_FUNC(del_nickinfo)
+void del_nickinfo(NickInfo *ni)
+{
+    store_delete(&nick_type, ni);
+}
+
+/* The nick, without the expiration check. */
+EXPORT_FUNC(get_nickinfo_noexpire)
+NickInfo *get_nickinfo_noexpire(const char *nick)
+{
+    return store_get(&nick_type, nick);
+}
+
+EXPORT_FUNC(get_nickinfo)
+NickInfo *get_nickinfo(const char *nick)
+{
+    NickInfo *ni = store_get(&nick_type, nick);
+
+    /* Checked on every lookup, as the in-memory tables used to do: an
+     * expired nick is deleted rather than returned. */
+    if (ni && !noexpire && check_expire_nick(ni))
+        return NULL;
+    return ni;
+}
+
+EXPORT_FUNC(put_nickinfo)
+NickInfo *put_nickinfo(NickInfo *ni)
+{
+    store_put(&nick_type, ni);
+    return ni;
+}
+
+EXPORT_FUNC(hold_nickinfo)
+NickInfo *hold_nickinfo(NickInfo *ni)
+{
+    store_hold(&nick_type, ni);
+    return ni;
+}
+
+/*************************************************************************/
+
+EXPORT_FUNC(add_nickgroupinfo)
+NickGroupInfo *add_nickgroupinfo(NickGroupInfo *ngi)
+{
+    if (!store_add(&ngi_type, ngi))
+        return NULL;
+    return ngi;
+}
+
+EXPORT_FUNC(del_nickgroupinfo)
+void del_nickgroupinfo(NickGroupInfo *ngi)
+{
+    store_delete(&ngi_type, ngi);
+}
+
+EXPORT_FUNC(get_nickgroupinfo)
+NickGroupInfo *get_nickgroupinfo(uint32 id)
+{
+    char key[16];
+
+    if (!id)
+        return NULL;
+    snprintf(key, sizeof(key), "%u", id);
+    return store_get(&ngi_type, key);
+}
+
+EXPORT_FUNC(put_nickgroupinfo)
+NickGroupInfo *put_nickgroupinfo(NickGroupInfo *ngi)
+{
+    if (ngi && ngi != NICKGROUPINFO_INVALID)
+        store_put(&ngi_type, ngi);
+    return ngi;
+}
+
+EXPORT_FUNC(hold_nickgroupinfo)
+NickGroupInfo *hold_nickgroupinfo(NickGroupInfo *ngi)
+{
+    if (ngi && ngi != NICKGROUPINFO_INVALID)
+        store_hold(&ngi_type, ngi);
+    return ngi;
+}
+
+/*************************************************************************/
+
+/* Going through many records: for the few operator commands that must.
+ * `where' is SQL over the nicks (or nickgroups) table, alias t; its
+ * values are $2, $3... (see store_foreach()). */
+
+EXPORT_FUNC(foreach_nickinfo)
+int foreach_nickinfo(const char *where, const char *const *params,
+                     int nparams, int (*fn)(NickInfo *ni, void *arg),
+                     void *arg)
+{
+    return store_foreach(&nick_type, where, params, nparams,
+                         (StoreEachFn)fn, arg);
+}
+
+EXPORT_FUNC(foreach_nickgroupinfo)
+int foreach_nickgroupinfo(const char *where, const char *const *params,
+                          int nparams,
+                          int (*fn)(NickGroupInfo *ngi, void *arg),
+                          void *arg)
+{
+    return store_foreach(&ngi_type, where, params, nparams,
+                         (StoreEachFn)fn, arg);
+}
+
+EXPORT_FUNC(count_nickinfo)
+long count_nickinfo(const char *where, const char *const *params, int nparams)
+{
+    return store_count(&nick_type, where, params, nparams);
+}
+
+EXPORT_FUNC(count_nickgroupinfo)
+long count_nickgroupinfo(const char *where, const char *const *params,
+                         int nparams)
+{
+    return store_count(&ngi_type, where, params, nparams);
+}
+
+/* Fetch in the background the records of `nicks', and call `done' when
+ * they are ready: for the paths that see the whole network go by. */
+EXPORT_FUNC(prefetch_nickinfo)
+int prefetch_nickinfo(const char **nicks, int count, void (*done)(void *arg),
+                      void *arg)
+{
+    return store_prefetch(THIS_MODULE, &nick_type, nicks, count, done, arg);
+}
+
+/*************************************************************************/
+
+/* Expiration.  Nothing goes through every record any more, so expired
+ * nicknames (and suspensions) are looked for in the database: a batch at
+ * a time, every EXPIRE_INTERVAL seconds.  Each one found is simply looked
+ * up, and the lookup does the rest (check_expire_nick()). */
+
+static Timeout *expire_timeout;
+
+static void expire_found(const struct DbResult *res, void *user)
+{
+    unsigned int i;
+    const char *column = user;
+
+    if (res->err.dberr_code != DB_OK) {
+        module_log("expire: cannot read the database: %s",
+                   res->err.dberr_message);
+        return;
+    }
+    for (i = 0; i < db_rows(res->data); i++) {
+        const char *key = db_row_str(res->data, i, column);
+        if (strcmp(column, "nick_key") == 0) {
+            put_nickinfo(get_nickinfo(key));
+        } else {
+            NickGroupInfo *ngi = get_nickgroupinfo(strtoul(key, NULL, 10));
+            if (ngi && ngi->nicks_count > 0)
+                put_nickinfo(get_nickinfo(ngi_mainnick(ngi)));
+            put_nickgroupinfo(ngi);
+        }
+    }
+}
+
+static void expire_check(Timeout *t)
+{
+    char cutoff[32], now[32], mask[16], limit[16];
+    const char *expire_params[4], *suspend_params[2];
+    struct DbParam p[4];
+    struct DbParam *pl[5];
+    struct DbQuery q;
+    int i;
+
+    if (noexpire || readonly)
+        return;
+    snprintf(now, sizeof(now), "%lld", (long long)time(NULL));
+    snprintf(limit, sizeof(limit), "%d", EXPIRE_BATCH);
+    if (NSExpire) {
+        snprintf(cutoff, sizeof(cutoff), "%lld",
+                 (long long)(time(NULL) - NSExpire));
+        snprintf(mask, sizeof(mask), "%d", NS_VERBOTEN | NS_NOEXPIRE);
+        expire_params[0] = cutoff;
+        expire_params[1] = mask;
+        expire_params[2] = limit;
+        for (i = 0; i < 3; i++) {
+            p[i].type = DB_TYPE_UNKNOWN;
+            p[i].value = expire_params[i];
+            p[i].format = DB_FORMAT_TEXT;
+            pl[i] = &p[i];
+        }
+        pl[3] = NULL;
+        q.sql = "select nick_key from nicks where last_seen < $1::bigint"
+                " and (status & $2::smallint) = 0 order by last_seen"
+                " limit $3::integer";
+        q.params = pl;
+        db_query(THIS_MODULE, &q, expire_found, "nick_key");
+    }
+    suspend_params[0] = now;
+    suspend_params[1] = limit;
+    for (i = 0; i < 2; i++) {
+        p[i].type = DB_TYPE_UNKNOWN;
+        p[i].value = suspend_params[i];
+        p[i].format = DB_FORMAT_TEXT;
+        pl[i] = &p[i];
+    }
+    pl[2] = NULL;
+    q.sql = "select id from nickgroups where suspend_expires > 0 and"
+            " suspend_expires <= $1::bigint limit $2::integer";
+    q.params = pl;
+    db_query(THIS_MODULE, &q, expire_found, "id");
+}
+
+/*************************************************************************/
 
 /*************************************************************************/
 /************************ Main NickServ routines *************************/
@@ -595,9 +853,158 @@ static int nickserv_whois(const char *source, char *who, char *extra)
 
 /* Callback for users connecting to the network. */
 
-static int do_user_create(User *user, int ac, char **av)
+/* Validating users in the background.  A user connecting or changing nick
+ * needs the nick's record (and its group's); on a network of any size these
+ * come by the thousand in a burst, so they are fetched in batches by the
+ * store's threads (store_prefetch()), and the user is validated when they
+ * are in memory.  Until then user->ns_validate points here; a user who
+ * talks to Services meanwhile is validated on the spot (validate_now()). */
+
+typedef struct {
+    User *user;         /* NULL once the user is gone or validated */
+    NickInfo *ni;       /* Held between the two fetches */
+    int nickchange;     /* After a nick change: set the registered mode */
+    uint32 old_group;   /* Nick group of the old nick (nick change) */
+} ValidateArg;
+
+/* "user validated" (User *user, int nickchange, uint32 old_nickgroup):
+ * the user's nick is known (user->ni, user->ngi), after the connection or
+ * nick change that triggered it.  Replaces "user create" and "user
+ * nickchange (after)" for anything that needs the nick's record. */
+static int cb_validated = -1;
+
+/* The nick group of a user's nick before a nick change: from the "before"
+ * callback to the "after" one, which run back to back. */
+static User *nickchange_user;
+static uint32 nickchange_old_group;
+
+
+
+/* What a nick change adds to validate_user(). */
+static void validate_after_nickchange(User *user)
+{
+    if (usermode_reg) {
+        if (user_identified(user)) {
+            send_cmd(s_NickServ, "SVSMODE %s :+%s", user->nick,
+                     mode_flags_to_string(usermode_reg, MODE_USER));
+            user->mode |= usermode_reg;
+        } else {
+            send_cmd(s_NickServ, "SVSMODE %s :-%s", user->nick,
+                     mode_flags_to_string(usermode_reg, MODE_USER));
+            user->mode &= ~usermode_reg;
+        }
+    }
+}
+
+static void validated(User *user, int nickchange, uint32 old_group)
 {
     validate_user(user);
+    if (nickchange)
+        validate_after_nickchange(user);
+    call_callback_3(cb_validated, user, nickchange, old_group);
+}
+
+static void validate_finish(ValidateArg *arg)
+{
+    User *user = arg->user;
+
+    if (user) {
+        user->ns_validate = NULL;
+        validated(user, arg->nickchange, arg->old_group);
+    }
+    put_nickinfo(arg->ni);
+    free(arg);
+}
+
+static void validate_ngi_ready(void *arg_)
+{
+    validate_finish(arg_);
+}
+
+static void validate_nick_ready(void *arg_)
+{
+    ValidateArg *arg = arg_;
+    const char *keys[1];
+    char idbuf[16];
+
+    if (!arg->user) {
+        validate_finish(arg);
+        return;
+    }
+    /* In memory now (or known missing): no I/O.  Without the expiration
+     * check, which needs the group: validate_user() does it once the group
+     * is here too. */
+    arg->ni = get_nickinfo_noexpire(arg->user->nick);
+    if (!arg->ni || !arg->ni->nickgroup) {
+        validate_finish(arg);
+        return;
+    }
+    snprintf(idbuf, sizeof(idbuf), "%u", arg->ni->nickgroup);
+    keys[0] = idbuf;
+    if (!store_prefetch(THIS_MODULE, &ngi_type, keys, 1, validate_ngi_ready,
+                        arg))
+        validate_finish(arg);
+}
+
+static void validate_later(User *user, int nickchange)
+{
+    ValidateArg *arg;
+    const char *keys[1];
+
+    if (user->ns_validate)
+        ((ValidateArg *)user->ns_validate)->user = NULL;
+    arg = scalloc(1, sizeof(*arg));
+    arg->user = user;
+    arg->nickchange = nickchange;
+    if (nickchange && nickchange_user == user)
+        arg->old_group = nickchange_old_group;
+    nickchange_user = NULL;
+    user->ns_validate = arg;
+    keys[0] = user->nick;
+    if (!prefetch_nickinfo(keys, 1, validate_nick_ready, arg)) {
+        arg->user = NULL;
+        user->ns_validate = NULL;
+        validated(user, nickchange, arg->old_group);
+        free(arg);
+    }
+}
+
+/* The user is gone, or changing nick: forget the validation in flight. */
+static void validate_cancel(User *user)
+{
+    if (user->ns_validate) {
+        ((ValidateArg *)user->ns_validate)->user = NULL;
+        user->ns_validate = NULL;
+    }
+}
+
+/* The user talks to Services before their validation is done: do it now
+ * (synchronously; the fetch then finds nothing to do). */
+static void validate_now(User *user)
+{
+    ValidateArg *arg = user->ns_validate;
+
+    if (!arg)
+        return;
+    arg->user = NULL;
+    user->ns_validate = NULL;
+    validated(user, arg->nickchange, arg->old_group);
+}
+
+/* Every message to any of the pseudoclients goes through here first. */
+static int validate_before_privmsg(const char *source, const char *target,
+                                   char *buf)
+{
+    User *u = get_user(source);
+
+    if (u && u->ns_validate)
+        validate_now(u);
+    return 0;
+}
+
+static int do_user_create(User *user, int ac, char **av)
+{
+    validate_later(user, 0);
     return 0;
 }
 
@@ -612,6 +1019,10 @@ static int do_user_nickchange_before(User *user, const char *newnick)
     if (irc_stricmp(newnick, user->nick) == 0)
         return 0;
 
+    validate_cancel(user);
+    nickchange_user = user;
+    nickchange_old_group = user->ngi && user->ngi != NICKGROUPINFO_INVALID
+                         ? user->ngi->id : 0;
     cancel_user(user);
     return 0;
 }
@@ -624,48 +1035,52 @@ static int do_user_nickchange_after(User *user, const char *oldnick)
         return 0;
 
     user->my_signon = time(NULL);
-    validate_user(user);
-    if (usermode_reg) {
-        if (user_identified(user)) {
-            send_cmd(s_NickServ, "SVSMODE %s :+%s", user->nick,
-                     mode_flags_to_string(usermode_reg, MODE_USER));
-            user->mode |= usermode_reg;
-        } else {
-            send_cmd(s_NickServ, "SVSMODE %s :-%s", user->nick,
-                     mode_flags_to_string(usermode_reg, MODE_USER));
-            user->mode &= ~usermode_reg;
-        }
-    }
+    validate_later(user, 1);
     return 0;
 }
 
 /*************************************************************************/
+
+/* `user' is no longer identified for group `id' (they left): take them off
+ * the group's list, and let go of the pin set_identified() took, which
+ * kept the group in memory while they were identified for it. */
+
+static void release_identified(User *user, uint32 id)
+{
+    NickGroupInfo *ngi = get_nickgroupinfo(id);
+    int j;
+
+    if (!ngi)
+        return;
+    ARRAY_SEARCH_PLAIN_SCALAR(ngi->id_users, user, j);
+    if (j < ngi->id_users_count) {
+        ARRAY_REMOVE(ngi->id_users, j);
+        put_nickgroupinfo(ngi);  /* set_identified()'s pin */
+    } else {
+        module_log("BUG: nickgroup %u listed in id_nicks for user %p (%s),"
+                   " but user not in id_users!", ngi->id, user, user->nick);
+    }
+    put_nickgroupinfo(ngi);
+}
+
+/************************************/
 
 /* Callback for users disconnecting from the network. */
 
 static int do_user_delete(User *user, const char *reason)
 {
     NickInfo *ni = user->ni;
-    int i, j;
+    int i;
 
+    validate_cancel(user);
+    if (nickchange_user == user)
+        nickchange_user = NULL;
     if (user_recognized(user)) {
         free(ni->last_quit);
         ni->last_quit = *reason ? sstrdup(reason) : NULL;
     }
-    ARRAY_FOREACH (i, user->id_nicks) {
-        NickGroupInfo *ngi = get_ngi_id(user->id_nicks[i]);
-        if (!ngi)
-            continue;
-        ARRAY_SEARCH_PLAIN_SCALAR(ngi->id_users, user, j);
-        if (j < ngi->id_users_count) {
-            ARRAY_REMOVE(ngi->id_users, j);
-        } else {
-            module_log("BUG: do_user_delete(): nickgroup %u listed in"
-                       " id_nicks for user %p (%s), but user not in"
-                       " id_users!", ngi->id, user, user->nick);
-        }
-        put_nickgroupinfo(ngi);
-    }
+    ARRAY_FOREACH (i, user->id_nicks)
+        release_identified(user, user->id_nicks[i]);
     cancel_user(user);
     return 0;
 }
@@ -697,67 +1112,21 @@ static int do_reglink_check(const User *u, const char *nick,
 
 static int do_stats_all(User *user, const char *s_OperServ)
 {
-    int32 count, mem;
-    int i;
-    NickGroupInfo *ngi;
-    NickInfo *ni;
-
-    count = mem = 0;
-    for (ni = first_nickinfo(); ni; ni = next_nickinfo()) {
-        count++;
-        mem += sizeof(*ni);
-        if (ni->last_usermask)
-            mem += strlen(ni->last_usermask)+1;
-        if (ni->last_realmask)
-            mem += strlen(ni->last_realmask)+1;
-        if (ni->last_realname)
-            mem += strlen(ni->last_realname)+1;
-        if (ni->last_quit)
-            mem += strlen(ni->last_quit)+1;
-    }
+    /* The records are in the database; memory holds only those in use.
+     * The counts are the database's, the sizes those of the records in
+     * memory. */
     notice_lang(s_OperServ, user, OPER_STATS_ALL_NICKINFO_MEM,
-                count, (mem+512) / 1024);
-
-    count = mem = 0;
-    for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-        count++;
-        mem += sizeof(*ngi);
-        if (ngi->url)
-            mem += strlen(ngi->url)+1;
-        if (ngi->email)
-            mem += strlen(ngi->email)+1;
-        if (ngi->last_email)
-            mem += strlen(ngi->last_email)+1;
-        if (ngi->info)
-            mem += strlen(ngi->info)+1;
-        if (ngi->suspend_reason)
-            mem += strlen(ngi->suspend_reason)+1;
-        mem += sizeof(*ngi->nicks) * ngi->nicks_count;
-        mem += sizeof(*ngi->channels) * ngi->channels_count;
-        mem += sizeof(*ngi->access) * ngi->access_count;
-        ARRAY_FOREACH (i, ngi->access) {
-            if (ngi->access[i])
-                mem += strlen(ngi->access[i])+1;
-        }
-        mem += sizeof(*ngi->ajoin) * ngi->ajoin_count;
-        ARRAY_FOREACH (i, ngi->ajoin) {
-            if (ngi->ajoin[i])
-                mem += strlen(ngi->ajoin[i])+1;
-        }
-        mem += sizeof(*ngi->memos.memos) * ngi->memos.memos_count;
-        ARRAY_FOREACH (i, ngi->memos.memos) {
-            if (ngi->memos.memos[i].text)
-                mem += strlen(ngi->memos.memos[i].text)+1;
-        }
-        mem += sizeof(*ngi->ignore) * ngi->ignore_count;
-        ARRAY_FOREACH (i, ngi->ignore) {
-            if (ngi->ignore[i])
-                mem += strlen(ngi->ignore[i])+1;
-        }
-    }
+                (int)count_nickinfo(NULL, NULL, 0),
+                (int)((store_resident(&nick_type)*sizeof(NickInfo)+512)
+                      / 1024));
+    notice_lang(s_OperServ, user, OPER_STATS_ALL_RESIDENT,
+                (int)store_resident(&nick_type));
     notice_lang(s_OperServ, user, OPER_STATS_ALL_NICKGROUPINFO_MEM,
-                count, (mem+512) / 1024);
-
+                (int)count_nickgroupinfo(NULL, NULL, 0),
+                (int)((store_resident(&ngi_type)*sizeof(NickGroupInfo)+512)
+                      / 1024));
+    notice_lang(s_OperServ, user, OPER_STATS_ALL_RESIDENT,
+                (int)store_resident(&ngi_type));
     return 0;
 }
 
@@ -980,21 +1349,19 @@ static void do_register(User *u)
 
         /* Check for E-mail addresses used in suspended nicks, if requested */
         if (NSRegDenyIfSuspended && email) {
-            NickGroupInfo *ngi_iter;
-            for (ngi_iter = first_nickgroupinfo(); ngi_iter;
-                 ngi_iter = next_nickgroupinfo()
-            ) {
-                if ((ngi_iter->flags & NF_SUSPENDED)
-                 && ngi_iter->email
-                 && stricmp(ngi_iter->email, email) == 0
-                ) {
-                    module_log("REGISTER from %s!%s@%s denied because E-mail"
-                               " address %s is used by suspended nick %s",
-                               u->nick, u->username, u->host, email,
-                               ngi_iter->email);
-                    notice_lang(s_NickServ, u, PERMISSION_DENIED);
-                    return;
-                }
+            char flag[16];
+            const char *params[2];
+            snprintf(flag, sizeof(flag), "%d", NF_SUSPENDED);
+            params[0] = flag;
+            params[1] = email;
+            if (count_nickgroupinfo("(t.flags & $2::integer) <> 0"
+                                    " and lower(t.email) = lower($3)",
+                                    params, 2) > 0) {
+                module_log("REGISTER from %s!%s@%s denied because E-mail"
+                           " address %s is used by a suspended nick",
+                           u->nick, u->username, u->host, email);
+                notice_lang(s_NickServ, u, PERMISSION_DENIED);
+                return;
             }
         }
 
@@ -1201,7 +1568,6 @@ static struct {
 static void do_dropemail(User *u)
 {
     char *mask = strtok(NULL, " ");
-    NickGroupInfo *ngi;
     int count, i, found;
 
     /* Parameter check */
@@ -1218,15 +1584,19 @@ static void do_dropemail(User *u)
     /* Count nicks matching this mask; exit if none found */
     if (strcmp(mask,"-") == 0)
         mask = NULL;
-    count = 0;
-    for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-        if ((mask && ngi->email && match_wild_nocase(mask,ngi->email))
-         || (!mask && !ngi->email)
-        ) {
-            count += ngi->nicks_count;
-        }
+    if (mask) {
+        char like[BUFSIZE];
+        const char *params[1];
+        params[0] = store_like_pattern(mask, like, sizeof(like));
+        count = count_nickinfo(
+            "exists (select 1 from nickgroups g where g.id = t.nickgroup"
+            " and lower(g.email) like lower($2))", params, 1);
+    } else {
+        count = count_nickinfo(
+            "t.nickgroup <> 0 and exists (select 1 from nickgroups g"
+            " where g.id = t.nickgroup and g.email is null)", NULL, 0);
     }
-    if (!count) {
+    if (count <= 0) {
         notice_lang(s_NickServ, u, NICK_DROPEMAIL_NONE);
         return;
     }
@@ -1268,10 +1638,26 @@ static void do_dropemail(User *u)
 }
 
 
+/* DROPEMAIL-CONFIRM: one matching group (the SQL condition has already
+ * matched; match_wild_nocase() is what the command has always meant). */
+typedef struct {
+    User *u;
+    const char *mask;
+} DropEmailArg;
+
+static int dropemail_one(NickGroupInfo *ngi, void *arg_)
+{
+    DropEmailArg *arg = arg_;
+
+    if ((arg->mask && ngi->email && match_wild_nocase(arg->mask, ngi->email))
+     || (!arg->mask && !ngi->email))
+        drop_nickgroup(ngi, arg->u, arg->mask ? arg->mask : "-");
+    return 0;
+}
+
 static void do_dropemail_confirm(User *u)
 {
     char *mask = strtok(NULL, " ");
-    NickGroupInfo *ngi;
     int i;
 
     /* Parameter check */
@@ -1304,11 +1690,19 @@ static void do_dropemail_confirm(User *u)
     *dropemail_buffer[i].mask = 0;  /* clear out the entry */
     if (strcmp(mask,"-") == 0)
         mask = NULL;
-    for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-        if ((mask && ngi->email && match_wild_nocase(mask,ngi->email))
-         || (!mask && !ngi->email)
-        ) {
-            drop_nickgroup(ngi, u, mask ? mask : "-");
+    {
+        DropEmailArg arg;
+        char like[BUFSIZE];
+        const char *params[1];
+        arg.u = u;
+        arg.mask = mask;
+        if (mask) {
+            params[0] = store_like_pattern(mask, like, sizeof(like));
+            foreach_nickgroupinfo("lower(t.email) like lower($2)", params, 1,
+                                  dropemail_one, &arg);
+        } else {
+            foreach_nickgroupinfo("t.email is null", NULL, 0,
+                                  dropemail_one, &arg);
         }
     }
     notice_lang(s_NickServ, u, NICK_DROPEMAIL_CONFIRM_DROPPED);
@@ -1507,7 +1901,7 @@ static void do_listchans(User *u)
     NickGroupInfo *ngi = NULL;
 
     if (ni)
-        ni->usecount++;
+        hold_nickinfo(ni);
     if (is_oper(u)) {
         char *nick = strtok(NULL, " ");
         if (nick) {
@@ -1542,7 +1936,7 @@ static void do_listchans(User *u)
         notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
     } else if (!(ngi = get_ngi(ni))) {
         notice_lang(s_NickServ, u, INTERNAL_ERROR);
-    } else if (!ngi->channels_count) {
+    } else if (refresh_owned_channels(ngi), !ngi->channels_count) {
         notice_lang(s_NickServ, u, NICK_LISTCHANS_NONE, ni->nick);
     } else {
         int i;
@@ -1557,33 +1951,135 @@ static void do_listchans(User *u)
 
 /*************************************************************************/
 
-static void do_list(User *u)
+/* LIST and LISTEMAIL.  The nicks are in the database, so the pattern is
+ * given to it (as a LIKE pattern, over the IRC-lowercased nick, the user
+ * masks or the address), and only the candidates it returns are looked at
+ * here -- and only until a page of results has been shown.  The total is
+ * then the database's count of candidates. */
+
+typedef struct {
+    User *u;
+    const char *pattern;
+    int email;           /* LISTEMAIL */
+    int mask_has_at;
+    int is_servadmin;
+    int16 match_NS;
+    int32 match_NF;
+    int match_auth;
+    int have_auth_module;
+    int skip;
+    int nnicks;
+    const char *nonestr;
+} ListArg;
+
+static int list_one(NickInfo *ni, void *arg_)
+{
+    ListArg *a = arg_;
+    User *u = a->u;
+    NickGroupInfo *ngi = get_nickgroupinfo(ni->nickgroup);
+    char buf[BUFSIZE];
+    int can_see = 0;
+    const char *mask = NULL;
+    int matched;
+
+    if (!a->is_servadmin && ((ngi && (ngi->flags & NF_PRIVATE))
+                             || (ni->status & NS_VERBOTEN))) {
+        put_nickgroupinfo(ngi);
+        return 0;
+    }
+    if (a->match_NS || a->match_NF || a->match_auth) {
+        /* We have flags, now see if they match */
+        if (!((ni->status & a->match_NS)
+           || (ngi && (ngi->flags & a->match_NF))
+           || (ngi && ngi_unauthed(ngi) && a->match_auth)
+        )) {
+            put_nickgroupinfo(ngi);
+            return 0;
+        }
+    }
+    if (!a->email) {
+        if (u == ni->user || a->is_servadmin)
+            mask = ni->last_realmask;
+        else
+            mask = ni->last_usermask;
+        if (!a->is_servadmin && ngi && (ngi->flags & NF_HIDE_MASK)) {
+            snprintf(buf, sizeof(buf), "%-20s  [Hidden]", ni->nick);
+        } else if (ni->status & NS_VERBOTEN) {
+            snprintf(buf, sizeof(buf), "%-20s  [Forbidden]", ni->nick);
+        } else {
+            can_see = 1;
+            snprintf(buf, sizeof(buf), "%-20s  %s", ni->nick,
+                     mask ? mask : "[Never online]");
+        }
+        matched = (!a->mask_has_at && match_wild_nocase(a->pattern, ni->nick))
+               || (a->mask_has_at && can_see && mask
+                   && match_wild_nocase(a->pattern, mask));
+    } else {
+        if (!a->is_servadmin && ngi && (ngi->flags & NF_HIDE_EMAIL)
+         && (!valid_ngi(u) || ngi->id!=u->ngi->id || !user_identified(u))){
+            snprintf(buf, sizeof(buf), "%-20s  [Hidden]", ni->nick);
+        } else if (ni->status & NS_VERBOTEN) {
+            snprintf(buf, sizeof(buf), "%-20s  [Forbidden]", ni->nick);
+        } else {
+            can_see = 1;
+            snprintf(buf, sizeof(buf), "%-20s  %s", ni->nick,
+                     ngi && ngi->email ? ngi->email : a->nonestr);
+        }
+        matched = (!a->mask_has_at && match_wild_nocase(a->pattern, ni->nick))
+               || (a->mask_has_at && can_see && ngi && ngi->email
+                   && match_wild_nocase(a->pattern, ngi->email));
+    }
+    if (matched) {
+        a->nnicks++;
+        if (a->nnicks > a->skip && a->nnicks <= a->skip+ListMax) {
+            char suspended_char = ' ';
+            char noexpire_char = ' ';
+            const char *auth_char = a->have_auth_module ? " " : "";
+            if (a->is_servadmin) {
+                if (ngi && (ngi->flags & NF_SUSPENDED))
+                    suspended_char = '*';
+                if (ni->status & NS_NOEXPIRE)
+                    noexpire_char = '!';
+                if (a->have_auth_module && ngi && ngi_unauthed(ngi))
+                    auth_char = "?";
+            }
+            if (a->nnicks == 1)  /* display header before first result */
+                notice_lang(s_NickServ, u, NICK_LIST_HEADER, a->pattern);
+            notice(s_NickServ, u->nick, "   %c%c%s %s",
+                   suspended_char, noexpire_char, auth_char, buf);
+        }
+    }
+    put_nickgroupinfo(ngi);
+    /* A page is enough: the total comes from the database. */
+    return a->nnicks >= a->skip + ListMax;
+}
+
+static void do_list_common(User *u, const char *cmdname, int email)
 {
     char *pattern = strtok(NULL, " ");
     char *keyword;
-    NickInfo *ni;
-    NickGroupInfo *ngi;
-    int nnicks;
-    char buf[BUFSIZE];
-    int is_servadmin = is_services_admin(u);
-    int16 match_NS = 0;  /* NS_ flags a nick must match one of to qualify */
-    int32 match_NF = 0;  /* NF_ flags a nick must match one of to qualify */
-    int match_auth = 0;  /* 1 if we match on nicks with auth codes */
-    int have_auth_module = 0;  /* so we don't show no-auth char if no module */
-    int skip = 0;        /* number of records to skip before displaying */
+    ListArg a;
+    char like[BUFSIZE], lowered[BUFSIZE];
+    const char *params[1];
+    const char *where;
+    int seen;
 
+    memset(&a, 0, sizeof(a));
+    a.u = u;
+    a.email = email;
+    a.is_servadmin = is_services_admin(u);
 
     if (NSListOpersOnly && !is_oper(u)) {
         notice_lang(s_NickServ, u, PERMISSION_DENIED);
         return;
     }
 
-    have_auth_module = (find_module("nickserv/mail-auth") != NULL);
+    a.have_auth_module = (find_module("nickserv/mail-auth") != NULL);
 
     if (pattern && *pattern == '+') {
-        skip = (int)atolsafe(pattern+1, 0, INT_MAX);
-        if (skip < 0) {
-            syntax_error(s_NickServ, u, "LIST",
+        a.skip = (int)atolsafe(pattern+1, 0, INT_MAX);
+        if (a.skip < 0) {
+            syntax_error(s_NickServ, u, cmdname,
                          is_oper(u)? NICK_LIST_OPER_SYNTAX: NICK_LIST_SYNTAX);
             return;
         }
@@ -1591,223 +2087,73 @@ static void do_list(User *u)
     }
 
     if (!pattern) {
-        syntax_error(s_NickServ, u, "LIST",
+        syntax_error(s_NickServ, u, cmdname,
                      is_oper(u) ? NICK_LIST_OPER_SYNTAX : NICK_LIST_SYNTAX);
-    } else {
-        int mask_has_at = (strchr(pattern,'@') != 0);
+        return;
+    }
+    a.pattern = pattern;
+    a.mask_has_at = (strchr(pattern,'@') != 0);
+    a.nonestr = getstring(u->ngi, NICK_LISTEMAIL_NONE);
 
-        nnicks = 0;
-
-        while (is_servadmin && (keyword = strtok(NULL, " "))) {
-            if (stricmp(keyword, "FORBIDDEN") == 0) {
-                match_NS |= NS_VERBOTEN;
-            } else if (stricmp(keyword, "NOEXPIRE") == 0) {
-                match_NS |= NS_NOEXPIRE;
-            } else if (stricmp(keyword, "SUSPENDED") == 0) {
-                match_NF |= NF_SUSPENDED;
-            } else if (stricmp(keyword, "NOAUTH") == 0 && have_auth_module) {
-                match_auth = 1;
-            } else {
-                syntax_error(s_NickServ, u, "LIST",
-                     is_oper(u) ? NICK_LIST_OPER_SYNTAX : NICK_LIST_SYNTAX);
-            }
-        }
-
-        for (ni = first_nickinfo(); ni; ni = next_nickinfo()) {
-            int can_see_usermask = 0;  /* Does user get to see the usermask? */
-            const char *mask;          /* Which mask to show? (fake or real) */
-
-            if (u == ni->user || is_services_admin(u))
-                mask = ni->last_realmask;
-            else
-                mask = ni->last_usermask;
-            ngi = get_nickgroupinfo(ni->nickgroup);
-            if (!is_servadmin && ((ngi && (ngi->flags & NF_PRIVATE))
-                                  || (ni->status & NS_VERBOTEN))) {
-                put_nickgroupinfo(ngi);
-                continue;
-            }
-            if (match_NS || match_NF || match_auth) {
-                /* We have flags, now see if they match */
-                if (!((ni->status & match_NS)
-                   || (ngi && (ngi->flags & match_NF))
-                   || (ngi && ngi_unauthed(ngi) && match_auth)
-                )) {
-                    put_nickgroupinfo(ngi);
-                    continue;
-                }
-            }
-            if (!is_servadmin && (ngi->flags & NF_HIDE_MASK)) {
-                snprintf(buf, sizeof(buf), "%-20s  [Hidden]", ni->nick);
-            } else if (ni->status & NS_VERBOTEN) {
-                snprintf(buf, sizeof(buf), "%-20s  [Forbidden]", ni->nick);
-            } else {
-                can_see_usermask = 1;
-                snprintf(buf, sizeof(buf), "%-20s  %s", ni->nick,
-                         mask ? mask : "[Never online]");
-            }
-            if ((!mask_has_at && match_wild_nocase(pattern, ni->nick))
-             || (mask_has_at && can_see_usermask && mask
-                 && match_wild_nocase(pattern, mask))
-            ) {
-                nnicks++;
-                if (nnicks > skip && nnicks <= skip+ListMax) {
-                    char suspended_char = ' ';
-                    char noexpire_char = ' ';
-                    const char *auth_char = have_auth_module ? " " : "";
-                    if (is_servadmin) {
-                        if (ngi && (ngi->flags & NF_SUSPENDED))
-                            suspended_char = '*';
-                        if (ni->status & NS_NOEXPIRE)
-                            noexpire_char = '!';
-                        if (have_auth_module && ngi && ngi_unauthed(ngi))
-                            auth_char = "?";
-                    }
-                    if (nnicks == 1)  /* display header before first result */
-                        notice_lang(s_NickServ, u, NICK_LIST_HEADER, pattern);
-                    notice(s_NickServ, u->nick, "   %c%c%s %s",
-                           suspended_char, noexpire_char, auth_char, buf);
-                }
-            }
-            put_nickgroupinfo(ngi);
-        }  /* for each nick */
-        if (nnicks) {
-            int count = nnicks - skip;
-            if (count < 0)
-                count = 0;
-            else if (count > ListMax)
-                count = ListMax;
-            notice_lang(s_NickServ, u, LIST_RESULTS, count, nnicks);
+    while (a.is_servadmin && (keyword = strtok(NULL, " "))) {
+        if (stricmp(keyword, "FORBIDDEN") == 0) {
+            a.match_NS |= NS_VERBOTEN;
+        } else if (stricmp(keyword, "NOEXPIRE") == 0) {
+            a.match_NS |= NS_NOEXPIRE;
+        } else if (stricmp(keyword, "SUSPENDED") == 0) {
+            a.match_NF |= NF_SUSPENDED;
+        } else if (stricmp(keyword, "NOAUTH") == 0 && a.have_auth_module) {
+            a.match_auth = 1;
         } else {
-            notice_lang(s_NickServ, u, NICK_LIST_NO_MATCH);
+            syntax_error(s_NickServ, u, cmdname,
+                 is_oper(u) ? NICK_LIST_OPER_SYNTAX : NICK_LIST_SYNTAX);
         }
     }
+
+    if (!a.mask_has_at) {
+        nick_normalize(pattern, lowered, sizeof(lowered));
+        params[0] = store_like_pattern(lowered, like, sizeof(like));
+        where = "t.nick_key like $2";
+    } else {
+        params[0] = store_like_pattern(pattern, like, sizeof(like));
+        where = email
+            ? "exists (select 1 from nickgroups g where g.id = t.nickgroup"
+              " and lower(g.email) like lower($2))"
+            : "(lower(t.last_usermask) like lower($2)"
+              " or lower(t.last_realmask) like lower($2))";
+    }
+    seen = foreach_nickinfo(where, params, 1, list_one, &a);
+    if (seen < 0) {
+        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+    } else if (a.nnicks) {
+        int count = a.nnicks - a.skip;
+        long total = a.nnicks;
+        if (count < 0)
+            count = 0;
+        else if (count > ListMax)
+            count = ListMax;
+        /* Stopped at a page: the rest is only counted. */
+        if (a.nnicks >= a.skip + ListMax) {
+            long candidates = count_nickinfo(where, params, 1);
+            if (candidates > total)
+                total = candidates;
+        }
+        notice_lang(s_NickServ, u, LIST_RESULTS, count, (int)total);
+    } else {
+        notice_lang(s_NickServ, u, NICK_LIST_NO_MATCH);
+    }
+}
+
+static void do_list(User *u)
+{
+    do_list_common(u, "LIST", 0);
 }
 
 /*************************************************************************/
 
 static void do_listemail(User *u)
 {
-    char *pattern = strtok(NULL, " ");
-    char *keyword;
-    NickInfo *ni;
-    NickGroupInfo *ngi;
-    int nnicks;
-    char buf[BUFSIZE];
-    int is_servadmin = is_services_admin(u);
-    int16 match_NS = 0;  /* NS_ flags a nick must match one of to qualify */
-    int32 match_NF = 0;  /* NF_ flags a nick must match one of to qualify */
-    int match_auth = 0;  /* 1 if we match on nicks with auth codes */
-    int have_auth_module = 0;  /* so we don't show no-auth char if no module */
-    int skip = 0;        /* number of records to skip before displaying */
-
-
-    if (NSListOpersOnly && !is_oper(u)) {
-        notice_lang(s_NickServ, u, PERMISSION_DENIED);
-        return;
-    }
-
-    have_auth_module = (find_module("nickserv/mail-auth") != NULL);
-
-    if (pattern && *pattern == '+') {
-        skip = (int)atolsafe(pattern+1, 0, INT_MAX);
-        if (skip < 0) {
-            syntax_error(s_NickServ, u, "LISTEMAIL",
-                         is_oper(u)? NICK_LIST_OPER_SYNTAX: NICK_LIST_SYNTAX);
-            return;
-        }
-        pattern = strtok(NULL, " ");
-    }
-
-    if (!pattern) {
-        syntax_error(s_NickServ, u, "LISTEMAIL",
-                     is_oper(u) ? NICK_LIST_OPER_SYNTAX : NICK_LIST_SYNTAX);
-    } else {
-        const char *nonestr = getstring(u->ngi, NICK_LISTEMAIL_NONE);
-        int mask_has_at = (strchr(pattern,'@') != 0);
-
-        nnicks = 0;
-
-        while (is_servadmin && (keyword = strtok(NULL, " "))) {
-            if (stricmp(keyword, "FORBIDDEN") == 0) {
-                match_NS |= NS_VERBOTEN;
-            } else if (stricmp(keyword, "NOEXPIRE") == 0) {
-                match_NS |= NS_NOEXPIRE;
-            } else if (stricmp(keyword, "SUSPENDED") == 0) {
-                match_NF |= NF_SUSPENDED;
-            } else if (stricmp(keyword, "NOAUTH") == 0 && have_auth_module) {
-                match_auth = 1;
-            } else {
-                syntax_error(s_NickServ, u, "LISTEMAIL",
-                     is_oper(u) ? NICK_LIST_OPER_SYNTAX : NICK_LIST_SYNTAX);
-            }
-        }
-
-        for (ni = first_nickinfo(); ni; ni = next_nickinfo()) {
-            int can_see_email = 0;  /* Does user get to see the address? */
-
-            ngi = get_nickgroupinfo(ni->nickgroup);
-            if (!is_servadmin && ((ngi && (ngi->flags & NF_PRIVATE))
-                                  || (ni->status & NS_VERBOTEN))) {
-                put_nickgroupinfo(ngi);
-                continue;
-            }
-            if (match_NS || match_NF || match_auth) {
-                /* We have flags, now see if they match */
-                if (!((ni->status & match_NS)
-                   || (ngi && (ngi->flags & match_NF))
-                   || (ngi && ngi_unauthed(ngi) && match_auth)
-                )) {
-                    put_nickgroupinfo(ngi);
-                    continue;
-                }
-            }
-            if (!is_servadmin && (ngi->flags & NF_HIDE_EMAIL)
-             && (!valid_ngi(u) || ngi->id!=u->ngi->id || !user_identified(u))){
-                snprintf(buf, sizeof(buf), "%-20s  [Hidden]", ni->nick);
-            } else if (ni->status & NS_VERBOTEN) {
-                snprintf(buf, sizeof(buf), "%-20s  [Forbidden]", ni->nick);
-            } else {
-                can_see_email = 1;
-                snprintf(buf, sizeof(buf), "%-20s  %s", ni->nick,
-                         ngi->email ? ngi->email : nonestr);
-            }
-            if ((!mask_has_at && match_wild_nocase(pattern, ni->nick))
-             || (mask_has_at && can_see_email && ngi->email
-                 && match_wild_nocase(pattern, ngi->email))
-            ) {
-                nnicks++;
-                if (nnicks > skip && nnicks <= skip+ListMax) {
-                    char suspended_char = ' ';
-                    char noexpire_char = ' ';
-                    const char *auth_char = have_auth_module ? " " : "";
-                    if (is_servadmin) {
-                        if (ngi && (ngi->flags & NF_SUSPENDED))
-                            suspended_char = '*';
-                        if (ni->status & NS_NOEXPIRE)
-                            noexpire_char = '!';
-                        if (have_auth_module && ngi && ngi_unauthed(ngi))
-                            auth_char = "?";
-                    }
-                    if (nnicks == 1)  /* display header before first result */
-                        notice_lang(s_NickServ, u, NICK_LIST_HEADER, pattern);
-                    notice(s_NickServ, u->nick, "   %c%c%s %s",
-                           suspended_char, noexpire_char, auth_char, buf);
-                }
-            }
-            put_nickgroupinfo(ngi);
-        }  /* for each nick */
-        if (nnicks) {
-            int count = nnicks - skip;
-            if (count < 0)
-                count = 0;
-            else if (count > ListMax)
-                count = ListMax;
-            notice_lang(s_NickServ, u, LIST_RESULTS, count, nnicks);
-        } else {
-            notice_lang(s_NickServ, u, NICK_LIST_NO_MATCH);
-        }
-    }
+    do_list_common(u, "LISTEMAIL", 1);
 }
 
 /*************************************************************************/
@@ -2381,10 +2727,16 @@ static void handle_config(void)
 
 /*************************************************************************/
 
+/* -clear-nick-email: one group. */
+static int clear_email_one(NickGroupInfo *ngi, void *arg)
+{
+    free(ngi->email);
+    ngi->email = NULL;
+    return 0;
+}
+
 static int do_command_line(const char *option, const char *value)
 {
-    NickGroupInfo *ngi;
-
     if (!option || strcmp(option, "clear-nick-email") != 0)
         return 0;
     if (value) {
@@ -2393,10 +2745,8 @@ static int do_command_line(const char *option, const char *value)
     }
     module_log("Clearing all E-mail addresses (-clear-nick-email specified"
                " on command line)");
-    for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-        free(ngi->email);
-        ngi->email = NULL;
-    }
+    foreach_nickgroupinfo("t.email is not null", NULL, 0, clear_email_one,
+                          NULL);
     return 1;
 }
 
@@ -2451,6 +2801,43 @@ static int do_reconfigure(int after_configure)
             mapstring(DISCONNECT_IN_20_SECONDS, old_DISCONNECT_IN_20_SECONDS);
         }
     }  /* if (!after_configure) */
+    return 0;
+}
+
+/*************************************************************************/
+
+/* -encrypt-all: one group. */
+typedef struct {
+    int done, already, failed;
+} EncryptAllCount;
+
+static int reencrypt_one(NickGroupInfo *ngi, void *arg)
+{
+    EncryptAllCount *counts = arg;
+    char plainbuf[PASSMAX];
+    Password newpass;
+
+    if ((EncryptionType && ngi->pass.cipher
+         && strcmp(ngi->pass.cipher, EncryptionType) == 0)
+     || (!EncryptionType && !ngi->pass.cipher)
+    ) {
+        counts->already++;
+        return 0;
+    }
+    init_password(&newpass);
+    if (decrypt_password(&ngi->pass, plainbuf, sizeof(plainbuf)) != 0) {
+        counts->failed++;
+        return 0;
+    }
+    if (encrypt_password(plainbuf, strlen(plainbuf), &newpass) != 0) {
+        memset(plainbuf, 0, sizeof(plainbuf));
+        counts->failed++;
+        return 0;
+    }
+    memset(plainbuf, 0, sizeof(plainbuf));
+    copy_password(&ngi->pass, &newpass);
+    clear_password(&newpass);
+    counts->done++;
     return 0;
 }
 
@@ -2521,9 +2908,10 @@ int init_module(void)
     cb_registered    = register_callback("registered");
     cb_id_check      = register_callback("IDENTIFY check");
     cb_identified    = register_callback("identified");
+    cb_validated     = register_callback("user validated");
     if (cb_check_expire < 0 || cb_command < 0 || cb_help < 0
      || cb_help_cmds < 0 || cb_reglink_check < 0 || cb_registered < 0
-     || cb_id_check < 0 || cb_identified < 0
+     || cb_id_check < 0 || cb_identified < 0 || cb_validated < 0
     ) {
         module_log("Unable to register callbacks");
         exit_module(0);
@@ -2533,6 +2921,8 @@ int init_module(void)
     if (!add_callback(NULL, "command line", do_command_line)
      || !add_callback(NULL, "reconfigure", do_reconfigure)
      || !add_callback(NULL, "introduce_user", introduce_nickserv)
+     || !add_callback_pri(NULL, "m_privmsg", validate_before_privmsg,
+                          CBPRI_MAX)
      || !add_callback(NULL, "m_privmsg", nickserv)
      || !add_callback(NULL, "m_whois", nickserv_whois)
      || !add_callback(NULL, "user create", do_user_create)
@@ -2549,13 +2939,14 @@ int init_module(void)
         return 0;
     }
 
-    if (!register_dbtable(&nickgroup_dbtable)
-     || !register_dbtable(&nick_dbtable)
-    ) {
-        module_log("Unable to register database tables");
+    /* The tables exist: this module's migrations were applied when it was
+     * loaded (MODULE_MIGRATIONS_AUTO). */
+    if (!store_register(&ngi_type) || !store_register(&nick_type)) {
+        module_log("Unable to register the record types");
         exit_module(0);
         return 0;
     }
+    expire_timeout = add_timeout(EXPIRE_INTERVAL, expire_check, 1);
 
     if (!init_collide() || !init_set() || !init_util()) {
         exit_module(0);
@@ -2563,39 +2954,11 @@ int init_module(void)
     }
 
     if (encrypt_all) {
-        NickGroupInfo *ngi;
-        int done = 0, already = 0, failed = 0;
+        EncryptAllCount counts = {0, 0, 0};
         module_log("Re-encrypting passwords...");
-        for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-            if ((EncryptionType && ngi->pass.cipher
-                 && strcmp(ngi->pass.cipher, EncryptionType) == 0)
-             || (!EncryptionType && !ngi->pass.cipher)
-            ) {
-                already++;
-            } else {
-                char plainbuf[PASSMAX];
-                Password newpass;
-                int res;
-
-                init_password(&newpass);
-                res = decrypt_password(&ngi->pass, plainbuf, sizeof(plainbuf));
-                if (res != 0) {
-                    failed++;
-                } else {
-                    res = encrypt_password(plainbuf,strlen(plainbuf),&newpass);
-                    memset(plainbuf, 0, sizeof(plainbuf));
-                    if (res != 0) {
-                        failed++;
-                    } else {
-                        copy_password(&ngi->pass, &newpass);
-                        clear_password(&newpass);
-                        done++;
-                    }
-                }
-            }
-        }
+        foreach_nickgroupinfo(NULL, NULL, 0, reencrypt_one, &counts);
         module_log("%d passwords re-encrypted, %d already encrypted, %d"
-                   " failed", done, already, failed);
+                   " failed", counts.done, counts.already, counts.failed);
     } /* if (encrypt_all) */
 
     old_REGISTER_SYNTAX =
@@ -2656,9 +3019,28 @@ int exit_module(int shutdown_unused)
     exit_set();
     exit_collide();
 
-    unregister_dbtable(&nick_dbtable);
-    unregister_dbtable(&nickgroup_dbtable);
-    clean_dbtables();
+    if (expire_timeout) {
+        del_timeout(expire_timeout);
+        expire_timeout = NULL;
+    }
+    /* Let go of everything the users on the network hold, so that the
+     * records are written and released before their type goes. */
+    if (nick_type.state) {
+        User *u;
+        for (u = first_user(); u; u = next_user()) {
+            int i;
+            validate_cancel(u);
+            ARRAY_FOREACH (i, u->id_nicks)
+                release_identified(u, u->id_nicks[i]);
+            free(u->id_nicks);
+            u->id_nicks = NULL;
+            u->id_nicks_count = 0;
+            cancel_user(u);
+        }
+        store_collect();
+    }
+    store_unregister(&nick_type);
+    store_unregister(&ngi_type);
 
     remove_callback(THIS_MODULE, "REGISTER/LINK check", do_reglink_check);
     remove_callback(NULL, "user delete", do_user_delete);
@@ -2669,10 +3051,12 @@ int exit_module(int shutdown_unused)
     remove_callback(NULL, "user create", do_user_create);
     remove_callback(NULL, "m_whois", nickserv_whois);
     remove_callback(NULL, "m_privmsg", nickserv);
+    remove_callback(NULL, "m_privmsg", validate_before_privmsg);
     remove_callback(NULL, "introduce_user", introduce_nickserv);
     remove_callback(NULL, "reconfigure", do_reconfigure);
     remove_callback(NULL, "command line", do_command_line);
 
+    unregister_callback(cb_validated);
     unregister_callback(cb_identified);
     unregister_callback(cb_id_check);
     unregister_callback(cb_registered);

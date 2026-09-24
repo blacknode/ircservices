@@ -100,6 +100,16 @@ static Socket* allsockets; /* Every Socket, open or not */
 static Socket** fd_table;  /* Open sockets, indexed by descriptor */
 static int fd_table_size;
 
+/* Descriptors watched with sock_watch_fd(): not Sockets, just a callback
+ * for readability.  There are only ever a handful. */
+typedef struct watch_ {
+    struct watch_* next;
+    int fd;
+    SockWatchCallback cb;
+    void* arg;
+} Watch;
+static Watch* watches;
+
 static uint32 total_bufsize; /* All buffers, in bytes */
 static uint32 bufsize_limit, total_bufsize_limit;
 static int read_timeout = -1; /* check_sockets(), msec */
@@ -641,10 +651,18 @@ static void finish_connect(Socket* s)
 static void handle_events(int fd, unsigned int events)
 {
     Socket* s = (fd >= 0 && fd < fd_table_size) ? fd_table[fd] : NULL;
+    Watch* w;
     int res;
 
-    if (!s)
+    if (!s) {
+        for (w = watches; w; w = w->next) {
+            if (w->fd == fd) {
+                (*w->cb)(fd, w->arg);
+                break;
+            }
+        }
         return;
+    }
 
     if (s->flags & SF_LISTENER) {
         if (events & (ENGINE_READ | ENGINE_ERROR))
@@ -954,6 +972,49 @@ void check_sockets(void)
             log_debug(1, "sockets: write timeout on socket %d", s->fd);
             s->flags &= ~SF_DISCONNECT;
             do_disconn(s, DISCONN_REMOTE);
+        }
+    }
+}
+
+/*************************************************************************/
+
+int sock_watch_fd(int fd, SockWatchCallback cb, void* arg)
+{
+    Watch* w;
+
+    if (fd < 0 || !cb) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (fd < fd_table_size && fd_table[fd]) {
+        errno = EEXIST;
+        return -1;
+    }
+    w = malloc(sizeof(*w));
+    if (!w)
+        return -1;
+    if (get_engine()->add(fd, ENGINE_READ) < 0) {
+        free(w);
+        return -1;
+    }
+    w->fd = fd;
+    w->cb = cb;
+    w->arg = arg;
+    w->next = watches;
+    watches = w;
+    return 0;
+}
+
+void sock_unwatch_fd(int fd)
+{
+    Watch **wp, *w;
+
+    for (wp = &watches; (w = *wp) != NULL; wp = &w->next) {
+        if (w->fd == fd) {
+            *wp = w->next;
+            get_engine()->remove(fd);
+            free(w);
+            return;
         }
     }
 }

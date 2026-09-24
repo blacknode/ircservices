@@ -82,8 +82,8 @@ typedef struct {
 
 /*************************************************************************/
 
-/* Indices for ci->levels[]: (DO NOT REORDER THESE unless you hack
- * the database/version4 module to deal with any changes) */
+/* Indices for ci->levels[]: (DO NOT REORDER THESE: saved databases
+ * refer to the levels by index) */
 #define CA_INVITE       0
 #define CA_AKICK        1
 #define CA_SET          2       /* but not FOUNDER or PASSWORD */
@@ -207,8 +207,25 @@ E ChannelInfo *add_channelinfo(ChannelInfo *ci);
 E void del_channelinfo(ChannelInfo *ci);
 E ChannelInfo *get_channelinfo(const char *chan);
 E ChannelInfo *put_channelinfo(ChannelInfo *ci);
-E ChannelInfo *first_channelinfo(void);
-E ChannelInfo *next_channelinfo(void);
+E ChannelInfo *hold_channelinfo(ChannelInfo *ci);
+E ChannelInfo *peek_channelinfo(const char *chan);
+/* The records are in the database (see include/store.h): there is no list
+ * in memory to go through.  These go through the channels matching an SQL
+ * condition on the channels table (alias t; values $2, $3...), a page at a
+ * time; `fn' returns nonzero to stop.  They return the number seen, or -1
+ * on a database error. */
+E int foreach_channelinfo(const char *where, const char *const *params,
+                          int nparams, int (*fn)(ChannelInfo *ci, void *arg),
+                          void *arg);
+E long count_channelinfo(const char *where, const char *const *params,
+                         int nparams);
+/* Fetch channel records in the background; see prefetch_nickinfo(). */
+E int prefetch_channelinfo(const char **names, int count,
+                           void (*done)(void *arg), void *arg);
+/* Fill ngi->channels with the channels the group founded, from the
+ * database. */
+E void update_owned_channels(NickGroupInfo *ngi);
+E void sync_channelinfo(ChannelInfo *ci);
 
 #ifdef STANDALONE_CHANSERV  /* see util.c */
 # define E2 static
@@ -226,7 +243,7 @@ E int check_access_if_idented(const User *user, const ChannelInfo *ci,
                               int what);
 E int check_access_cmd(const User *user, const ChannelInfo *ci,
                        const char *command, const char *subcommand);
-E int check_channel_limit(const NickGroupInfo *ngi, int *max_ret);
+E int check_channel_limit(NickGroupInfo *ngi, int *max_ret);
 
 /*************************************************************************/
 

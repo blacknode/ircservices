@@ -52,6 +52,8 @@ struct channel_ {
     int16 server_modecount;   /* Number of server MODEs this second*/
     int16 chanserv_modecount; /* Number of check_mode()'s this sec */
     int16 bouncy_modes;       /* Did we fail to set modes here? */
+    int16 ci_pending;         /* ChanServ: `ci' is being fetched; the
+                               *    channel is checked when it arrives */
 };
 
 /* Set by ChanServ if it deops a user on joining a channel */

@@ -37,98 +37,10 @@ static Command cmds[] = {
 };
 
 /*************************************************************************/
-/**************************** Database stuff *****************************/
-/*************************************************************************/
 
-/* See autojoin.c for why we don't create our own table. */
-
-/* Temporary structure for loading/saving access records */
-typedef struct {
-    uint32 nickgroup;
-    char *mask;
-} DBRecord;
-static DBRecord dbrec_static;
-
-/* Iterators for first/next routines */
-static NickGroupInfo *db_ngi_iterator;
-static int db_array_iterator;
-
-/*************************************************************************/
-
-/* Table access routines */
-
-static void *new_access(void)
-{
-    return memset(&dbrec_static, 0, sizeof(dbrec_static));
-}
-
-static void free_access(void *record)
-{
-    free(((DBRecord *)record)->mask);
-}
-
-static void insert_access(void *record)
-{
-    DBRecord *dbrec = record;
-    NickGroupInfo *ngi = get_nickgroupinfo(dbrec->nickgroup);
-    if (!ngi) {
-        module_log("Discarding access record for missing nickgroup %u: %s",
-                   dbrec->nickgroup, dbrec->mask);
-        free_access(record);
-    } else {
-        ARRAY_EXTEND(ngi->access);
-        ngi->access[ngi->access_count-1] = dbrec->mask;
-    }
-}
-
-static void *next_access(void)
-{
-    while (db_ngi_iterator
-        && db_array_iterator >= db_ngi_iterator->access_count
-    ) {
-        db_ngi_iterator = next_nickgroupinfo();
-        db_array_iterator = 0;
-    }
-    if (db_ngi_iterator) {
-        dbrec_static.nickgroup = db_ngi_iterator->id;
-        dbrec_static.mask = db_ngi_iterator->access[db_array_iterator++];
-        return &dbrec_static;
-    } else {
-        return NULL;
-    }
-}
-
-static void *first_access(void)
-{
-    db_ngi_iterator = first_nickgroupinfo();
-    db_array_iterator = 0;
-    return next_access();
-}
-
-/*************************************************************************/
-
-/* Database table definition */
-
-#define FIELD(name,type,...) \
-    { #name, type, offsetof(DBRecord,name) , ##__VA_ARGS__ }
-
-static DBField access_dbfields[] = {
-    FIELD(nickgroup, DBTYPE_UINT32),
-    FIELD(mask,      DBTYPE_STRING),
-    { NULL }
-};
-
-static DBTable access_dbtable = {
-    .name    = "nick-access",
-    .newrec  = new_access,
-    .freerec = free_access,
-    .insert  = insert_access,
-    .first   = first_access,
-    .next    = next_access,
-    .fields  = access_dbfields,
-};
-
-#undef FIELD
+/* The access list of a nickname group is part of the group's record, which
+ * nickserv/main keeps in the database (see include/store.h): nothing to
+ * load or save here. */
 
 /*************************************************************************/
 /**************************** Local routines *****************************/
@@ -319,12 +231,6 @@ int init_module()
         return 0;
     }
 
-    if (!register_dbtable(&access_dbtable)) {
-        module_log("Unable to register database table");
-        exit_module(0);
-        return 0;
-    }
-
     return 1;
 }
 
@@ -332,7 +238,6 @@ int init_module()
 
 int exit_module(int shutdown_unused)
 {
-    unregister_dbtable(&access_dbtable);
 
     if (module_nickserv) {
         remove_callback(module_nickserv, "registered", do_registered);

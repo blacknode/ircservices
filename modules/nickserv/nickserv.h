@@ -147,7 +147,7 @@ struct nickgroupinfo_ {
 
 #define NF_ALLFLAGS     0x0000FFFB  /* All flags */
 
-#define NF_NOGROUP      0x00000004  /* Used by database/version4 during load */
+#define NF_NOGROUP      0x00000004  /* Reserved (was used by database/version4) */
 
 
 /* Nickgroup OperServ privilege levels: */
@@ -229,14 +229,33 @@ E NickInfo *add_nickinfo(NickInfo *ni);
 E void del_nickinfo(NickInfo *ni);
 E NickInfo *get_nickinfo(const char *nick);
 E NickInfo *put_nickinfo(NickInfo *ni);
-E NickInfo *first_nickinfo(void);
-E NickInfo *next_nickinfo(void);
 E NickGroupInfo *add_nickgroupinfo(NickGroupInfo *ngi);
 E void del_nickgroupinfo(NickGroupInfo *ngi);
 E NickGroupInfo *get_nickgroupinfo(uint32 id);
 E NickGroupInfo *put_nickgroupinfo(NickGroupInfo *ngi);
-E NickGroupInfo *first_nickgroupinfo(void);
-E NickGroupInfo *next_nickgroupinfo(void);
+E NickInfo *hold_nickinfo(NickInfo *ni);
+E NickGroupInfo *hold_nickgroupinfo(NickGroupInfo *ngi);
+
+/* The records are in the database (see include/store.h): there is no list
+ * in memory to go through.  These go through the records matching an SQL
+ * condition on the nicks/nickgroups table (alias t; values $2, $3...), a
+ * page at a time; `fn' returns nonzero to stop.  They return the number
+ * of records seen, or -1 on a database error. */
+E int foreach_nickinfo(const char *where, const char *const *params,
+                       int nparams, int (*fn)(NickInfo *ni, void *arg),
+                       void *arg);
+E int foreach_nickgroupinfo(const char *where, const char *const *params,
+                            int nparams,
+                            int (*fn)(NickGroupInfo *ngi, void *arg),
+                            void *arg);
+E long count_nickinfo(const char *where, const char *const *params,
+                      int nparams);
+E long count_nickgroupinfo(const char *where, const char *const *params,
+                           int nparams);
+/* Fetch nick records in the background; `done' is called when they are
+ * ready, and get_nickinfo() of any of them then does no I/O. */
+E int prefetch_nickinfo(const char **nicks, int count,
+                        void (*done)(void *arg), void *arg);
 
 #ifdef STANDALONE_NICKSERV  /* see util.c */
 # define E2 static

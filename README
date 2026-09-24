@@ -24,5 +24,7 @@ topic:
     docs/readme.features   what Services do, feature by feature
     docs/readme.commands   every command of every pseudoclient
     docs/readme.xml        exporting and importing databases (XML)
+    docs/readme.database   PostgreSQL, Redis, and the database API for modules
+    docs/readme.migrations the SQL that creates the tables; OperServ MIGRATION
     docs/readme.api        the configuration interface for module developers
     docs/readme.copyright  copyright and licenses

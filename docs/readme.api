@@ -232,3 +232,13 @@ name and label; configure(modulename, table, action) is the same thing for
 a module block, and is what the loader uses for module_config.  Both
 return 0 on error, having reported it.  Nested blocks are not bound this
 way; read them with the functions of section 3.
+
+5. Beyond the configuration
+---------------------------
+
+The same header conventions apply to the other services the core offers
+modules, described in readme.database: db.h (asynchronous PostgreSQL
+queries), cache.h (Redis), store.h (records kept in PostgreSQL through
+Redis) and worker.h (worker threads); and to migration.h, described in
+readme.migrations.
+

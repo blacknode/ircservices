@@ -23,7 +23,11 @@ set(SERVICES_DATA_DIR "${CMAKE_INSTALL_PREFIX}/lib/${SERVICES_PROGRAM}"
 set(SERVICES_BIN_DIR "${SERVICES_DATA_DIR}/bin"
   CACHE PATH "Directory the executable is installed to")
 
-option(SERVICES_SORTED_LISTS "Keep nickname and channel lists sorted" ON)
+# Sorted lists hash on the first two characters of a nick or channel name
+# only, so that walking a table visits it in order.  On a large network a
+# common prefix (guest nicks, clones, #chan-*) puts thousands of entries in
+# one bucket and every lookup scans it; off, the whole name is hashed.
+option(SERVICES_SORTED_LISTS "Keep user and channel lists sorted (slow on large networks)" OFF)
 option(SERVICES_WARNINGS     "Build with extra compiler warnings" ON)
 option(SERVICES_MEMCHECKS    "Enable memory allocation checks" OFF)
 option(SERVICES_SHOWALLOCS   "Log allocation activity (needs MEMCHECKS)" OFF)

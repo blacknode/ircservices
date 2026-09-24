@@ -72,16 +72,6 @@ typedef struct dbtable_ {
      *    returns nonzero for success or 0 for failure */
 } DBTable;
 
-/* Container for module-implemented database functions */
-typedef struct dbmodule_ {
-    /* Load the given table from permanent storage, returning nonzero for
-     * success, zero for failure. */
-    int (*load_table)(DBTable* table);
-    /* Save the given table to permanent storage, returning nonzero for
-     * success, zero for failure */
-    int (*save_table)(DBTable* table);
-} DBModule;
-
 /*************************************************************************/
 
 /* Macro to return a pointer to a field in a record */
@@ -89,12 +79,17 @@ typedef struct dbmodule_ {
 
 /*************************************************************************/
 
-/* Initialization/cleanup routines. */
+/* Initialization/cleanup routines.  database_init() opens the table store
+ * (PostgreSQL, see the `database' block of ircservices.conf) and fails if
+ * the database cannot be reached: Services do not run without their data. */
 extern int database_init(int ac, char** av);
 extern void database_cleanup(void);
 
-/* Register a new database table.  Returns nonzero on success, zero on
- * error. */
+/* Register a new database table, and load it from the database.  Returns
+ * nonzero on success, zero on error (the table could not be loaded: it is
+ * then not registered, and the module should fail to initialize).  Tables
+ * are saved in the order they were registered, and loaded as they are
+ * registered, so register a table after the tables it depends on. */
 #define register_dbtable(table) _register_dbtable((table), THIS_MODULE)
 extern int _register_dbtable(DBTable* table, const Module* caller);
 
@@ -102,21 +97,20 @@ extern int _register_dbtable(DBTable* table, const Module* caller);
  * registered in the first place. */
 extern void unregister_dbtable(DBTable* table);
 
-/* Save all registered database tables to permanent storage.  Returns 1 if
- * all tables were successfully saved or no tables are registered, 0 if
- * some tables were successfully saved (but some were not), or -1 if no
- * tables were successfully saved. */
+/* Save all registered database tables.  The tables are snapshotted now and
+ * written to the database in the background, every one that changed in one
+ * transaction; the "save data complete" callback is called with 1 or 0
+ * when the save is over (possibly before this returns).  A save requested
+ * while one is running is done when that one ends.  Returns 1 if the save
+ * was started or queued, 0 if it could not be. */
 extern int save_all_dbtables(void);
 
-/* Register a database module.  Returns nonzero on success, zero on error.
- * On success, all registered tables which have not already been loaded
- * will be loaded from permanent storage.  Only one database module can be
- * registered. */
-extern int register_dbmodule(DBModule* module);
+/* Nonzero while a save is running or queued. */
+extern int database_saving(void);
 
-/* Unregister a database module.  Does nothing if the module was not
- * registered in the first place. */
-extern void unregister_dbmodule(DBModule* module);
+/* Wait (at most the save timeout) for the running and queued saves to end.
+ * Called before Services exit, while the tables are still registered. */
+extern void database_flush(void);
 
 /* Read a value from a database field.  The value buffer is assumed to be
  * large enough to hold the retrieved value. */

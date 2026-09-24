@@ -2504,12 +2504,41 @@ Limited to the **Services super-user**.
 
     UPDATE [FORCE]
 
-Causes Services to update all database files as soon as you send the
-command. If the `FORCE` option is given, Services will attempt to unlock the
-databases before performing the update; this can be used to fix "databases
-are locked" errors when updating the databases.
+Causes Services to save the tables they keep whole in memory (OperServ
+settings, autokills, S-lines, exceptions, news, server statistics) as soon
+as you send the command; you are told when the save has finished (the save
+runs in the background). Nicknames, channels and memos do not need it:
+every change to them is written to the database within seconds. The
+`FORCE` option is accepted for compatibility and ignored.
 
 Limited to **Services admins**.
+
+### MIGRATION
+
+**Syntax:**
+
+    MIGRATION LIST
+    MIGRATION STATUS module
+    MIGRATION APPLY module [vN]
+    MIGRATION REVERT module [vN]
+
+Manages the database schema migrations that Services and their modules
+ship (see `readme.migrations`). `LIST` shows every migration applied to the
+database; `STATUS` shows which of a module's migrations are applied and
+which are pending (`core` is Services' own set).
+
+`APPLY` applies a module's pending migrations in order, up to `vN` if
+given, stopping at the first one that fails. `REVERT` reverts only the
+newest applied migration, or every one down to `vN` if given: reverting
+destroys whatever the migration created. The migrations of the modules
+Services need to work (NickServ, ChanServ), and Services' own, are applied
+automatically when they are loaded, and cannot be reverted.
+
+The answers arrive when the database has done the work; every schema
+change is logged and announced by WALLOPS.
+
+`LIST` and `STATUS` are limited to **Services admins**; `APPLY` and
+`REVERT` to the **Services super-user**.
 
 ### QUIT
 
@@ -2517,10 +2546,11 @@ Limited to **Services admins**.
 
     QUIT
 
-Causes Services to do an immediate shutdown; databases are **not** saved.
-This command should not be used unless damage to the in-memory copies of the
-databases is feared and they should not be saved. For normal shutdowns, use
-the `SHUTDOWN` command.
+Causes Services to do an immediate shutdown, **without** saving the tables
+they keep whole in memory (see `UPDATE`); changes to nicknames, channels
+and memos are written as usual. This command should not be used unless
+damage to the in-memory copies of those tables is feared. For normal
+shutdowns, use the `SHUTDOWN` command.
 
 Limited to **Services admins**.
 

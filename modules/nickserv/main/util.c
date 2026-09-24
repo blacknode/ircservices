@@ -101,7 +101,7 @@ STANDALONE_STATIC NickGroupInfo *new_nickgroupinfo(const char *seed)
 
         id = 0;
         for (count = 0; seed[count] != 0; count++)
-            id ^= seed[count] << ((count % 6) * 5);
+            id ^= (uint32)seed[count] << ((count % 6) * 5);
         if (id == 0)
             id = 1;
 #ifndef STANDALONE_NICKSERV
@@ -513,6 +513,9 @@ void set_identified(User *u)
         u->id_nicks[u->id_nicks_count-1] = ngi->id;
         ARRAY_EXTEND(ngi->id_users);
         ngi->id_users[ngi->id_users_count-1] = u;
+        /* Kept in memory while somebody is identified for it; let go of
+         * in release_identified(). */
+        hold_nickgroupinfo(ngi);
     }
     if (usermode_reg) {
         send_cmd(s_NickServ, "SVSMODE %s :+%s", u->nick,
@@ -555,9 +558,19 @@ NickInfo *makenick(const char *nick, NickGroupInfo **nickgroup_ret)
         ni->nickgroup = ngi->id;
         ARRAY_EXTEND(ngi->nicks);
         strbcpy(ngi->nicks[0], nick);
-        *nickgroup_ret = add_nickgroupinfo(ngi);
     }
-    return add_nickinfo(ni);
+    /* The nick first: it is the one that may turn out to exist.  Either
+     * both are created or neither is (a failed add releases the record). */
+    if (!add_nickinfo(ni)) {
+        if (nickgroup_ret)
+            free_nickgroupinfo(ngi);
+        return NULL;
+    }
+    if (nickgroup_ret && !(*nickgroup_ret = add_nickgroupinfo(ngi))) {
+        del_nickinfo(ni);
+        return NULL;
+    }
+    return ni;
 }
 
 /*************************************************************************/
@@ -790,23 +803,30 @@ int nick_check_password(User *u, NickInfo *ni, const char *password,
  * registered nicknames: for example, if there are 5 nicks with the given
  * address, -5 would be returned.
  *
- * Note that this function is O(n) in the total number of registered nick
- * groups, so do not use it lightly!
+ * (Two queries to the database.)
  */
 
 int count_nicks_with_email(const char *email)
 {
-    int count = 0, unauthed = 0;
-    NickGroupInfo *ngi;
+    const char *params[1], *params2[2];
+    char reauth[16];
+    long count, unauthed;
 
-    for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-        if (ngi->email && stricmp(ngi->email, email) == 0) {
-            if (ngi_unauthed(ngi))
-                unauthed = 1;
-            count += ngi->nicks_count;
-        }
-    }
-    return unauthed ? -count : count;
+    /* One indexed lookup in the database (nickgroups_email), instead of
+     * the walk through every group it used to be. */
+    params[0] = email;
+    snprintf(reauth, sizeof(reauth), "%d", NICKAUTH_REAUTH);
+    params2[0] = email;
+    params2[1] = reauth;
+    count = count_nickinfo("exists (select 1 from nickgroups g"
+                           " where g.id = t.nickgroup"
+                           " and lower(g.email) = lower($2))", params, 1);
+    unauthed = count_nickgroupinfo("lower(t.email) = lower($2)"
+                                   " and t.authcode <> 0 and t.authreason <> $3::smallint",
+                                   params2, 2);
+    if (count < 0)
+        count = 0;
+    return unauthed > 0 ? -(int)count : (int)count;
 }
 
 /*************************************************************************/

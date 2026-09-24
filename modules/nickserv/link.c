@@ -86,8 +86,10 @@ static void do_link(User *u)
             && (n=abs(count_nicks_with_email(ngi->email))) >= NSRegEmailMax) {
         notice_lang(s_NickServ, u, NICK_LINK_TOO_MANY_NICKS, n,
                     NSRegEmailMax);
+    } else if (!(ni2 = makenick(nick, NULL))) {
+        module_log("makenick(%s) failed (link)", nick);
+        notice_lang(s_NickServ, u, NICK_LINK_FAILED);
     } else {
-        ni2 = makenick(nick, NULL);
         if (ni->last_usermask)
             ni2->last_usermask = sstrdup(ni->last_usermask);
         if (ni->last_realmask)
@@ -198,8 +200,8 @@ static void do_listlinks(User *u)
             notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
             return;
         }
-        ni->usecount++;
-        ngi->usecount++;
+        hold_nickinfo(ni);
+        hold_nickgroupinfo(ngi);
     }
 
     notice_lang(s_NickServ, u, NICK_LISTLINKS_HEADER, ni->nick);

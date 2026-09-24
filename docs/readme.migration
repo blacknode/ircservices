@@ -49,9 +49,8 @@ table is in readme.config, section 4-8):
     PIDFilename ircservices.pid               log = "ircservices.log";
     MOTDFilename ircservices.motd             pid = "ircservices.pid";
     LockFilename .lock                        motd = "ircservices.motd";
-    Umask 077                                 lock = ".lock";
-    RunGroup =65534                           umask = 077;
-                                              run_group = "=65534";
+    Umask 077                                 umask = 077;
+    RunGroup =65534                           run_group = "=65534";
                                           };
     GuestNickPrefix "Guest"               options {
     ListMax 50                                guest_nick_prefix = "Guest";
@@ -128,3 +127,18 @@ are not loaded, which catches a misspelt module name.
 The example file data/example-ircservices.conf contains every setting,
 core and module, in the new syntax, with the same documentation as
 before.
+
+The databases
+-------------
+
+The file databases are gone too: Services keep their data in PostgreSQL
+(readme.database), and the database/standard and database/version4
+modules, their module blocks and their loadmodule entries no longer exist
+(remove them; a leftover loadmodule entry stops Services from starting).
+LockFilename (files { lock; }) and the -forceload option went with them.
+
+Add a database block with the connection string and a redis block (both
+are required), and bring the data over with the XML export and import
+modules: export with the old version (-export=<file>), then start this one
+once with -import=<file>.  readme.database, section 1-7, has the details.
+

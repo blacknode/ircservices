@@ -50,8 +50,6 @@ Each setting below is shown as it is written, followed by one of:
 Module list
 -----------
 
-    database/standard       standard (file-based) database
-    database/version4       databases compatible with Services 4.5/5.0
     encryption/md5          MD5 password encryption (one-way)
     encryption/unix-crypt   crypt(3) password encryption (one-way)
     mail/main               mail sending interface (needs one of:)
@@ -88,73 +86,10 @@ Module list
     misc/xml-import         XML database import (see readme.xml)
 
 Modules must be loaded after the modules they use: encryption before
-database modules, operserv/main before the other pseudoclients,
+the modules whose data holds passwords (their tables are loaded from the
+database when they are), operserv/main before the other pseudoclients,
 nickserv/main before chanserv and memoserv, mail/main before any module
 that sends mail, httpd/main before the other httpd modules.
-
-Database module configuration
------------------------------
-
-### database/standard
-
-    module "database/standard" { ... };
-
-This module has no configurable settings.
-
-### database/version4
-
-    module "database/version4" { ... };
-
-NickServDB = <name>;  [REQUIRED]
-    Specifies the filename used for the registered nickname databases.
-
-    Example:
-        NickServDB = "nick.db";
-
-ChanServDB = <name>;  [REQUIRED]
-    Specifies the filename used for the registered channel databases.
-
-    Example:
-        ChanServDB = "chan.db";
-
-OperServDB = <name>;  [REQUIRED]
-    Specifies the filename used for the OperServ database.
-
-    Example:
-        OperServDB = "oper.db";
-
-NewsDB = <name>;  [REQUIRED]
-    Specifies the filename used for the news database.
-
-    Example:
-        NewsDB = "news.db";
-
-AutokillDB = <name>;  [REQUIRED]
-    Specifies the filename used for the autokill and autokill
-    exclusion databases.
-
-    Example:
-        AutokillDB = "akill.db";
-
-ExceptionDB = <name>;  [REQUIRED]
-    Specifies the filename used for the session exception database.
-
-    Example:
-        ExceptionDB = "exception.db";
-
-SlineDB = <name>;  [REQUIRED]
-    Specifies the filename used for the SGline, SQline, and SZline
-    databases.
-
-    Example:
-        SlineDB = "sline.db";
-
-StatServDB = <name>;  [REQUIRED]
-    Specifies the filename used for the StatServ server statistics
-    database.
-
-    Example:
-        StatServDB = "stats.db";
 
 Encryption module configuration
 -------------------------------

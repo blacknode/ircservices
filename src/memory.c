@@ -306,9 +306,11 @@ void MCfree(void* ptr, const char* file, int line)
             line);
     }
 #endif
+    /* Fill the block before the size is overwritten with the fill
+     * pattern: fill32() needs the real size. */
+    fill32(ptr, FREE_FILL, mb->size);
     mb->size = FREE_FILL;
     mb->sig = FREE_SIGNATURE;
-    fill32(ptr, FREE_FILL, mb->size);
     free(mb);
 }
 

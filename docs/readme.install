@@ -8,6 +8,10 @@ Requirements
 - CMake 3.20 or later, with Ninja or Make.
 - GNU Bison 3.6 or later and flex 2.6 or later, which generate the
   configuration file parser.
+- libpq (PostgreSQL client), jansson and hiredis, with their development
+  headers.
+- A PostgreSQL server (any supported version), where Services keep their
+  data; optionally a Redis server, as a cache for modules.
 - Optionally crypt(3), for the encryption/unix-crypt module.
 - An ircu2 network (Undernet ircu 2.10 or later): Services speak the P10
   protocol natively and support no other IRC server.
@@ -46,9 +50,38 @@ module settings in readme.modules.  At the very least, set:
 - `uplink { host; port; password; }` -- the ircu2 server to link to;
 - `serverinfo { name; description; numeric; user; }` -- the numeric must
   be unique on the network;
+- `database { dsn; }` -- the PostgreSQL database Services keep their data
+  in (see below);
+- `redis { host; }` (or `socket`, and `password` if it asks for one) --
+  the Redis server in front of it;
 - in the module settings, `ServicesRoot` (operserv/main) and, if mail/main is
   loaded, `FromAddress` (mail/main) and `RelayHost`/`SMTPName`
   (mail/smtp).
+
+Preparing the database
+----------------------
+
+Services need a PostgreSQL database and a user that may create a schema in
+it (or that owns the schema named in `database { schema; }`, "services" by
+default).  For instance, as the PostgreSQL superuser:
+
+    CREATE ROLE services LOGIN PASSWORD 'secret';
+    CREATE DATABASE services OWNER services;
+
+Services create the schema and every table they need the first time they
+start (readme.migrations).  Nothing else is needed; readme.database
+describes the tables, how they are read and written, and how to bring
+over data from an older version.
+
+They also need a Redis server (or a compatible one: Valkey, KeyDB), which
+holds a copy of the records most recently used so that the database is
+not asked the same thing twice.  It keeps nothing that is not also in
+PostgreSQL, and it must NOT be persistent: a Redis restarted from a
+snapshot (RDB or AOF) older than the database would serve those old copies
+until they expire.  Run it with `save ""' and `appendonly no' (or empty it
+whenever it restarts), give it a `maxmemory' with an eviction policy such
+as allkeys-lru, and share it with other programs through
+`redis { prefix; }' if you like.
 
 Configuring the IRC server
 --------------------------
@@ -115,9 +148,6 @@ Command-line options
                            autokills, session exceptions, ...).
     -noakill               Disable autokill checking (the list can still
                            be modified).
-    -forceload             With database/version4, load as much as
-                           possible from damaged databases instead of
-                           aborting.
     -encrypt-all           Re-encrypt all passwords on start-up with
                            options { encryption; }.
 

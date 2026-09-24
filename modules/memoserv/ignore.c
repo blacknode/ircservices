@@ -34,98 +34,10 @@ static Command cmds[] = {
 };
 
 /*************************************************************************/
-/**************************** Database stuff *****************************/
-/*************************************************************************/
 
-/* See nickserv/autojoin.c for why we don't create our own table. */
-
-/* Temporary structure for loading/saving access records */
-typedef struct {
-    uint32 nickgroup;
-    char *mask;
-} DBRecord;
-static DBRecord dbrec_static;
-
-/* Iterators for first/next routines */
-static NickGroupInfo *db_ngi_iterator;
-static int db_array_iterator;
-
-/*************************************************************************/
-
-/* Table access routines */
-
-static void *new_ignore(void)
-{
-    return memset(&dbrec_static, 0, sizeof(dbrec_static));
-}
-
-static void free_ignore(void *record)
-{
-    free(((DBRecord *)record)->mask);
-}
-
-static void insert_ignore(void *record)
-{
-    DBRecord *dbrec = record;
-    NickGroupInfo *ngi = get_nickgroupinfo(dbrec->nickgroup);
-    if (!ngi) {
-        module_log("Discarding ignore record for missing nickgroup %u: %s",
-                   dbrec->nickgroup, dbrec->mask);
-        free_ignore(record);
-    } else {
-        ARRAY_EXTEND(ngi->ignore);
-        ngi->ignore[ngi->ignore_count-1] = dbrec->mask;
-    }
-}
-
-static void *next_ignore(void)
-{
-    while (db_ngi_iterator
-        && db_array_iterator >= db_ngi_iterator->ignore_count
-    ) {
-        db_ngi_iterator = next_nickgroupinfo();
-        db_array_iterator = 0;
-    }
-    if (db_ngi_iterator) {
-        dbrec_static.nickgroup = db_ngi_iterator->id;
-        dbrec_static.mask = db_ngi_iterator->ignore[db_array_iterator++];
-        return &dbrec_static;
-    } else {
-        return NULL;
-    }
-}
-
-static void *first_ignore(void)
-{
-    db_ngi_iterator = first_nickgroupinfo();
-    db_array_iterator = 0;
-    return next_ignore();
-}
-
-/*************************************************************************/
-
-/* Database table definition */
-
-#define FIELD(name,type,...) \
-    { #name, type, offsetof(DBRecord,name) , ##__VA_ARGS__ }
-
-static DBField ignore_dbfields[] = {
-    FIELD(nickgroup, DBTYPE_UINT32),
-    FIELD(mask,      DBTYPE_STRING),
-    { NULL }
-};
-
-static DBTable ignore_dbtable = {
-    .name    = "memo-ignore",
-    .newrec  = new_ignore,
-    .freerec = free_ignore,
-    .insert  = insert_ignore,
-    .first   = first_ignore,
-    .next    = next_ignore,
-    .fields  = ignore_dbfields,
-};
-
-#undef FIELD
+/* The memo ignore list of a nickname group is part of the group's record, which
+ * nickserv/main keeps in the database (see include/store.h): nothing to
+ * load or save here. */
 
 /*************************************************************************/
 /*************************** Callback routines ***************************/
@@ -295,12 +207,6 @@ int init_module(void)
         return 0;
     }
 
-    if (!register_dbtable(&ignore_dbtable)) {
-        module_log("Unable to register database table");
-        exit_module(0);
-        return 0;
-    }
-
     return 1;
 }
 
@@ -308,7 +214,6 @@ int init_module(void)
 
 int exit_module(int shutdown_unused)
 {
-    unregister_dbtable(&ignore_dbtable);
 
     if (module_memoserv) {
         remove_callback(module_memoserv, "receive memo", check_if_ignored);

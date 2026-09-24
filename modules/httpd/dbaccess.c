@@ -61,15 +61,13 @@ static typeof(next_maskdata) *p_next_maskdata;
 /* Imported from NickServ: */
 typeof(get_nickinfo) *p_get_nickinfo;
 typeof(put_nickinfo) *p_put_nickinfo;
-typeof(first_nickinfo) *p_first_nickinfo;
-typeof(next_nickinfo) *p_next_nickinfo;
+typeof(foreach_nickinfo) *p_foreach_nickinfo;
 static typeof(_get_ngi) *p__get_ngi;
 static typeof(_get_ngi_id) *p__get_ngi_id;
 typeof(put_nickgroupinfo) *p_put_nickgroupinfo;
 #define get_nickinfo (*p_get_nickinfo)
 #define put_nickinfo (*p_put_nickinfo)
-#define first_nickinfo (*p_first_nickinfo)
-#define next_nickinfo (*p_next_nickinfo)
+#define foreach_nickinfo (*p_foreach_nickinfo)
 #define _get_ngi (*p__get_ngi)
 #define _get_ngi_id (*p__get_ngi_id)
 #define put_nickgroupinfo (*p_put_nickgroupinfo)
@@ -78,13 +76,13 @@ typeof(put_nickgroupinfo) *p_put_nickgroupinfo;
 static typeof(CSMaxReg) *p_CSMaxReg;
 typeof(get_channelinfo) *p_get_channelinfo;
 typeof(put_channelinfo) *p_put_channelinfo;
-typeof(first_channelinfo) *p_first_channelinfo;
-typeof(next_channelinfo) *p_next_channelinfo;
+typeof(foreach_channelinfo) *p_foreach_channelinfo;
+static typeof(update_owned_channels) *p_update_owned_channels;
 #define CSMaxReg (*p_CSMaxReg)
 #define get_channelinfo (*p_get_channelinfo)
 #define put_channelinfo (*p_put_channelinfo)
-#define first_channelinfo (*p_first_channelinfo)
-#define next_channelinfo (*p_next_channelinfo)
+#define foreach_channelinfo (*p_foreach_channelinfo)
+#define update_owned_channels (*p_update_owned_channels)
 
 /* Imported from StatServ: */
 typeof(get_serverstats) *p_get_serverstats;
@@ -528,6 +526,79 @@ static int handle_operserv_sline(Client *c, int *close_ptr, char *path)
     return handle_maskdata(c, close_ptr, path+1, *path, "an", typename);
 }
 
+/* Listing nicknames and channels, a page at a time. */
+
+#define LIST_PAGE 500
+
+/* A name as its key in the database (IRC case folding). */
+static void irc_lowercase_key(const char *name, char *buf, int size)
+{
+    int n = 0;
+
+    while (*name && n < size-1)
+        buf[n++] = irc_tolower(*name++);
+    buf[n] = 0;
+}
+
+typedef struct {
+    Client *c;
+    int count;
+    int more;                   /* Another page follows */
+    int want_ngi;               /* Show nickgroup flags (costs a lookup) */
+    char last[NICKMAX*2+CHANMAX*2];  /* Key of the last one shown */
+} NickListArg, ChanListArg;
+
+static int nick_list_one(NickInfo *ni, void *arg_)
+{
+    NickListArg *arg = arg_;
+    NickGroupInfo *ngi = NULL;
+    char nickhtml[NICKMAX*6], nickurl[NICKMAX*6];
+
+    if (arg->count >= LIST_PAGE) {
+        arg->more = 1;
+        return 1;
+    }
+    if (arg->want_ngi && ni->nickgroup)
+        ngi = get_ngi(ni);
+    http_quote_html(ni->nick, nickhtml, sizeof(nickhtml));
+    http_quote_url(ni->nick, nickurl, sizeof(nickurl));
+    sockprintf(arg->c->socket, "<li><tt>%s%s%s%s&nbsp;</tt>"
+               "<a href=\"%s\">%s</a>",
+               ni->status & NS_VERBOTEN ? "-" : "&nbsp;",
+               ngi && (ngi->flags & NF_SUSPENDED) ? "*" : "&nbsp;",
+               ni->status & NS_NOEXPIRE ? "!" : "&nbsp;",
+               ngi && ngi->authcode ? "?" : "&nbsp;",
+               nickurl, nickhtml);
+    put_nickgroupinfo(ngi);
+    irc_lowercase_key(ni->nick, arg->last, sizeof(arg->last));
+    arg->count++;
+    return 0;
+}
+
+static int chan_list_one(ChannelInfo *ci, void *arg_)
+{
+    ChanListArg *arg = arg_;
+    char chanhtml[CHANMAX*6], chanurl[CHANMAX*6];
+
+    if (arg->count >= LIST_PAGE) {
+        arg->more = 1;
+        return 1;
+    }
+    http_quote_html(ci->name, chanhtml, sizeof(chanhtml));
+    http_quote_url(ci->name+1, chanurl, sizeof(chanurl));
+    sockprintf(arg->c->socket, "<li><tt>%s%s%s&nbsp;</tt>"
+               "<a href=\"%s\">%s</a>",
+               ci->flags & CF_VERBOTEN  ? "-" : "&nbsp;",
+               ci->flags & CF_SUSPENDED ? "*" : "&nbsp;",
+               ci->flags & CF_NOEXPIRE  ? "!" : "&nbsp;",
+               chanurl, chanhtml);
+    irc_lowercase_key(ci->name, arg->last, sizeof(arg->last));
+    arg->count++;
+    return 0;
+}
+
+/*************************************************************************/
+
 /*************************************************************************/
 
 static struct {
@@ -557,7 +628,6 @@ static struct {
 
 static int handle_nickserv(Client *c, int *close_ptr, char *path)
 {
-    char nickurl[NICKMAX*3];
     char nickhtml[NICKMAX*5];
     NickInfo *ni;
     NickGroupInfo *ngi = NULL;
@@ -583,6 +653,7 @@ static int handle_nickserv(Client *c, int *close_ptr, char *path)
     if (!*path) {
         int count = 0;
         char *select_var = http_get_variable(c, "select");
+        char *start_var = http_get_variable(c, "start");
         enum {SEL_ALL, SEL_FORBIDDEN,SEL_SUSPENDED,SEL_NOEXPIRE,SEL_NOAUTH}
             select = SEL_ALL;
 
@@ -601,32 +672,45 @@ static int handle_nickserv(Client *c, int *close_ptr, char *path)
         sockprintf(c->socket,
                    "<br>Or click on a nickname for detailed information."
                    "<p><a href=../>(Return to previous menu)</a><p><ul>");
-        for (ni = first_nickinfo(); ni; ni = next_nickinfo()) {
-            NickGroupInfo *ngi = NULL;
-            if ((select==SEL_SUSPENDED || select==SEL_NOAUTH) && ni->nickgroup)
-                ngi = get_ngi(ni);
-            if ((select==SEL_FORBIDDEN && !(ni->status & NS_VERBOTEN))
-             || (select==SEL_SUSPENDED && (!ngi || !(ngi->flags&NF_SUSPENDED)))
-             || (select==SEL_NOEXPIRE  && !(ni->status & NS_NOEXPIRE))
-             || (select==SEL_NOAUTH    && (!ngi || !ngi_unauthed(ngi)))
-            ) {
-                put_nickgroupinfo(ngi);
-                continue;
+        {
+            /* The nicknames are in the database: a page at a time, in
+             * order, from where the previous page stopped. */
+            static const char *const conds[] = {
+                /* SEL_ALL */       "",
+                /* SEL_FORBIDDEN */ " and t.status & 2 <> 0",
+                /* SEL_SUSPENDED */ " and exists (select 1 from nickgroups g"
+                                    " where g.id = t.nickgroup"
+                                    " and g.flags & 16384 <> 0)",
+                /* SEL_NOEXPIRE */  " and t.status & 4 <> 0",
+                /* SEL_NOAUTH */    " and exists (select 1 from nickgroups g"
+                                    " where g.id = t.nickgroup"
+                                    " and g.authcode <> 0)",
+            };
+            char where[256];
+            const char *params[1];
+            NickListArg arg;
+
+            if (select < SEL_ALL || select > SEL_NOAUTH)
+                select = SEL_ALL;
+            snprintf(where, sizeof(where), "t.nick_key > $2%s",
+                     conds[select]);
+            params[0] = start_var ? start_var : "";
+            arg.c = c;
+            arg.count = 0;
+            arg.more = 0;
+            arg.want_ngi = (select == SEL_SUSPENDED || select == SEL_NOAUTH);
+            *arg.last = 0;
+            foreach_nickinfo(where, params, 1, nick_list_one, &arg);
+            count = arg.count;
+            if (arg.more) {
+                char urlbuf[BUFSIZE*3];
+                http_quote_url(arg.last, urlbuf, sizeof(urlbuf));
+                sockprintf(c->socket, "</ul><p><a href=\"./?select=%d&start="
+                           "%s\">Next page</a><ul>", select, urlbuf);
             }
-            http_quote_html(ni->nick, nickhtml, sizeof(nickhtml));
-            http_quote_html(ni->nick, nickurl, sizeof(nickurl));
-            sockprintf(c->socket, "<li><tt>%s%s%s%s&nbsp;</tt>"
-                       "<a href=\"%s\">%s</a>",
-                       ni->status & NS_VERBOTEN ? "-" : "&nbsp;",
-                       ngi && (ngi->flags & NF_SUSPENDED) ? "*" : "&nbsp;",
-                       ni->status & NS_NOEXPIRE ? "!" : "&nbsp;",
-                       ngi && ngi->authcode ? "?" : "&nbsp;",
-                       nickurl, nickhtml);
-            put_nickgroupinfo(ngi);
-            count++;
         }
         sockprintf(c->socket,
-                   "</ul><p>%d %snickname%s %s.<p>Key:<br>"
+                   "</ul><p>%d %snickname%s %s shown.<p>Key:<br>"
                    "<tt>&nbsp;&nbsp;-&nbsp;</tt>Nickname is forbidden<br>"
                    "<tt>&nbsp;&nbsp;*&nbsp;</tt>Nickname is suspended<br>"
                    "<tt>&nbsp;&nbsp;!&nbsp;</tt>Nickname is non-expiring<br>"
@@ -808,6 +892,8 @@ static int handle_nickserv(Client *c, int *close_ptr, char *path)
 
         sockprintf(c->socket,
                    "<tr><th align=right valign=top>Channels registered:<td>");
+        if (module_chanserv)
+            update_owned_channels(ngi);
         if (!ngi->channels_count) {
             sockprintf(c->socket, "None");
         } else {
@@ -911,6 +997,7 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
     if (!*path) {
         int count = 0;
         char *select_var = http_get_variable(c, "select");
+        char *start_var = http_get_variable(c, "start");
         enum {SEL_ALL, SEL_FORBIDDEN,SEL_SUSPENDED,SEL_NOEXPIRE}
             select = SEL_ALL;
 
@@ -931,25 +1018,38 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
         sockprintf(c->socket,
                    "<br>Or click on a channel for detailed information."
                    "<p><a href=../>(Return to previous menu)</a><p><ul>");
-        for (ci = first_channelinfo(); ci; ci = next_channelinfo()) {
-            if ((select==SEL_FORBIDDEN && !(ci->flags & CF_VERBOTEN))
-             || (select==SEL_SUSPENDED && !(ci->flags & CF_SUSPENDED))
-             || (select==SEL_NOEXPIRE  && !(ci->flags & CF_NOEXPIRE))
-            ) {
-                continue;
+        {
+            static const char *const conds[] = {
+                /* SEL_ALL */       "",
+                /* SEL_FORBIDDEN */ " and t.flags & 128 <> 0",
+                /* SEL_SUSPENDED */ " and t.flags & 65536 <> 0",
+                /* SEL_NOEXPIRE */  " and t.flags & 512 <> 0",
+            };
+            char where[256];
+            const char *params[1];
+            ChanListArg arg;
+
+            if (select < SEL_ALL || select > SEL_NOEXPIRE)
+                select = SEL_ALL;
+            snprintf(where, sizeof(where), "t.name_key > $2%s",
+                     conds[select]);
+            params[0] = start_var ? start_var : "";
+            arg.c = c;
+            arg.count = 0;
+            arg.more = 0;
+            arg.want_ngi = 0;
+            *arg.last = 0;
+            foreach_channelinfo(where, params, 1, chan_list_one, &arg);
+            count = arg.count;
+            if (arg.more) {
+                char urlbuf[BUFSIZE*3];
+                http_quote_url(arg.last, urlbuf, sizeof(urlbuf));
+                sockprintf(c->socket, "</ul><p><a href=\"./?select=%d&start="
+                           "%s\">Next page</a><ul>", select, urlbuf);
             }
-            http_quote_html(ci->name, chanhtml, sizeof(chanhtml));
-            http_quote_html(ci->name+1, chanurl, sizeof(chanurl));
-            sockprintf(c->socket, "<li><tt>%s%s%s&nbsp;</tt>"
-                       "<a href=\"%s\">%s</a>",
-                       ci->flags & CF_VERBOTEN  ? "-" : "&nbsp;",
-                       ci->flags & CF_SUSPENDED ? "*" : "&nbsp;",
-                       ci->flags & CF_NOEXPIRE  ? "!" : "&nbsp;",
-                       chanurl, chanhtml);
-            count++;
         }
         sockprintf(c->socket,
-                   "</ul><p>%d %schannel%s %s.<p>Key:"
+                   "</ul><p>%d %schannel%s %s shown.<p>Key:"
                    "<tt>&nbsp;&nbsp;-&nbsp;</tt>Channel is forbidden<br>"
                    "<tt>&nbsp;&nbsp;*&nbsp;</tt>Channel is suspended<br>"
                    "<tt>&nbsp;&nbsp;!&nbsp;</tt>Channel is non-expiring<br>"
@@ -1445,16 +1545,15 @@ static int do_load_module(Module *mod, const char *modname)
     } else if (strcmp(modname, "nickserv/main") == 0) {
         GET_SYMBOL(get_nickinfo);
         GET_SYMBOL(put_nickinfo);
-        GET_SYMBOL(first_nickinfo);
-        GET_SYMBOL(next_nickinfo);
+        GET_SYMBOL(foreach_nickinfo);
         GET_SYMBOL(_get_ngi);
         GET_SYMBOL(_get_ngi_id);
         GET_SYMBOL(put_nickgroupinfo);
         p_get_nickinfo = get_module_symbol(mod, "get_nickinfo");
         p__get_ngi = get_module_symbol(mod, "_get_ngi");
         p__get_ngi_id = get_module_symbol(mod, "_get_ngi_id");
-        if (p_get_nickinfo && p_put_nickinfo && p_first_nickinfo
-         && p_next_nickinfo && p__get_ngi && p__get_ngi_id
+        if (p_get_nickinfo && p_put_nickinfo && p_foreach_nickinfo
+         && p__get_ngi && p__get_ngi_id
          && p_put_nickgroupinfo
         ) {
             module_nickserv = mod;
@@ -1463,8 +1562,7 @@ static int do_load_module(Module *mod, const char *modname)
                        " will not be available");
             p_get_nickinfo = NULL;
             p_put_nickinfo = NULL;
-            p_first_nickinfo = NULL;
-            p_next_nickinfo = NULL;
+            p_foreach_nickinfo = NULL;
             p__get_ngi = NULL;
             p__get_ngi_id = NULL;
             p_put_nickgroupinfo = NULL;
@@ -1473,10 +1571,10 @@ static int do_load_module(Module *mod, const char *modname)
         GET_SYMBOL(CSMaxReg);
         GET_SYMBOL(get_channelinfo);
         GET_SYMBOL(put_channelinfo);
-        GET_SYMBOL(first_channelinfo);
-        GET_SYMBOL(next_channelinfo);
-        if (p_CSMaxReg && get_channelinfo && put_channelinfo
-         && first_channelinfo && next_channelinfo
+        GET_SYMBOL(foreach_channelinfo);
+        GET_SYMBOL(update_owned_channels);
+        if (p_CSMaxReg && p_get_channelinfo && p_put_channelinfo
+         && p_foreach_channelinfo && p_update_owned_channels
         ) {
             module_chanserv = mod;
         } else {
@@ -1485,8 +1583,8 @@ static int do_load_module(Module *mod, const char *modname)
             p_CSMaxReg = NULL;
             p_get_channelinfo = NULL;
             p_put_channelinfo = NULL;
-            p_first_channelinfo = NULL;
-            p_next_channelinfo = NULL;
+            p_foreach_channelinfo = NULL;
+            p_update_owned_channels = NULL;
         }
     } else if (strcmp(modname, "statserv/main") == 0) {
         GET_SYMBOL(get_serverstats);
@@ -1536,8 +1634,7 @@ static int do_unload_module(Module *mod)
     } else if (mod == module_nickserv) {
         p_get_nickinfo = NULL;
         p_put_nickinfo = NULL;
-        p_first_nickinfo = NULL;
-        p_next_nickinfo = NULL;
+        p_foreach_nickinfo = NULL;
         p__get_ngi = NULL;
         p__get_ngi_id = NULL;
         p_put_nickgroupinfo = NULL;
@@ -1546,8 +1643,8 @@ static int do_unload_module(Module *mod)
         p_CSMaxReg = NULL;
         p_get_channelinfo = NULL;
         p_put_channelinfo = NULL;
-        p_first_channelinfo = NULL;
-        p_next_channelinfo = NULL;
+        p_foreach_channelinfo = NULL;
+        p_update_owned_channels = NULL;
         module_chanserv = NULL;
     } else if (mod == module_statserv) {
         p_get_serverstats = NULL;

@@ -5,6 +5,7 @@
 #
 #   cmake/ServicesOptions.cmake   cache options (SERVICES_*)
 #   cmake/ServicesPlatform.cmake  platform probes, config.h, event engines
+#   cmake/ServicesDependencies.cmake  libpq, jansson, hiredis, threads
 #   cmake/ServicesModules.cmake   services_add_module[s]() for modules/
 #   src/CMakeLists.txt            the ircservices executable (core)
 #   modules/CMakeLists.txt        every loadable module, discovered
@@ -28,6 +29,8 @@ set(CMAKE_C_EXTENSIONS ON)   # typeof() and friends are used throughout
 include(GNUInstallDirs)
 include(ServicesOptions)
 include(ServicesPlatform)
+include(ServicesDependencies)
+include(ServicesMigrations)
 include(ServicesTargets)
 
 # ---------------------------------------------------------------------------
@@ -42,6 +45,11 @@ target_include_directories(services_config INTERFACE
   "${PROJECT_SOURCE_DIR}/include"
   "${PROJECT_SOURCE_DIR}")              # "modules/<type>/<header>.h"
 target_compile_definitions(services_config INTERFACE _GNU_SOURCE)
+# jansson's header, for a module that reads query results as JSON (see
+# include/db.h).  Modules link against nothing: the json_*() functions are
+# resolved against the ircservices executable, which links jansson.
+target_include_directories(services_config INTERFACE
+  $<TARGET_PROPERTY:Services::jansson,INTERFACE_INCLUDE_DIRECTORIES>)
 if(SERVICES_WARNINGS)
   target_compile_options(services_config INTERFACE
     -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare

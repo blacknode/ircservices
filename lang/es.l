@@ -1884,6 +1884,8 @@ OPER_STATS_ALL_NICKINFO_MEM
 	Apodos             : %6d regístros, %5d kB
 OPER_STATS_ALL_CHANSERV_MEM
 	ChanServ           : %6d regístros, %5d kB
+OPER_STATS_ALL_RESIDENT
+	                     %6d de ellos en memoria
 OPER_STATS_ALL_STATSERV_MEM
 	StatServ           : %6d regístros, %5d kB
 OPER_STATS_ALL_NEWS_MEM
@@ -2171,6 +2173,8 @@ OPER_UPDATE_COMPLETE
 	La actualización de la base de datos ha completado.
 OPER_UPDATE_FAILED
 	La actualización de la base de datos falló.
+OPER_MIGRATION_SYNTAX
+	MIGRATION {LIST | STATUS módulo | APPLY módulo [vN] | REVERT módulo [vN]}
 
 # REHASH responses
 OPER_REHASHING
@@ -4467,8 +4471,9 @@ OPER_HELP_COMMANDS_SERVADMIN
 	    OPER        Modifica la lista de Operadores de Servicios
 	    JUPE        Impone el comando "Jupiter" para un servidor
 	    SET         Ajusta varias opciones globales de los Servicios
-	    UPDATE      Fuerza una actualización immediata en el disco de las
-	                    bases de datos de los servicios
+	    UPDATE      Fuerza el guardado inmediato de las bases
+	                    de datos de los servicios
+	    MIGRATION   Consulta y aplica migraciones del esquema
 	    SHUTDOWN    Graba la base de datos al disco y detiene los servicios
 	    QUIT        Detiene los Servicios sin grabar la base de datos al disco
 	    RESTART     Graba la base de datos al disco y recomienza los servicios
@@ -5028,23 +5033,53 @@ OPER_HELP_RAW
 OPER_HELP_UPDATE
 	Sintaxis: UPDATE [FORCE]
 	
-	Causa que los Servicios actualicen las bases de datos tan
-	pronto como usted envía el comando.  Si la opción FORCE es
-	dada, los servicios procurarán abrir (liberar) las bases de
-	datos antes de realizar la actualización; esto puede usarse
-	para corregir los errores "databases are locked" cuando se
-	actualizan las bases de datos.
+	Causa que los Servicios guarden las tablas que mantienen
+	enteras en memoria (ajustes, autokills, S-lines, noticias,
+	estadísticas) tan pronto como usted envía el comando; se le
+	avisa cuando el guardado termina.  Los nicks, canales y
+	memos no lo necesitan: cada cambio se escribe en segundos.
+	La opción FORCE se acepta por compatibilidad y se
+	ignora.
 	
 	Limitado a los Administradores De Servicios.
+
+OPER_HELP_MIGRATION
+	Sintaxis: MIGRATION LIST
+	          MIGRATION STATUS módulo
+	          MIGRATION APPLY módulo [vN]
+	          MIGRATION REVERT módulo [vN]
+	
+	Administra las migraciones del esquema de la base de datos
+	que traen los Servicios y sus módulos.  LIST muestra
+	todas las migraciones aplicadas; STATUS muestra cuáles
+	de las migraciones de un módulo están aplicadas y cuáles
+	pendientes (core es el conjunto propio de los Servicios).
+	
+	APPLY aplica en orden las migraciones pendientes de un
+	módulo, hasta vN si se indica, y se detiene en la
+	primera que falle.  REVERT revierte solo la migración
+	aplicada más reciente, o todas hasta vN si se indica:
+	revertir destruye lo que la migración creó.  Las migraciones
+	de los módulos imprescindibles, y las de los propios
+	Servicios, se aplican solas al cargarlos y no se pueden
+	revertir.
+	
+	LIST y STATUS están limitados a los
+	Administradores De Servicios; APPLY y REVERT al
+	super-usuario.  Todo cambio de esquema se registra y se
+	anuncia a los operadores.
 
 OPER_HELP_QUIT
 	Sintaxis: QUIT
 	
-	Causa la desactivación de los Servicios; las bases de datos
-	no se graban.  Este comando no debe utilizarse a menos que
-	se sospeche de un daño en las bases de datos en-memoria y no
-	deseen grabarse.  Para desactivación normal de los
-	Servicios, utilice el comando SHUTDOWN.
+	Causa la desactivación inmediata de los Servicios, sin
+	grabar las tablas que mantienen enteras en memoria
+	(ajustes, autokills, S-lines, noticias, estadísticas); los
+	cambios en nicks, canales y memos se escriben como
+	siempre.  Este comando no debe utilizarse a menos que se
+	sospeche de un daño en las copias en memoria de esas
+	tablas.  Para desactivación normal de los Servicios,
+	utilice el comando SHUTDOWN.
 	
 	Limitado a los Administradores De Servicios.
 

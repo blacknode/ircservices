@@ -14,6 +14,8 @@ readme.config).  The documentation files are:
     readme.features    what Services do, feature by feature
     readme.commands    every command of every pseudoclient
     readme.xml         exporting and importing databases, the XML format
+    readme.database    PostgreSQL, Redis and worker threads
+    readme.migrations  the SQL that creates the tables; OperServ MIGRATION
     readme.api         configuration interface for module developers
     readme.copyright   copyright and licenses
 

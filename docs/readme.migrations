@@ -1,0 +1,233 @@
+readme.migrations -- the SQL that creates the tables
+====================================================
+
+Every table Services keep in PostgreSQL is created by a migration: a pair
+of SQL files, one that applies a change to the schema and one that undoes
+it.  The core ships its own set; a module that needs tables ships its
+set beside its code.  The build compiles the SQL into the executable or
+the module, Services check it when the module is loaded, and it is applied
+either automatically or by an operator with OperServ MIGRATION.  The code
+is a port of ircu2's (doc/readme.migrations in ircu2), adapted to Services.
+
+    include/migration.h            the rules and the API
+    src/migration.c                the validator
+    src/migration_run.c            the runner and the OperServ commands
+    src/migrations/                the core's own set
+    cmake/ServicesMigrations.cmake,
+    cmake/GenerateMigrations.cmake the build side
+
+1. Who applies what
+-------------------
+
+There are three kinds of migration, and they differ only in who decides
+when they run.
+
+- The core's set (src/migrations/, recorded under the module name "core")
+  is applied when Services start, before any module is loaded.  It creates
+  the table every migration is recorded in (`migrations'), the claim on
+  the schema (`instance') and the list of Redis keys to correct
+  (`store_stale').  No module may be called "core".
+
+- The modules that keep Services' own data declare MODULE_MIGRATIONS_AUTO:
+  in this release nickserv/main (nicknames, nickname groups, access lists,
+  memos) and chanserv/main (channels, access lists, autokicks).  Their
+  pending migrations are applied when the module is loaded, before
+  init_module(): without their tables there would not even be an
+  identified operator to apply them by hand.  A module whose migrations
+  cannot be applied does not load, and when it is one of these, Services
+  do not start.
+
+- Every other module follows ircu2's rule: ITS MIGRATIONS NEVER RUN BY
+  THEMSELVES.  Not when the module is loaded, not on REHASH, not on the
+  first query.  Loading the module tells Services what SQL exists, and the
+  log says what is pending:
+
+      migration: module misc/scores has 2 pending migrations; apply with
+      OperServ MIGRATION APPLY misc/scores
+
+  Whether the database should run it, and when, is an operational decision
+  on a live network, and it stays with the operator accountable for it.
+
+2. What a module ships
+----------------------
+
+A module with migrations is a module built from a directory (see
+BUILDING.md), with a migrations/ subdirectory:
+
+    modules/<type>/<name>/
+        <name>.c
+        migrations/
+            v1_create_scores.up.sql
+            v1_create_scores.down.sql
+            v2_add_rank.up.sql
+            v2_add_rank.down.sql
+
+The rules, all checked when the module is loaded:
+
+- The file name is v<N>_<name>.up.sql or v<N>_<name>.down.sql, and nothing
+  else.  Any other file in migrations/ is an error, not something ignored.
+- <name> is letters, digits and underscores, at most 64 of them.
+- <N> starts at 1 and runs without gaps or repeats; "v01" is refused.
+- Every up has a down with the same version and the same name.
+
+A migration nobody can undo is a migration nobody can safely apply to a
+live network.  If the revert really is "nothing to undo", write a down
+that says so; the core's v1 does, and its file explains why.
+
+A module that breaks a rule does not load, and the log says which file is
+wrong:
+
+    modules: Could not load misc/scores: migrations/v2_add_rank has no
+    down file; every up needs its down and every down needs its up
+
+3. The SQL is not installed
+---------------------------
+
+The .sql files are compiled into the module (or, for the core's set, the
+executable) as string literals, and never copied anywhere: not into the
+build tree, not into the install tree.  A module carries its migrations
+wherever it is installed, and the SQL beside a module cannot be a
+different version from the code inside it, because there is no SQL beside
+the module.
+
+The build embeds whatever it finds and checks nothing; the rules are
+enforced at load time, so that a malformed migration is an error the
+operator reads.  A new .sql file in an existing migrations/ directory is
+picked up by the next build.  A migrations/ directory added to a module
+that had none needs CMake to run again (cmake -S . -B build) before the
+build notices it.
+
+4. OperServ MIGRATION
+---------------------
+
+    MIGRATION LIST
+        Every row of the migrations table, every module at once: the record
+        of what has actually been applied to this database.
+
+    MIGRATION STATUS <module>
+        What the module ships, and which of it is applied:
+
+            Migrations for misc/scores:
+              v1_create_scores  applied
+              v2_add_rank  pending
+            End of migrations for misc/scores (2 declared)
+
+        "core" shows the core's set.
+
+    MIGRATION APPLY <module> [v<N>]
+        Applies every pending migration in order, stopping at the first
+        that fails; with a version, up to and including it.
+
+    MIGRATION REVERT <module> [v<N>]
+        Reverts ONE migration: the newest applied.  With a version, reverts
+        down to and including it, newest first.
+
+APPLY and REVERT are deliberately asymmetric.  Going forward is the
+expected operation; going back destroys whatever the migration built, and
+"all of them" is not something to do by leaving an argument off.
+
+LIST and STATUS are limited to Services admins; APPLY and REVERT to the
+Services super-user (ServicesRoot).  The module must be loaded.  Neither
+APPLY nor REVERT accepts "core", and REVERT refuses the modules that
+declare MODULE_MIGRATIONS_AUTO: reverting one would drop the tables from
+under a module that is running.
+
+The replies come back when the database has answered, which may be after
+the command has returned; a migration takes as long as it takes (see
+migration_timeout below), and Services go on serving users meanwhile.
+Every migration applied or reverted is written to the log and announced by
+WALLOPS.
+
+5. The table
+------------
+
+    id                     bigint, generated
+    version                integer
+    module_name            text           "core" for the core's own
+    module_migration_name  text           the <name> from the file
+    exec_duration          text           "840ms", "3.2s", "4m 11s"
+    exec_by                text           the operator's nick, or
+                                          "Services" when applied
+                                          automatically
+    created_at             timestamptz    when it ran
+
+with a unique index on (module_name, version): that is what stops two
+operators applying the same migration at the same moment and each
+believing they were first.
+
+What is in the table is what is applied.  Services keep no second opinion
+anywhere, and reverting a migration deletes its row.
+
+6. How one runs
+---------------
+
+Each migration is one transaction -- for OperServ MIGRATION, on a
+connection of its own, in a worker thread; for the core's set and the
+automatic ones, on the main thread's own connection, since nothing can
+happen until they are done:
+
+    BEGIN
+    <the whole .sql script>
+    INSERT INTO migrations (...) VALUES (...)      -- or DELETE, to revert
+    COMMIT
+
+A script that fails leaves neither the change nor the record, so a
+recorded migration is one that happened.  The steps of an APPLY or a
+REVERT run one at a time, and a failure stops the sequence; the ones
+before it stay applied, so that the broken one can be fixed and the
+command run again.
+
+The script is the one place where SQL goes to the database as a string
+rather than as a prepared statement.  It has to: PostgreSQL does not
+prepare DDL, and a script is several statements.  It is safe because the
+string is a file the module's author shipped, embedded at build time, and
+nothing a user types can reach it.  The row recording it carries an
+operator's nick, and that one is bound like every other value.
+
+Every connection's search path is the configured schema, then public, so
+unqualified table names land in Services' schema.
+
+The time a migration may take is `migration_timeout' in the database
+block: a minute by default, at most an hour.  It is not the five-second
+limit of ordinary queries, since an ALTER TABLE on a table with real data
+in it takes minutes; there is still a ceiling, because a migration blocked
+on a lock forever is one nobody hears about again.
+
+7. Writing one
+--------------
+
+1. Add the pair, both halves, same version, same name:
+
+       modules/misc/scores/migrations/v3_add_email.up.sql
+       modules/misc/scores/migrations/v3_add_email.down.sql
+
+2. Make the up idempotent where you can (CREATE TABLE IF NOT EXISTS, ADD
+   COLUMN IF NOT EXISTS): a half-failed migration then simply runs again.
+
+3. Make the down undo the up, and nothing more: a down that drops the
+   column the up added is right; one that drops the whole table the up
+   altered is not.
+
+4. Build.  There is nothing to register: the directory is found and
+   embedded.
+
+5. Load the module (or restart), OperServ MIGRATION STATUS to see v3
+   pending, and OperServ MIGRATION APPLY when the network is ready.
+
+Never edit a migration that has been applied anywhere; add the next one.
+An edited migration says one thing to the databases that ran it and
+another to those that have not.
+
+For a module that declares MODULE_MIGRATIONS_AUTO, step 5 is the restart
+(or the module being loaded again): its new migrations are applied then,
+before its init_module() runs.  Its tables are the ones the entity store
+reads and writes (readme.database, section 2), so a new column must also
+appear in the record's bundle -- and must have a default, since rows
+written by the previous version do not have it.
+
+8. See also
+-----------
+
+    readme.database    where the tables are used, and the database API
+    readme.config      the database block (migration_timeout)
+    readme.modules     modules in general

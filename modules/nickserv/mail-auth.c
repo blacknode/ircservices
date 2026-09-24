@@ -12,6 +12,8 @@
 #include "conffile.h"
 #include "commands.h"
 #include "language.h"
+#include "db.h"
+#include "timeout.h"
 #include "modules/mail/mail.h"
 #include "modules/operserv/operserv.h"
 
@@ -648,6 +650,54 @@ static int do_check_expire(NickInfo *ni, NickGroupInfo *ngi)
     return 0;
 }
 
+/* The nick groups whose authentication is overdue are in the database, not
+ * in memory: a batch of them is looked for every few minutes, and looking
+ * each one up runs the check above (through NickServ's expiration check).
+ */
+
+#define NOAUTH_INTERVAL 300
+#define NOAUTH_BATCH    500
+
+static Timeout *noauth_timeout;
+
+static void noauth_found(const struct DbResult *res, void *user_unused)
+{
+    unsigned int i;
+
+    if (res->err.dberr_code != DB_OK) {
+        module_log("Cannot look for unauthenticated nicks: %s",
+                   res->err.dberr_message);
+        return;
+    }
+    for (i = 0; i < db_rows(res->data); i++) {
+        const char *id = db_row_str(res->data, i, "id");
+        NickGroupInfo *ngi = get_nickgroupinfo(strtoul(id, NULL, 10));
+        if (ngi && ngi->nicks_count > 0)
+            put_nickinfo(get_nickinfo(ngi_mainnick(ngi)));
+        put_nickgroupinfo(ngi);
+    }
+}
+
+static void noauth_check(Timeout *t_unused)
+{
+    char cutoff[32], limit[16];
+    struct DbParam p[2] = {
+        { DB_TYPE_UNKNOWN, cutoff, DB_FORMAT_TEXT },
+        { DB_TYPE_UNKNOWN, limit, DB_FORMAT_TEXT },
+    };
+    struct DbParam *pl[3] = { &p[0], &p[1], NULL };
+    struct DbQuery q = { "select id from nickgroups where authcode <> 0"
+                         " and authset <= $1::bigint order by authset"
+                         " limit $2::integer", pl };
+
+    if (!NSNoAuthExpire || noexpire || readonly)
+        return;
+    snprintf(cutoff, sizeof(cutoff), "%lld",
+             (long long)(time(NULL) - NSNoAuthExpire));
+    snprintf(limit, sizeof(limit), "%d", NOAUTH_BATCH);
+    db_query(THIS_MODULE, &q, noauth_found, NULL);
+}
+
 /*************************************************************************/
 /***************************** Module stuff ******************************/
 /*************************************************************************/
@@ -711,6 +761,8 @@ int init_module(void)
         return 0;
     }
 
+    noauth_timeout = add_timeout(NOAUTH_INTERVAL, noauth_check, 1);
+
     old_LIST_OPER_SYNTAX =
         mapstring(NICK_LIST_OPER_SYNTAX, NICK_LIST_OPER_SYNTAX_AUTH);
     old_HELP_REGISTER_EMAIL =
@@ -725,6 +777,10 @@ int init_module(void)
 
 int exit_module(int shutdown_unused)
 {
+    if (noauth_timeout) {
+        del_timeout(noauth_timeout);
+        noauth_timeout = NULL;
+    }
     if (old_OPER_HELP_LIST >= 0) {
         mapstring(NICK_OPER_HELP_LIST, old_OPER_HELP_LIST);
         old_OPER_HELP_LIST = -1;

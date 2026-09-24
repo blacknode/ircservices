@@ -169,6 +169,14 @@ extern int sock_bufstat(const Socket* s, uint32* socksize_ret,
                         int* ratio2_ret);
 
 extern void check_sockets(void);
+
+/* Watch a descriptor that is not a Socket -- the worker wake-up pipe, say
+ * -- and call `cb' whenever it is readable.  The descriptor stays the
+ * caller's: sock_unwatch_fd() stops watching it, and must be called before
+ * it is closed.  Returns 0 on success, -1 on error. */
+typedef void (*SockWatchCallback)(int fd, void* arg);
+extern int sock_watch_fd(int fd, SockWatchCallback cb, void* arg);
+extern void sock_unwatch_fd(int fd);
 extern const char* sock_engine_name(void);
 
 extern int conn(Socket* s, const char* host, int port, const char* lhost,

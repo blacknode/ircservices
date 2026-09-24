@@ -19,6 +19,7 @@
 /*************************************************************************/
 
 #include "databases.h"
+#include "store.h"
 #include "modules.h"
 #include "services.h"
 #include "timeout.h"
@@ -46,7 +47,6 @@ int readonly = 0;                        /* -readonly */
 int nofork = 0;                          /* -nofork */
 int noexpire = 0;                        /* -noexpire */
 int noakill = 0;                         /* -noakill */
-int forceload = 0;                       /* -forceload */
 int encrypt_all = 0;                     /* -encrypt-all */
 
 /* Set to 1 while we are linked to the network */
@@ -186,100 +186,14 @@ void readline_callback(Socket* s, void* param_unused)
 /*************************************************************************/
 /*************************************************************************/
 
-/* Lock the data directory if possible; return nonzero on success, zero on
- * failure (data directory already locked or cannot create lock file).
- * On failure, errno will be EEXIST if the directory was already locked or
- * a value other than EEXIST if an error occurred creating the lock file.
- *
- * This does not attempt to correct for NFS brokenness w.r.t. O_EXCL and
- * will contain a race condition when used on an NFS filesystem (or any
- * other filesystem which does not support O_EXCL properly).
- */
-
-int lock_data(void)
-{
-    int fd;
-
-    errno = 0;
-    fd = open(LockFilename, O_WRONLY | O_CREAT | O_EXCL, 0);
-    if (fd >= 0) {
-        close(fd);
-        return 1;
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-/* Check whether the data directory is locked without actually attempting
- * to lock it.  Returns 1 if locked, 0 if not, or -1 if an error occurred
- * while trying to check (in which case errno will be set to an appropriate
- * value, i.e. whatever access() returned).
- */
-
-int is_data_locked(void)
-{
-    errno = 0;
-    if (access(LockFilename, F_OK) == 0)
-        return 1;
-    if (errno == ENOENT)
-        return 0;
-    return -1;
-}
-
-/*************************************************************************/
-
-/* Unlock the data directory.  Assumes we locked it in the first place.
- * Returns 1 on success, 0 on failure (unable to remove the lock file), or
- * -1 if the lock file didn't exist in the first place (possibly because it
- * was removed by another (misbehaving) program).
- */
-
-int unlock_data(void)
-{
-    errno = 0;
-    if (unlink(LockFilename) == 0)
-        return 1;
-    if (errno == ENOENT)
-        return -1;
-    return 0;
-}
-
-/*************************************************************************/
-
-/* Subroutine to save databases. */
+/* Subroutine to save databases.  The tables are snapshotted now and
+ * written to the database in the background; the "save data complete"
+ * callback reports the outcome when it is known (see databases.h). */
 
 void save_data_now(void)
 {
-    if (!lock_data()) {
-        if (errno == EEXIST) {
-            log("warning: databases are locked, not updating");
-            wallops(NULL,
-                    "\2Warning:\2 Databases are locked, and cannot be updated."
-                    "  Remove the `%s%s%s' file to allow database updates.",
-                    *LockFilename == '/' ? "" : services_dir,
-                    *LockFilename == '/' ? "" : "/", LockFilename);
-        }
-        else {
-            log_perror("warning: unable to lock databases, not updating");
-            wallops(NULL, "\2Warning:\2 Unable to lock databases; databases"
-                          " will not be updated.");
-        }
-        call_callback_1(cb_save_complete, 0);
-    }
-    else {
-        log_debug(1, "Saving databases");
-        save_all_dbtables();
-        if (!unlock_data()) {
-            log_perror("warning: unable to unlock databases");
-            wallops(NULL,
-                    "\2Warning:\2 Unable to unlock databases; future database"
-                    " updates may fail until the `%s%s%s' file is removed.",
-                    *LockFilename == '/' ? "" : services_dir,
-                    *LockFilename == '/' ? "" : "/", LockFilename);
-        }
-        call_callback_1(cb_save_complete, 1);
-    }
+    log_debug(1, "Saving databases");
+    save_all_dbtables();
 }
 
 /*************************************************************************/
@@ -335,6 +249,9 @@ int main(int ac, char** av, char** envp)
         }
 
         check_sockets();
+
+        /* Release the records nothing holds any more (see store.h). */
+        store_collect();
 
         if (!MergeChannelModes)
             set_cmode(NULL, NULL); /* flush out any mode changes made */

@@ -257,10 +257,12 @@ static void do_set_founder(User *u, ChannelInfo *ci, char *param)
         return;
     }
     put_nickinfo(ni);
+    update_owned_channels(ngi);
     if ((!is_services_admin(u) && check_channel_limit(ngi, NULL) >= 0)
      || ngi->channels_count >= MAX_CHANNELCOUNT
     ) {
         notice_lang(s_ChanServ, u, CHAN_SET_FOUNDER_TOO_MANY_CHANS, param);
+        put_nickgroupinfo(ngi);
         return;
     }
     uncount_chan(ci);

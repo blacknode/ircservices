@@ -8,8 +8,13 @@
  */
 
 #include "modules.h"
+#include "cache.h"
 #include "conffile.h"
+#include "db.h"
+#include "migration.h"
 #include "services.h"
+#include "store.h"
+#include "worker.h"
 #undef use_module
 #undef unuse_module
 
@@ -43,6 +48,7 @@ struct Module_ {
     int callbacks_count;
     const Module** users; /* Array of module's users (use_module()) */
     int users_count;
+    struct MigrationSet* migrations; /* `module_migrations', checked */
 };
 
 /* Module data for Services core. */
@@ -223,6 +229,62 @@ static void* my_dlopen(const char* name)
 
 /*************************************************************************/
 
+/* Check the migrations a module ships (the array `module_migrations',
+ * embedded by the build from its migrations/ directory), and apply the
+ * pending ones if it declares MODULE_MIGRATIONS_AUTO; otherwise only say
+ * that some are pending.  Returns zero if the module must not load: its
+ * migrations break a rule, or it needed them applied and they could not
+ * be. */
+static int load_module_migrations(Module* module)
+{
+    const struct MigrationFile* files = NULL;
+    const char* err = NULL;
+
+    if (migration_reserved_name(module->name)) {
+        log("modules: `%s' is a reserved name", module->name);
+        return 0;
+    }
+    if (!check_module_symbol(module, "module_migrations", (void**)&files,
+                             NULL) ||
+        !files)
+        return 1;
+    module->migrations = migration_build(module->name, files, &err);
+    if (!module->migrations) {
+        if (!err)
+            return 1; /* no migrations at all */
+        log("modules: Could not load %s: %s", module->name, err);
+        return 0;
+    }
+    if (check_module_symbol(module, "module_migrations_auto", NULL, NULL)) {
+        if (!migration_apply_now(module->migrations)) {
+            log("modules: Could not load %s: its migrations could not be"
+                " applied", module->name);
+            return 0;
+        }
+    }
+    else {
+        migration_check_pending(module->migrations);
+    }
+    return 1;
+}
+
+/************************************/
+
+/* Drop everything a module has in flight -- worker tasks and threads,
+ * database queries, cache calls -- so that nothing calls into its code once
+ * it is unmapped.  Waits for a task of the module's that a worker thread is
+ * running right now. */
+static void drop_module_work(Module* module)
+{
+    worker_cancel_module(module);
+    db_drop_module(module);
+    cache_drop_module(module);
+    migration_drop_module(module);
+    store_drop_module(module);
+}
+
+/************************************/
+
 /* Low-level routine to close a module. */
 
 static void my_dlclose(void* handle)
@@ -293,6 +355,11 @@ Module* load_module(const char* modulename)
         return NULL;
     LIST_INSERT(module, modulelist);
 
+    /* Its migrations: checked now, and applied now if the module cannot
+     * work without them (see migration.h). */
+    if (!load_module_migrations(module))
+        goto fail;
+
     if (!configure(module->name, module->modconfig,
                    CONFIGURE_READ | CONFIGURE_SET)) {
         log("modules: configure() failed for %s", modulename);
@@ -311,6 +378,8 @@ Module* load_module(const char* modulename)
     return module;
 
 fail:
+    drop_module_work(module);
+    migration_free(module->migrations);
     free(module->name);
     my_dlclose(module->dllhandle);
     LIST_REMOVE(module, modulelist);
@@ -533,7 +602,9 @@ static int internal_unload_module(Module* module, int shutdown)
 
     /* Clean up and free the module data */
     call_callback_1(cb_unload_module, module);
+    drop_module_work(module);
     deconfigure(module->modconfig);
+    migration_free(module->migrations);
     free(module->name);
     my_dlclose(module->dllhandle);
     free(module);
@@ -719,6 +790,15 @@ int check_module_symbol(Module* module, const char* symname, void** resultptr,
             *resultptr = value;
         return 1;
     }
+}
+
+/*************************************************************************/
+
+/* The migrations a module ships, checked (NULL if none). */
+
+const struct MigrationSet* get_module_migrations(const Module* module)
+{
+    return module ? module->migrations : NULL;
 }
 
 /*************************************************************************/

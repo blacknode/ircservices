@@ -183,72 +183,195 @@ static int export_operserv_data(xml_writefunc_t writefunc, void *data)
 
 /*************************************************************************/
 
-static int export_nick_db(xml_writefunc_t writefunc, void *data)
+/* The records are read from the database a page at a time (see
+ * include/store.h), and written out one by one. */
+
+typedef struct {
+    xml_writefunc_t writefunc;
+    void *data;
+} ExportArg;
+
+static int export_nickgroup_one(NickGroupInfo *ngi, void *arg_)
 {
-    NickInfo *ni;
-    NickGroupInfo *ngi;
+    ExportArg *arg = arg_;
+    xml_writefunc_t writefunc = arg->writefunc;
+    void *data = arg->data;
     int i;
 
-    for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-        writefunc(data, "\t<nickgroupinfo>\n");
-        XML_PUT_ULONG ("\t\t", *ngi, id);
-        XML_PUT_STRARR("\t\t", *ngi, nicks);
-        XML_PUT_ULONG ("\t\t", *ngi, mainnick);
-        XML_PUT_PASS  ("\t\t", *ngi, pass);
-        XML_PUT_STRING("\t\t", *ngi, url);
-        XML_PUT_STRING("\t\t", *ngi, email);
-        XML_PUT_STRING("\t\t", *ngi, last_email);
-        XML_PUT_STRING("\t\t", *ngi, info);
-        XML_PUT_LONG  ("\t\t", *ngi, flags);
-        XML_PUT_LONG  ("\t\t", *ngi, os_priv);
-        XML_PUT_LONG  ("\t\t", *ngi, authcode);
-        if (ngi->authcode) {
-            XML_PUT_LONG  ("\t\t", *ngi, authset);
-            XML_PUT_LONG  ("\t\t", *ngi, authreason);
-        }
-        if (ngi->flags & NF_SUSPENDED) {
-            XML_PUT_STRING("\t\t", *ngi, suspend_who);
-            XML_PUT_STRING("\t\t", *ngi, suspend_reason);
-            XML_PUT_LONG  ("\t\t", *ngi, suspend_time);
-            XML_PUT_LONG  ("\t\t", *ngi, suspend_expires);
-        }
-        XML_PUT_LONG  ("\t\t", *ngi, language);
-        XML_PUT_LONG  ("\t\t", *ngi, timezone);
-        XML_PUT_LONG  ("\t\t", *ngi, channelmax);
-        XML_PUT_STRARR("\t\t", *ngi, access);
-        XML_PUT_STRARR("\t\t", *ngi, ajoin);
-        writefunc(data, "\t\t<memoinfo>\n\t\t\t<memos count='%d'>\n",
-                  ngi->memos.memos_count);
-        ARRAY_FOREACH (i, ngi->memos.memos) {
-            writefunc(data, "\t\t\t\t<memo>\n");
-            XML_PUT_LONG  ("\t\t\t\t\t", ngi->memos.memos[i], number);
-            XML_PUT_LONG  ("\t\t\t\t\t", ngi->memos.memos[i], flags);
-            XML_PUT_LONG  ("\t\t\t\t\t", ngi->memos.memos[i], time);
-            XML_PUT_STRING("\t\t\t\t\t", ngi->memos.memos[i], sender);
-            if (ngi->memos.memos[i].channel)
-                XML_PUT_STRING("\t\t\t\t\t", ngi->memos.memos[i], channel);
-            XML_PUT_STRING("\t\t\t\t\t", ngi->memos.memos[i], text);
-            writefunc(data, "\t\t\t\t</memo>\n");
-        }
-        writefunc(data, "\t\t\t</memos>\n");
-        XML_PUT_LONG  ("\t\t\t", ngi->memos, memomax);
-        writefunc(data, "\t\t</memoinfo>\n");
-        XML_PUT_STRARR("\t\t", *ngi, ignore);
-        writefunc(data, "\t</nickgroupinfo>\n");
+    writefunc(data, "\t<nickgroupinfo>\n");
+    XML_PUT_ULONG ("\t\t", *ngi, id);
+    XML_PUT_STRARR("\t\t", *ngi, nicks);
+    XML_PUT_ULONG ("\t\t", *ngi, mainnick);
+    XML_PUT_PASS  ("\t\t", *ngi, pass);
+    XML_PUT_STRING("\t\t", *ngi, url);
+    XML_PUT_STRING("\t\t", *ngi, email);
+    XML_PUT_STRING("\t\t", *ngi, last_email);
+    XML_PUT_STRING("\t\t", *ngi, info);
+    XML_PUT_LONG  ("\t\t", *ngi, flags);
+    XML_PUT_LONG  ("\t\t", *ngi, os_priv);
+    XML_PUT_LONG  ("\t\t", *ngi, authcode);
+    if (ngi->authcode) {
+        XML_PUT_LONG  ("\t\t", *ngi, authset);
+        XML_PUT_LONG  ("\t\t", *ngi, authreason);
     }
-    for (ni = first_nickinfo(); ni; ni = next_nickinfo()) {
-        writefunc(data, "\t<nickinfo>\n");
-        XML_PUT_STRING("\t\t", *ni, nick);
-        writefunc(data, "\t\t<status>%d</status>\n",
-                  ni->status & ~NS_TEMPORARY);
-        XML_PUT_STRING("\t\t", *ni, last_usermask);
-        XML_PUT_STRING("\t\t", *ni, last_realmask);
-        XML_PUT_STRING("\t\t", *ni, last_realname);
-        XML_PUT_STRING("\t\t", *ni, last_quit);
-        XML_PUT_LONG  ("\t\t", *ni, time_registered);
-        XML_PUT_LONG  ("\t\t", *ni, last_seen);
-        XML_PUT_ULONG ("\t\t", *ni, nickgroup);
-        writefunc(data, "\t</nickinfo>\n");
+    if (ngi->flags & NF_SUSPENDED) {
+        XML_PUT_STRING("\t\t", *ngi, suspend_who);
+        XML_PUT_STRING("\t\t", *ngi, suspend_reason);
+        XML_PUT_LONG  ("\t\t", *ngi, suspend_time);
+        XML_PUT_LONG  ("\t\t", *ngi, suspend_expires);
+    }
+    XML_PUT_LONG  ("\t\t", *ngi, language);
+    XML_PUT_LONG  ("\t\t", *ngi, timezone);
+    XML_PUT_LONG  ("\t\t", *ngi, channelmax);
+    XML_PUT_STRARR("\t\t", *ngi, access);
+    XML_PUT_STRARR("\t\t", *ngi, ajoin);
+    writefunc(data, "\t\t<memoinfo>\n\t\t\t<memos count='%d'>\n",
+              ngi->memos.memos_count);
+    ARRAY_FOREACH (i, ngi->memos.memos) {
+        writefunc(data, "\t\t\t\t<memo>\n");
+        XML_PUT_LONG  ("\t\t\t\t\t", ngi->memos.memos[i], number);
+        XML_PUT_LONG  ("\t\t\t\t\t", ngi->memos.memos[i], flags);
+        XML_PUT_LONG  ("\t\t\t\t\t", ngi->memos.memos[i], time);
+        XML_PUT_STRING("\t\t\t\t\t", ngi->memos.memos[i], sender);
+        if (ngi->memos.memos[i].channel)
+            XML_PUT_STRING("\t\t\t\t\t", ngi->memos.memos[i], channel);
+        XML_PUT_STRING("\t\t\t\t\t", ngi->memos.memos[i], text);
+        writefunc(data, "\t\t\t\t</memo>\n");
+    }
+    writefunc(data, "\t\t\t</memos>\n");
+    XML_PUT_LONG  ("\t\t\t", ngi->memos, memomax);
+    writefunc(data, "\t\t</memoinfo>\n");
+    XML_PUT_STRARR("\t\t", *ngi, ignore);
+    writefunc(data, "\t</nickgroupinfo>\n");
+    return 0;
+}
+
+static int export_nick_one(NickInfo *ni, void *arg_)
+{
+    ExportArg *arg = arg_;
+    xml_writefunc_t writefunc = arg->writefunc;
+    void *data = arg->data;
+
+    writefunc(data, "\t<nickinfo>\n");
+    XML_PUT_STRING("\t\t", *ni, nick);
+    writefunc(data, "\t\t<status>%d</status>\n",
+              ni->status & ~NS_TEMPORARY);
+    XML_PUT_STRING("\t\t", *ni, last_usermask);
+    XML_PUT_STRING("\t\t", *ni, last_realmask);
+    XML_PUT_STRING("\t\t", *ni, last_realname);
+    XML_PUT_STRING("\t\t", *ni, last_quit);
+    XML_PUT_LONG  ("\t\t", *ni, time_registered);
+    XML_PUT_LONG  ("\t\t", *ni, last_seen);
+    XML_PUT_ULONG ("\t\t", *ni, nickgroup);
+    writefunc(data, "\t</nickinfo>\n");
+    return 0;
+}
+
+static int export_channel_one(ChannelInfo *ci, void *arg_)
+{
+    ExportArg *arg = arg_;
+    xml_writefunc_t writefunc = arg->writefunc;
+    void *data = arg->data;
+    int i;
+
+    writefunc(data, "\t<channelinfo>\n");
+    XML_PUT_STRING("\t\t", *ci, name);
+    XML_PUT_ULONG ("\t\t", *ci, founder);
+    XML_PUT_ULONG ("\t\t", *ci, successor);
+    XML_PUT_PASS  ("\t\t", *ci, founderpass);
+    XML_PUT_STRING("\t\t", *ci, desc);
+    XML_PUT_STRING("\t\t", *ci, url);
+    XML_PUT_STRING("\t\t", *ci, email);
+    XML_PUT_LONG  ("\t\t", *ci, time_registered);
+    XML_PUT_LONG  ("\t\t", *ci, last_used);
+    XML_PUT_STRING("\t\t", *ci, last_topic);
+    XML_PUT_STRING("\t\t", *ci, last_topic_setter);
+    XML_PUT_LONG  ("\t\t", *ci, last_topic_time);
+    XML_PUT_LONG  ("\t\t", *ci, flags);
+    if (ci->flags & CF_SUSPENDED) {
+        XML_PUT_STRING("\t\t", *ci, suspend_who);
+        XML_PUT_STRING("\t\t", *ci, suspend_reason);
+        XML_PUT_LONG  ("\t\t", *ci, suspend_time);
+        XML_PUT_LONG  ("\t\t", *ci, suspend_expires);
+    }
+    writefunc(data, "\t\t<levels>\n");
+#define XML_PUT_LEVEL(lev) \
+  if (ci->levels[lev] != ACCLEV_DEFAULT) \
+writefunc(data, "\t\t\t<" #lev ">%d</" #lev ">\n", ci->levels[lev])
+    XML_PUT_LEVEL(CA_INVITE);
+    XML_PUT_LEVEL(CA_AKICK);
+    XML_PUT_LEVEL(CA_SET);
+    XML_PUT_LEVEL(CA_UNBAN);
+    XML_PUT_LEVEL(CA_AUTOOP);
+    XML_PUT_LEVEL(CA_AUTODEOP);
+    XML_PUT_LEVEL(CA_AUTOVOICE);
+    XML_PUT_LEVEL(CA_OPDEOP);
+    XML_PUT_LEVEL(CA_ACCESS_LIST);
+    XML_PUT_LEVEL(CA_CLEAR);
+    XML_PUT_LEVEL(CA_NOJOIN);
+    XML_PUT_LEVEL(CA_ACCESS_CHANGE);
+    XML_PUT_LEVEL(CA_MEMO);
+    XML_PUT_LEVEL(CA_VOICE);
+    XML_PUT_LEVEL(CA_AUTOHALFOP);
+    XML_PUT_LEVEL(CA_HALFOP);
+    XML_PUT_LEVEL(CA_AUTOPROTECT);
+    XML_PUT_LEVEL(CA_PROTECT);
+#undef XML_PUT_LEVEL
+    writefunc(data, "\t\t</levels>\n");
+    writefunc(data, "\t\t<chanaccesslist count='%d'>\n", ci->access_count);
+    ARRAY_FOREACH (i, ci->access) {
+        if (ci->access[i].nickgroup) {  // Skip empty entries
+            writefunc(data, "\t\t\t<chanaccess>\n");
+            XML_PUT_ULONG ("\t\t\t\t", ci->access[i], nickgroup);
+            XML_PUT_LONG  ("\t\t\t\t", ci->access[i], level);
+            writefunc(data, "\t\t\t</chanaccess>\n");
+        }
+    }
+    writefunc(data, "\t\t</chanaccesslist>\n");
+    writefunc(data, "\t\t<akicklist count='%d'>\n", ci->akick_count);
+    ARRAY_FOREACH (i, ci->akick) {
+        writefunc(data, "\t\t\t<akick>\n");
+        XML_PUT_STRING("\t\t\t\t", ci->akick[i], mask);
+        XML_PUT_STRING("\t\t\t\t", ci->akick[i], reason);
+        XML_PUT_STRING("\t\t\t\t", ci->akick[i], who);
+        XML_PUT_LONG  ("\t\t\t\t", ci->akick[i], set);
+        XML_PUT_LONG  ("\t\t\t\t", ci->akick[i], lastused);
+        writefunc(data, "\t\t\t</akick>\n");
+    }
+    writefunc(data, "\t\t</akicklist>\n");
+    writefunc(data, "\t\t<mlock>\n");
+#ifdef CONVERT_DB
+    XML_PUT_STRING("\t\t\t", *ci, mlock.on);
+    XML_PUT_STRING("\t\t\t", *ci, mlock.off);
+#else
+    writefunc(data, "\t\t\t<mlock.on>%s</mlock.on>\n",
+              mode_flags_to_string(ci->mlock.on, MODE_CHANNEL));
+    writefunc(data, "\t\t\t<mlock.off>%s</mlock.off>\n",
+              mode_flags_to_string(ci->mlock.off, MODE_CHANNEL));
+#endif
+    XML_PUT_LONG  ("\t\t\t", *ci, mlock.limit);
+    XML_PUT_STRING("\t\t\t", *ci, mlock.key);
+    XML_PUT_STRING("\t\t\t", *ci, mlock.link);
+    XML_PUT_STRING("\t\t\t", *ci, mlock.flood);
+    XML_PUT_LONG  ("\t\t\t", *ci, mlock.joindelay);
+    XML_PUT_LONG  ("\t\t\t", *ci, mlock.joinrate1);
+    XML_PUT_LONG  ("\t\t\t", *ci, mlock.joinrate2);
+    writefunc(data, "\t\t</mlock>\n");
+    XML_PUT_STRING("\t\t", *ci, entry_message);
+    writefunc(data, "\t</channelinfo>\n");
+    return 0;
+}
+
+/*************************************************************************/
+
+static int export_nick_db(xml_writefunc_t writefunc, void *data)
+{
+    {
+        ExportArg arg = { writefunc, data };
+        if (foreach_nickgroupinfo(NULL, NULL, 0, export_nickgroup_one, &arg)
+                < 0
+         || foreach_nickinfo(NULL, NULL, 0, export_nick_one, &arg) < 0)
+            return 0;
     }
     return 1;
 }
@@ -257,95 +380,10 @@ static int export_nick_db(xml_writefunc_t writefunc, void *data)
 
 static int export_channel_db(xml_writefunc_t writefunc, void *data)
 {
-    int i;
-    ChannelInfo *ci;
-
-    for (ci = first_channelinfo(); ci; ci = next_channelinfo()) {
-        writefunc(data, "\t<channelinfo>\n");
-        XML_PUT_STRING("\t\t", *ci, name);
-        XML_PUT_ULONG ("\t\t", *ci, founder);
-        XML_PUT_ULONG ("\t\t", *ci, successor);
-        XML_PUT_PASS  ("\t\t", *ci, founderpass);
-        XML_PUT_STRING("\t\t", *ci, desc);
-        XML_PUT_STRING("\t\t", *ci, url);
-        XML_PUT_STRING("\t\t", *ci, email);
-        XML_PUT_LONG  ("\t\t", *ci, time_registered);
-        XML_PUT_LONG  ("\t\t", *ci, last_used);
-        XML_PUT_STRING("\t\t", *ci, last_topic);
-        XML_PUT_STRING("\t\t", *ci, last_topic_setter);
-        XML_PUT_LONG  ("\t\t", *ci, last_topic_time);
-        XML_PUT_LONG  ("\t\t", *ci, flags);
-        if (ci->flags & CF_SUSPENDED) {
-            XML_PUT_STRING("\t\t", *ci, suspend_who);
-            XML_PUT_STRING("\t\t", *ci, suspend_reason);
-            XML_PUT_LONG  ("\t\t", *ci, suspend_time);
-            XML_PUT_LONG  ("\t\t", *ci, suspend_expires);
-        }
-        writefunc(data, "\t\t<levels>\n");
-#define XML_PUT_LEVEL(lev) \
-  if (ci->levels[lev] != ACCLEV_DEFAULT) \
-    writefunc(data, "\t\t\t<" #lev ">%d</" #lev ">\n", ci->levels[lev])
-        XML_PUT_LEVEL(CA_INVITE);
-        XML_PUT_LEVEL(CA_AKICK);
-        XML_PUT_LEVEL(CA_SET);
-        XML_PUT_LEVEL(CA_UNBAN);
-        XML_PUT_LEVEL(CA_AUTOOP);
-        XML_PUT_LEVEL(CA_AUTODEOP);
-        XML_PUT_LEVEL(CA_AUTOVOICE);
-        XML_PUT_LEVEL(CA_OPDEOP);
-        XML_PUT_LEVEL(CA_ACCESS_LIST);
-        XML_PUT_LEVEL(CA_CLEAR);
-        XML_PUT_LEVEL(CA_NOJOIN);
-        XML_PUT_LEVEL(CA_ACCESS_CHANGE);
-        XML_PUT_LEVEL(CA_MEMO);
-        XML_PUT_LEVEL(CA_VOICE);
-        XML_PUT_LEVEL(CA_AUTOHALFOP);
-        XML_PUT_LEVEL(CA_HALFOP);
-        XML_PUT_LEVEL(CA_AUTOPROTECT);
-        XML_PUT_LEVEL(CA_PROTECT);
-#undef XML_PUT_LEVEL
-        writefunc(data, "\t\t</levels>\n");
-        writefunc(data, "\t\t<chanaccesslist count='%d'>\n", ci->access_count);
-        ARRAY_FOREACH (i, ci->access) {
-            if (ci->access[i].nickgroup) {  // Skip empty entries
-                writefunc(data, "\t\t\t<chanaccess>\n");
-                XML_PUT_ULONG ("\t\t\t\t", ci->access[i], nickgroup);
-                XML_PUT_LONG  ("\t\t\t\t", ci->access[i], level);
-                writefunc(data, "\t\t\t</chanaccess>\n");
-            }
-        }
-        writefunc(data, "\t\t</chanaccesslist>\n");
-        writefunc(data, "\t\t<akicklist count='%d'>\n", ci->akick_count);
-        ARRAY_FOREACH (i, ci->akick) {
-            writefunc(data, "\t\t\t<akick>\n");
-            XML_PUT_STRING("\t\t\t\t", ci->akick[i], mask);
-            XML_PUT_STRING("\t\t\t\t", ci->akick[i], reason);
-            XML_PUT_STRING("\t\t\t\t", ci->akick[i], who);
-            XML_PUT_LONG  ("\t\t\t\t", ci->akick[i], set);
-            XML_PUT_LONG  ("\t\t\t\t", ci->akick[i], lastused);
-            writefunc(data, "\t\t\t</akick>\n");
-        }
-        writefunc(data, "\t\t</akicklist>\n");
-        writefunc(data, "\t\t<mlock>\n");
-#ifdef CONVERT_DB
-        XML_PUT_STRING("\t\t\t", *ci, mlock.on);
-        XML_PUT_STRING("\t\t\t", *ci, mlock.off);
-#else
-        writefunc(data, "\t\t\t<mlock.on>%s</mlock.on>\n",
-                  mode_flags_to_string(ci->mlock.on, MODE_CHANNEL));
-        writefunc(data, "\t\t\t<mlock.off>%s</mlock.off>\n",
-                  mode_flags_to_string(ci->mlock.off, MODE_CHANNEL));
-#endif
-        XML_PUT_LONG  ("\t\t\t", *ci, mlock.limit);
-        XML_PUT_STRING("\t\t\t", *ci, mlock.key);
-        XML_PUT_STRING("\t\t\t", *ci, mlock.link);
-        XML_PUT_STRING("\t\t\t", *ci, mlock.flood);
-        XML_PUT_LONG  ("\t\t\t", *ci, mlock.joindelay);
-        XML_PUT_LONG  ("\t\t\t", *ci, mlock.joinrate1);
-        XML_PUT_LONG  ("\t\t\t", *ci, mlock.joinrate2);
-        writefunc(data, "\t\t</mlock>\n");
-        XML_PUT_STRING("\t\t", *ci, entry_message);
-        writefunc(data, "\t</channelinfo>\n");
+    {
+        ExportArg arg = { writefunc, data };
+        if (foreach_channelinfo(NULL, NULL, 0, export_channel_one, &arg) < 0)
+            return 0;
     }
     return 1;
 }

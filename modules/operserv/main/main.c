@@ -15,6 +15,7 @@
 #include "commands.h"
 #include "timeout.h"
 #include "encrypt.h"
+#include "migration.h"
 #include "modules/nickserv/nickserv.h"
 #ifdef DEBUG_COMMANDS
 # include "modules/chanserv/chanserv.h"  /* for send_user_info */
@@ -113,6 +114,8 @@ static void do_addstring(User *u);
 
 /*************************************************************************/
 
+static void do_migration(User *u);
+
 static Command cmds[] = {
     {"HELP",      do_help,      NULL,             -1,                  -1,-1},
     {"GLOBAL",    do_global,    NULL,             OPER_HELP_GLOBAL,    -1,-1},
@@ -141,6 +144,7 @@ static Command cmds[] = {
     {"SET SUPASS",NULL,         NULL,             OPER_HELP_SET_SUPASS,-1,-1},
     {"JUPE",      do_jupe,      is_services_admin,OPER_HELP_JUPE,      -1,-1},
     {"UPDATE",    do_update,    is_services_admin,OPER_HELP_UPDATE,    -1,-1},
+    {"MIGRATION", do_migration, is_services_admin,OPER_HELP_MIGRATION, -1,-1},
     {"QUIT",      do_os_quit,   is_services_admin,OPER_HELP_QUIT,      -1,-1},
     {"SHUTDOWN",  do_shutdown,  is_services_admin,OPER_HELP_SHUTDOWN,  -1,-1},
     {"RESTART",   do_restart,   is_services_admin,OPER_HELP_RESTART,   -1,-1},
@@ -276,8 +280,7 @@ static DBTable oper_dbtable = {
 #define put_nickinfo local_put_nickinfo
 #define _get_ngi local__get_ngi
 #define put_nickgroupinfo local_put_nickgroupinfo
-#define first_nickgroupinfo local_first_nickgroupinfo
-#define next_nickgroupinfo local_next_nickgroupinfo
+#define foreach_nickgroupinfo local_foreach_nickgroupinfo
 
 static NickInfo *local_get_nickinfo(const char *nick)
 {
@@ -332,30 +335,29 @@ static NickGroupInfo *local_put_nickgroupinfo(NickGroupInfo *ngi)
     return p_put_nickgroupinfo(ngi);
 }
 
-static NickGroupInfo *local_first_nickgroupinfo(void)
+static int local_foreach_nickgroupinfo(const char *where,
+                                       const char *const *params, int nparams,
+                                       int (*fn)(NickGroupInfo *, void *),
+                                       void *arg)
 {
-    typeof(first_nickgroupinfo) *p_first_nickgroupinfo;
+    typeof(foreach_nickgroupinfo) *p_foreach_nickgroupinfo;
 
     if (!module_nickserv)
-        return NULL;
-    p_first_nickgroupinfo =
-        get_module_symbol(module_nickserv, "first_nickgroupinfo");
-    if (!p_first_nickgroupinfo)
-        return NULL;
-    return p_first_nickgroupinfo();
+        return -1;
+    p_foreach_nickgroupinfo =
+        get_module_symbol(module_nickserv, "foreach_nickgroupinfo");
+    if (!p_foreach_nickgroupinfo)
+        return -1;
+    return p_foreach_nickgroupinfo(where, params, nparams, fn, arg);
 }
 
-static NickGroupInfo *local_next_nickgroupinfo(void)
+/* ADMIN LIST, OPER LIST: one group with the privilege asked for. */
+static int privlist_show(NickGroupInfo *ngi, void *arg)
 {
-    typeof(next_nickgroupinfo) *p_next_nickgroupinfo;
+    User *u = arg;
 
-    if (!module_nickserv)
-        return NULL;
-    p_next_nickgroupinfo =
-        get_module_symbol(module_nickserv, "next_nickgroupinfo");
-    if (!p_next_nickgroupinfo)
-        return NULL;
-    return p_next_nickgroupinfo();
+    notice(s_OperServ, u->nick, "%s", ngi_mainnick(ngi));
+    return 0;
 }
 
 /*************************************************************************/
@@ -1076,12 +1078,13 @@ static void do_admin(User *u)
             syntax_error(s_OperServ, u, "ADMIN", OPER_ADMIN_DEL_SYNTAX);
 
     } else if (stricmp(cmd, "LIST") == 0) {
-        NickGroupInfo *ngi;
+        char priv[16];
+        const char *params[1];
         notice_lang(s_OperServ, u, OPER_ADMIN_LIST_HEADER);
-        for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-            if (ngi->os_priv >= NP_SERVADMIN)
-                notice(s_OperServ, u->nick, "%s", ngi_mainnick(ngi));
-        }
+        snprintf(priv, sizeof(priv), "%d", NP_SERVADMIN);
+        params[0] = priv;
+        foreach_nickgroupinfo("t.os_priv >= $2::smallint", params, 1,
+                              privlist_show, u);
 
     } else {
         syntax_error(s_OperServ, u, "ADMIN", OPER_ADMIN_SYNTAX);
@@ -1127,12 +1130,15 @@ static void do_oper(User *u)
             syntax_error(s_OperServ, u, "OPER", OPER_OPER_DEL_SYNTAX);
 
     } else if (stricmp(cmd, "LIST") == 0) {
-        NickGroupInfo *ngi;
+        char lo[16], hi[16];
+        const char *params[2];
         notice_lang(s_OperServ, u, OPER_OPER_LIST_HEADER);
-        for (ngi = first_nickgroupinfo(); ngi; ngi = next_nickgroupinfo()) {
-            if (ngi->os_priv >= NP_SERVOPER && ngi->os_priv < NP_SERVADMIN)
-                notice(s_OperServ, u->nick, "%s", ngi_mainnick(ngi));
-        }
+        snprintf(lo, sizeof(lo), "%d", NP_SERVOPER);
+        snprintf(hi, sizeof(hi), "%d", NP_SERVADMIN);
+        params[0] = lo;
+        params[1] = hi;
+        foreach_nickgroupinfo("t.os_priv >= $2::smallint and t.os_priv <"
+                              " $3::smallint", params, 2, privlist_show, u);
 
     } else {
         syntax_error(s_OperServ, u, "OPER", OPER_OPER_SYNTAX);
@@ -1324,56 +1330,112 @@ static void do_raw(User *u)
 
 /*************************************************************************/
 
-/* Callback and data used to send "update complete" message */
+/* Callback and data used to send "update complete" message.  The save
+ * runs in the background, so the users who asked are remembered by nick
+ * (a User may be gone by the time the save ends) and looked up again. */
 static int do_update_complete(int successful);
-static User *update_sender = NULL;
+static char **update_senders = NULL;
+static int update_senders_count = 0;
 
 static void do_update(User *u)
 {
     char *param = strtok_remaining();
+    int i;
 
-    if (param && *param) {
-        if (stricmp(param, "FORCE") != 0) {
-            syntax_error(s_OperServ, u, "UPDATE", OPER_UPDATE_SYNTAX);
-            return;
-        } else if (!is_services_admin(u)) {
-            notice_lang(s_OperServ, u, PERMISSION_DENIED);
-            return;
-        }
-        switch (is_data_locked()) {
-          case 1:
-            if (!unlock_data()) {
-                module_log_perror("UPDATE FORCE lock removal failed");
-                notice_lang(s_OperServ, u, OPER_UPDATE_FORCE_FAILED);
-                return;
-            }
-            break;
-          case -1:
-            module_log_perror("UPDATE FORCE lock check failed");
-            break;
-        }
+    /* FORCE used to remove a stale lock file; the database needs no lock
+     * file, and the option is accepted and ignored. */
+    if (param && *param && stricmp(param, "FORCE") != 0) {
+        syntax_error(s_OperServ, u, "UPDATE", OPER_UPDATE_SYNTAX);
+        return;
     }
     notice_lang(s_OperServ, u, OPER_UPDATING);
     save_data = 1;
-    update_sender = u;  /* to send to when the update completes--it's safe
-                         * to save this pointer since no more data will be
-                         * processed before we use it again */
-    add_callback(NULL, "save data complete", do_update_complete);
+    ARRAY_FOREACH (i, update_senders) {
+        if (irc_stricmp(update_senders[i], u->nick) == 0)
+            return;
+    }
+    if (!update_senders_count)
+        add_callback(NULL, "save data complete", do_update_complete);
+    ARRAY_EXTEND(update_senders);
+    update_senders[update_senders_count-1] = sstrdup(u->nick);
 }
 
 static int do_update_complete(int successful)
 {
-    if (update_sender) {
-        if (successful)
-            notice_lang(s_OperServ, update_sender, OPER_UPDATE_COMPLETE);
-        else
-            notice_lang(s_OperServ, update_sender, OPER_UPDATE_FAILED);
-        update_sender = NULL;
-    } else {
-        log("BUG: no sender in do_update_complete()");
+    int i;
+
+    ARRAY_FOREACH (i, update_senders) {
+        User *u = get_user(update_senders[i]);
+        if (u) {
+            notice_lang(s_OperServ, u, successful ? OPER_UPDATE_COMPLETE
+                                                  : OPER_UPDATE_FAILED);
+        }
+        free(update_senders[i]);
     }
+    free(update_senders);
+    update_senders = NULL;
+    update_senders_count = 0;
     remove_callback(NULL, "save data complete", do_update_complete);
     return 0;
+}
+
+/*************************************************************************/
+
+/* MIGRATION: the database schema migrations of Services and its modules
+ * (see migration.h).  The answers come back asynchronously, through
+ * migration_reply(), to whoever asked -- looked up again by nick, since
+ * they may have left by then. */
+
+static void migration_reply(const char *nick, const char *text)
+{
+    User *u = get_user(nick);
+
+    if (u)
+        notice(s_OperServ, u->nick, "%s", text);
+}
+
+static void do_migration(User *u)
+{
+    char *cmd = strtok(NULL, " ");
+    char *module = strtok(NULL, " ");
+    char *version = strtok(NULL, " ");
+    unsigned long bound = 0;
+
+    if (version) {
+        char *end;
+        if (*version == 'v' || *version == 'V')
+            version++;
+        bound = strtoul(version, &end, 10);
+        if (!*version || *end || bound == 0 || bound > MIGRATION_MAX) {
+            syntax_error(s_OperServ, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
+            return;
+        }
+    }
+    if (!cmd) {
+        syntax_error(s_OperServ, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
+    } else if (stricmp(cmd, "LIST") == 0) {
+        migration_cmd_list(THIS_MODULE, migration_reply, u->nick);
+    } else if (!module) {
+        syntax_error(s_OperServ, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
+    } else if (stricmp(cmd, "STATUS") == 0) {
+        migration_cmd_status(THIS_MODULE, migration_reply, u->nick, module);
+    } else if (stricmp(cmd, "APPLY") == 0 || stricmp(cmd, "REVERT") == 0) {
+        /* A schema change is the super-user's to make. */
+        if (!is_services_root(u)) {
+            notice_lang(s_OperServ, u, PERMISSION_DENIED);
+            return;
+        }
+        module_log("MIGRATION %s %s%s%s by %s", cmd, module,
+                   version ? " v" : "", version ? version : "", u->nick);
+        if (stricmp(cmd, "APPLY") == 0)
+            migration_cmd_apply(THIS_MODULE, migration_reply, u->nick,
+                                module, (unsigned int)bound);
+        else
+            migration_cmd_revert(THIS_MODULE, migration_reply, u->nick,
+                                 module, (unsigned int)bound);
+    } else {
+        syntax_error(s_OperServ, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
+    }
 }
 
 /*************************************************************************/
@@ -2192,6 +2254,17 @@ int exit_module(int shutdown)
 
     if (cmd_RAW)
         cmd_RAW->name = "RAW";
+
+    /* An UPDATE still waiting for its save: nobody will be told. */
+    if (update_senders_count) {
+        int i;
+        remove_callback(NULL, "save data complete", do_update_complete);
+        ARRAY_FOREACH (i, update_senders)
+            free(update_senders[i]);
+        free(update_senders);
+        update_senders = NULL;
+        update_senders_count = 0;
+    }
 
     exit_maskdata();
 

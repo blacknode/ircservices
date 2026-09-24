@@ -8,11 +8,20 @@
  */
 
 #include "databases.h"
+#include "db.h"
 #include "encrypt.h"
 #include "modules.h"
 #include "services.h"
+#include "worker.h"
+
+#include "postgres/pg_store.h"
 
 /*************************************************************************/
+
+/* The tables live in PostgreSQL (src/postgres/pg_store.c): each one is
+ * loaded when its module registers it, and every table is written back on
+ * every save.  This file is the registry in front of that: which tables
+ * exist, in which order, and which save is running. */
 
 /* List of registered tables */
 typedef struct dbtablenode_ DBTableNode;
@@ -20,15 +29,17 @@ struct dbtablenode_ {
     DBTableNode *next, *prev;
     DBTable* table;
     const Module* owner; /* Which module registered this table? */
-    int loaded;          /* Has this table been loaded? */
 };
 static DBTableNode* tables = NULL;
 
-/* Currently active database module */
-static DBModule* dbmodule = NULL;
+/* Saves: one running at a time, and at most one more queued behind it
+ * (a save snapshots every table, so two queued saves are one save). */
+static int save_running = 0;
+static int save_queued = 0;
 
 /* Local routines: */
 static int do_unload_module(const Module* module);
+static void save_done(int ok);
 
 /*************************************************************************/
 /*************************************************************************/
@@ -41,6 +52,11 @@ int database_init(int ac, char** av)
         log("database_init: add_callback() failed");
         return 0;
     }
+    if (!pg_store_open()) {
+        log("database: cannot open the database; check the database block"
+            " of %s", IRCSERVICES_CONF);
+        return 0;
+    }
     return 1;
 }
 
@@ -49,6 +65,7 @@ int database_init(int ac, char** av)
 void database_cleanup(void)
 {
     remove_callback(NULL, "unload module", do_unload_module);
+    pg_store_close();
 }
 
 /************************************/
@@ -72,8 +89,8 @@ static int do_unload_module(const Module* module)
 
 /*************************************************************************/
 
-/* Register a new database table.  Returns nonzero on success, zero on
- * error.
+/* Register a new database table and load it.  Returns nonzero on success,
+ * zero on error.
  */
 
 int _register_dbtable(DBTable* table, const Module* caller)
@@ -108,21 +125,24 @@ int _register_dbtable(DBTable* table, const Module* caller)
         if (t->table == table) {
             log("BUG: register_dbtable(%s): table already registered!",
                 table->name);
-            break;
+            return 0;
         }
     }
 
-    /* Allocate and append to list (make sure to preserve order, since
-     * later tables may depend on earlier ones); if a database module is
-     * available, load the table ammediately*/
+    /* Load it before registering it: a table that could not be loaded is
+     * not saved either, because saving it would replace the data in the
+     * database with an empty table. */
+    if (!pg_store_load(table)) {
+        log("database: cannot load table `%s'", table->name);
+        return 0;
+    }
+
+    /* Append to list (preserving order, since later tables may depend on
+     * earlier ones). */
     t = smalloc(sizeof(*t));
     t->table = table;
     t->owner = caller;
-    t->loaded = 0;
     LIST_APPEND(t, tables);
-    if (dbmodule)
-        t->loaded = (*dbmodule->load_table)(t->table);
-
     return 1;
 }
 
@@ -140,7 +160,6 @@ void unregister_dbtable(DBTable* table)
         log("BUG: unregister_dbtable() with NULL table!");
         return;
     }
-    /* Sanity check: make sure it was registered first */
     LIST_FOREACH(t, tables)
     {
         if (t->table == table) {
@@ -153,92 +172,72 @@ void unregister_dbtable(DBTable* table)
 
 /*************************************************************************/
 
-/* Save all registered database tables to permanent storage.  Returns 1 if
- * all tables were successfully saved or no tables are registered, 0 if
- * some tables were successfully saved (but some were not), or -1 if no
- * tables were successfully saved.
+/* Save all registered database tables.  Returns 1 if the save was started
+ * or queued, 0 if it could not be; the outcome is reported through the
+ * "save data complete" callback.
  */
 
 int save_all_dbtables(void)
 {
     DBTableNode* t;
-    int some_saved = 0;
-    int some_failed = 0;
+    DBTable** list;
+    int count = 0, ok;
 
-    if (!tables)
+    if (save_running) {
+        save_queued = 1;
         return 1;
-    if (!dbmodule) {
-        log("save_all_dbtables(): No database module registered!");
-        return -1;
     }
     LIST_FOREACH(t, tables)
-    {
-        if ((*dbmodule->save_table)(t->table)) {
-            some_saved = 1;
-        }
-        else {
-            log("save_all_dbtables(): Failed to save table `%s'",
-                t->table->name);
-            some_failed = 1;
-        }
-    }
-    return some_saved - some_failed;
-}
-
-/*************************************************************************/
-/*************************************************************************/
-
-/* Register a database module.  Returns nonzero on success, zero on error.
- * On success, all registered tables which have not already been loaded
- * will be loaded from permanent storage.  Only one database module can be
- * registered.
- */
-
-int register_dbmodule(DBModule* module)
-{
-    DBTableNode* t;
-
-    if (!module) {
-        log("BUG: register_dbmodule() with NULL module!");
-        return 0;
-    }
-    if (!module->load_table || !module->save_table) {
-        log("BUG: register_dbmodule(): module->%s is NULL!",
-            !module->load_table ? "load_table" : "save_table");
-        return 0;
-    }
-    if (dbmodule) {
-        if (module == dbmodule)
-            log("BUG: register_dbmodule(): attempt to re-register module!");
-        else
-            log("register_dbmodule(): a database module is already "
-                "registered");
-        return 0;
-    }
-
-    dbmodule = module;
+    count++;
+    list = smalloc(sizeof(*list) * (count + 1));
+    count = 0;
     LIST_FOREACH(t, tables)
-    {
-        if (!t->loaded)
-            t->loaded = (*dbmodule->load_table)(t->table);
+    list[count++] = t->table;
+
+    save_running = 1;
+    ok = pg_store_save(list, count, save_done);
+    free(list);
+    if (!ok) {
+        save_running = 0;
+        wallops(NULL, "\2Warning:\2 Databases could not be saved; see the"
+                      " log for details.");
+        call_callback_1(cb_save_complete, 0);
+        return 0;
     }
     return 1;
 }
 
+/* A save is over (possibly from within save_all_dbtables()). */
+static void save_done(int ok)
+{
+    save_running = 0;
+    if (!ok)
+        wallops(NULL, "\2Warning:\2 Databases could not be saved; see the"
+                      " log for details.");
+    call_callback_1(cb_save_complete, ok);
+    if (save_queued) {
+        save_queued = 0;
+        save_all_dbtables();
+    }
+}
+
 /*************************************************************************/
 
-/* Unregister a database module.  Does nothing if the module was not
- * registered in the first place.
- */
-
-void unregister_dbmodule(DBModule* module)
+int database_saving(void)
 {
-    if (!module) {
-        log("BUG: unregister_dbmodule() with NULL module!");
-        return;
-    }
-    if (dbmodule == module)
-        dbmodule = NULL;
+    return save_running || save_queued;
+}
+
+/************************************/
+
+void database_flush(void)
+{
+    time_t deadline = time(NULL) + db_conf_save_timeout() / 1000 + 5;
+
+    while (database_saving() && time(NULL) < deadline)
+        worker_wait(100);
+    if (database_saving())
+        log("database: gave up waiting for the last save");
 }
 
 /*************************************************************************/

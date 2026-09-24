@@ -1,0 +1,397 @@
+readme.database -- PostgreSQL, Redis and worker threads
+=======================================================
+
+Services keep their data in PostgreSQL, with Redis in front of it, and
+offer modules asynchronous access to both.  All of it is part of the
+core: there is no database module to load.  The code is a port of ircu2's
+database layer (include/db.h, include/cache.h, include/worker.h and the
+drivers in modules/workers/ of ircu2), adapted to Services.
+
+    include/store.h         the entity store: nicknames, channels, ...
+    include/databases.h     the tables kept whole in memory (DBTable)
+    include/db.h            database API for the core and modules
+    include/cache.h         cache API
+    include/worker.h        worker threads
+    include/migration.h     the SQL that creates the tables
+    src/store/              the entity store and its threads
+    src/db.c, src/cache.c   calls in flight, the database and redis blocks
+    src/worker.c            thread pool, dedicated workers, wake-up pipe
+    src/postgres/           PostgreSQL driver, and the DBTable saves
+    src/redis/              Redis driver and client
+    src/migrations/         the core's own tables
+
+The configuration is described in readme.config (blocks `database`,
+`redis`, `workers`); the tables and how they are created, in
+readme.migrations.
+
+1. Where the data is
+--------------------
+
+### 1-1. The rule
+
+    Services  =>  Redis  <=  PostgreSQL
+
+PostgreSQL is the truth: the only place Services' data is kept for good.
+Redis is the fast copy of it.  Services' memory holds only what is being
+used right now.  However many nicknames and channels are registered,
+Services hold in memory the records of the users who are online and of
+the channels that exist, and nothing else; a network with five million
+registered nicknames and eighty thousand users online has at most eighty
+thousand nickname records in memory.  OperServ STATS ALL shows both
+numbers: the records in the database, and how many of them are in memory.
+
+### 1-2. The entity store
+
+Nicknames, nickname groups (with their access lists, autojoin lists,
+memos and memo ignore lists) and channels (with their access and autokick
+lists) are kept by the entity store (include/store.h).  A module describes
+each kind of record -- its tables, and how to turn the C structure into a
+JSON "bundle" and back -- and then works with records as Services always
+have: get one, use it, put it back.
+
+READING.  A record is looked for in memory first (somebody is using it),
+then among the writes not yet in the database, then in Redis, and only
+then in PostgreSQL, whose answer is copied into Redis for next time.  "No
+such record" is the commonest answer ("this nick is not registered"), and
+it is cached too, for a shorter time (negative_ttl).
+
+  - The paths that see the whole network go by -- a user connecting, a
+    nick change, a channel being created, a netburst -- never wait for
+    the answer.  The records are fetched in the background, in batches
+    (one Redis MGET and one PostgreSQL query for up to 500 keys, however
+    many users asked in the same pass of the main loop), and the user is
+    checked when they arrive.  A burst of ten thousand users is a few
+    dozen round trips.
+  - A command that needs a record nobody is using (NickServ INFO on an
+    offline nick, a REGISTER) asks synchronously, with a short deadline:
+    `sync_timeout', one second by default.  That is the only time the
+    main loop waits for the database.  A user who talks to Services
+    before their background check has finished is checked on the spot.
+
+MEMORY.  A record stays in memory while something holds it -- the user
+using the nick, the channel that is registered, a timer -- and is freed
+once the last holder lets go.
+
+WRITING.  A record is written when it has changed: when it is let go for
+the last time and, for records that stay in use (the nick of a user who
+stays online), by a sweep that looks at a few of them every second and at
+all of them every 30 seconds.  "Changed" means its bundle differs from the
+one last written, so no code has to remember to say so.  The new bundle is
+at once a pending write, which every read of that record is served from;
+a writer thread then writes it to PostgreSQL, in transactions of many
+records, in order, retrying until the database takes it, and after that
+to Redis.  Only when both have it is the pending write dropped, so a
+record never goes back in time, not even when Redis or PostgreSQL were
+down for a while.
+
+Services do not wait for any of this.  A change is in PostgreSQL within
+seconds; at exit, Services wait (up to `save_timeout') for the writes
+still on their way, and log how many could not be made.
+
+### 1-3. The tables kept whole in memory
+
+A few tables are small, and bounded by what operators do rather than by
+the size of the network: OperServ's settings (oper), autokills (akill),
+autokill exclusions (exclude), session exceptions (exception), S-lines
+(sgline, sqline, szline), news, and StatServ's server statistics
+(stat_servers).  These are still kept whole in memory, as a DBTable
+(include/databases.h): loaded when their module is loaded, and saved
+every `timeouts { update; }' (5 minutes by default), on OperServ UPDATE,
+on SIGHUP and at exit.  A save snapshots every table in the main thread
+and writes those that changed in a worker thread, in one transaction:
+
+    BEGIN
+    SELECT token FROM instance WHERE id = 1 FOR UPDATE
+    TRUNCATE TABLE <table>; COPY <table> FROM STDIN      -- per table
+    COMMIT
+
+so it is atomic: either every changed table is written, or the previous
+save stays in place, whole.  A save that fails is reported in the log and
+by WALLOPS, and the next save tries again.  These tables are created and
+extended by the save itself (a column a newer version adds is added), not
+by migrations.
+
+### 1-4. Layout
+
+Every table lives in the configured schema ("services" by default), which
+Services create if it is missing.
+
+    migrations      every migration applied (readme.migrations)
+    instance        which copy of Services owns the schema (1-5)
+    store_stale     Redis keys to correct (1-6)
+    nickgroups      nickname groups   nicks          nicknames
+    nickgroup_access, nickgroup_ajoin, nickgroup_memos,
+    nickgroup_memo_ignore             the lists of a group
+    channels        channels          channel_access, channel_akicks
+    oper, akill, exclude, exception, sgline, sqline, szline, news,
+    stat_servers    the tables of 1-3
+
+The first three are created by the core's migrations, the next by the
+migrations of nickserv/main and chanserv/main
+(modules/*/main/migrations/), the last by their modules' saves.  A table
+of 1-3 is named after its DBTable, with anything other than a letter, a
+digit or an underscore turned into an underscore; its columns are the
+fields (memos.memomax becomes memos_memomax), plus `_seq', the row's
+position:
+
+    Field type          Column
+    ----------          ------
+    INT8, UINT8, INT16  smallint
+    UINT16, INT32       integer
+    UINT32              bigint
+    TIME                bigint (seconds since the epoch)
+    STRING              text (NULL for a NULL pointer)
+    BUFFER              text (up to the first NUL)
+    PASSWORD            bytea <name>, plus text <name>_cipher
+
+The tables of the entity store follow the same conventions (times are
+bigint seconds, passwords are bytea plus a _cipher column), and their keys
+are the nick or channel name folded to lower case by IRC rules (nick_key,
+name_key).
+
+Strings are stored as UTF-8.  A string that is not valid UTF-8 (typically
+old data in ISO-8859-1) is converted from ISO-8859-1 when it is written,
+and the conversion is logged.
+
+In Redis, a record is kept under <prefix>svc:<type>:<key>
+(services:svc:nick:alice, services:svc:channel:#help), as its bundle: a
+JSON object with the row of the main table under "main" and the rows of
+each list under its own name.  "!" means "no such record".
+
+### 1-5. Who owns the data
+
+Services do.  They do not notice a row changed in the database by
+something else, and the next write of that record overwrites it.  Read the
+tables freely (a web panel, a report, a backup); write to them only while
+Services are stopped, and then empty Redis too (or the keys you changed),
+since it would otherwise go on serving the old copy until it expires.
+
+Two copies of Services writing to one schema would overwrite each other in
+turn, so a copy claims the schema when it starts: it takes an advisory
+lock for as long as it runs (a second copy started while the first runs
+refuses to start: "schema ... is in use by another copy of Services"),
+and records a token of its own in the `instance' table.  Every write
+checks that token inside its transaction, so a copy that has lost its
+claim -- its connection dropped, and another copy started in the
+meantime -- can no longer write.  Run with -readonly, Services read the
+data but neither claim the schema nor write anything.
+
+### 1-6. When PostgreSQL or Redis is not there
+
+At start-up, Services need both: without PostgreSQL ("cannot connect to
+the database") or Redis they do not start.  Running without their data
+would let anybody register nicknames and channels that already belong to
+someone.
+
+While they run:
+
+- REDIS RESTARTED.  An empty Redis costs queries until it fills again,
+  and nothing else.  A Redis restarted from a snapshot is another matter:
+  its copies may be older than the database, and would be served until
+  they expire.  Run Redis without persistence (`save ""', `appendonly
+  no'), or empty it whenever it restarts.
+
+- REDIS DOWN.  Services carry on reading from PostgreSQL (a Redis that
+  does not answer within `timeout' is skipped for a second before it is
+  tried again).  Writes still go to PostgreSQL; a record written there
+  but not to Redis has its key recorded in `store_stale', and when Redis
+  answers again -- or when Services next start -- those keys are corrected
+  or deleted, so that Redis never serves a copy older than the database.
+
+- POSTGRESQL DOWN.  Records in memory and in Redis are served as usual,
+  and changes are kept as pending writes (served to every read) and
+  retried until the database takes them; the first writes after it comes
+  back write everything that changed.  A record in neither place cannot
+  be read: a user whose nick cannot be looked up is treated as using an
+  unregistered nick (so is neither recognized nor warned), a command that
+  needs such a record fails, and
+  NOTHING IS CREATED whose absence cannot be confirmed -- a REGISTER of a
+  nick or channel that might exist is refused ("registration failed")
+  rather than risk replacing the real one when the database returns.
+  The tables of 1-3 are not saved, with a WALLOPS each time.
+
+- A module loaded later (REHASH) whose migrations cannot be applied, or
+  whose DBTable cannot be loaded, does not load.  A DBTable that could not
+  be loaded is never saved: saving it would replace the data in the
+  database with an empty table.
+
+### 1-7. Coming from the file databases
+
+The database/standard (*.sdb files) and database/version4 (*.db files)
+modules are gone.  To bring existing data over, use the XML export and
+import modules (readme.xml):
+
+1. With the old version, still configured for its old database module,
+   load misc/xml-export and export everything to a file by starting it
+   once with `-export=<file>` (readme.xml, section 1).
+2. With this version, configured for PostgreSQL and Redis, load
+   misc/xml-import and start Services once with `-import=<file>`: the
+   data is read, checked, written to the database, and Services exit.
+3. Start Services normally.
+
+Data from other programs (Anope, Epona) goes the same way, through their
+XML conversion tools.
+
+2. Database access for modules (db.h)
+-------------------------------------
+
+### 2-1. The rules
+
+A module that needs a database of its own -- tables beside the Services
+tables, a query that does not fit in memory -- asks the core.  It does not
+link against libpq, never sees a PGconn or a PGresult, and does not get a
+thread of its own: it calls db_query(), and some time later its callback
+runs in the main thread with the rows as JSON (jansson's json_t).
+
+Three things are true of every query:
+
+- A QUERY NEVER BLOCKS SERVICES.  db_query() hands the query to a pooled
+  connection running in a thread of its own, and returns at once.
+- A QUERY NEVER OUTLIVES FIVE SECONDS.  The timeout (`timeout`) is capped
+  at five seconds, and enforced by the driver on its own clock: a
+  connection to a machine that has stopped answering is cut off on time.
+- A VALUE NEVER BECOMES SQL.  Statements are prepared and values are
+  bound; there is no entry point that takes an assembled statement.  A
+  parameter containing "'; drop table x; --" is a string that matches
+  nothing.
+
+### 2-2. Using it
+
+    #include "db.h"
+
+    static void score_loaded(const struct DbResult *res, void *user)
+    {
+        char *nick = user;
+        User *u;
+
+        if (res->err.dberr_code == DB_OK && (u = get_user(nick)) != NULL)
+            notice(s_MyServ, u->nick, "Your score: %lld",
+                   db_row_int(res->data, 0, "score"));
+        free(nick);
+    }
+
+    ...
+    struct DbParam  p      = { DB_TYPE_TEXT, u->nick, DB_FORMAT_TEXT };
+    struct DbParam *args[] = { &p, NULL };
+    struct DbQuery  q      = { "select score from scores where nick = $1",
+                               args };
+    char *nick = sstrdup(u->nick);
+
+    if (db_query(THIS_MODULE, &q, score_loaded, nick) != DB_OK) {
+        free(nick);
+        notice(s_MyServ, u->nick, "Try again later.");
+    }
+
+db_exec() is the same call for statements that change data; it goes to
+the `write` side of the configuration, db_query() to the `read` side.
+
+Four rules for the caller, all about time passing:
+
+- The query is copied, the result is not.  Everything in the DbQuery may
+  be a local variable.  The DbResult is released when the callback
+  returns: json_incref() its data to keep it.
+- Do not keep a User * (or any pointer into Services' data) across a
+  query.  The user may have quit by the time the answer arrives: keep the
+  nick, and look it up again.
+- Check the return value.  DB_OK means the callback will run; anything
+  else is a refusal here and now, and the callback will never run.
+- The callback may not run: if the module is unloaded first, its pending
+  callbacks are dropped.  That is what lets a module be unloaded without
+  waiting for the database.
+
+Queries may be sent from init_module(), before Services have gone into the
+background: they wait in the queue, and are run as soon as the connection
+threads start.
+
+### 2-3. What comes back
+
+DbResult.data is a JSON array with one object per row, mapping column
+names to values; a statement that returns no rows gets an empty array, and
+DbResult.rows says how many rows it returned or touched.  Integers become
+JSON integers; float4/float8/numeric, numbers; bool, true/false; json and
+jsonb, the document itself; NULL, null; everything else (timestamps, uuid,
+inet, arrays, bytea), a string.
+
+A module that does not want to include jansson reads results with
+db_rows(), db_row_str() and db_row_int().
+
+Errors are a closed set (enum DbError): DB_ERR_UNIQUE, DB_ERR_FOREIGN_KEY,
+DB_ERR_NOT_NULL, DB_ERR_RETRY (deadlock or serialization failure: run it
+again), DB_ERR_TIMEOUT, DB_ERR_BUSY (every connection busy and the queue
+full), DB_ERR_UNAVAILABLE, and a few more.  The message in
+DbResult.err is the driver's own wording and safe to show to a user; the
+database's own message, which names tables and columns, goes to the log
+only.
+
+### 2-4. One statement, and migrations
+
+db_query() and db_exec() run one statement on one pooled connection;
+there is no BEGIN/COMMIT across calls.  Work that must be atomic goes in a
+function created by the module's migrations, called with one statement.
+
+A module's tables are created by the migrations it ships in its
+migrations/ directory, which an operator applies with OperServ MIGRATION;
+see readme.migrations.  Every connection's search path is the configured
+schema, then public, so a module's unqualified table names land beside
+Services' own.
+
+3. The cache (cache.h)
+----------------------
+
+A key-value store in front of the database, for a module that wants to
+avoid asking the database the same question again and again.  It is the
+same Redis the entity store uses (the `redis' block is required), under
+the same prefix; the store's keys start with "svc:", which a module's
+keys should not.  The first thing to understand: the cache is never the
+truth.  Everything that reads it reads the database too when it misses; a
+cache that is stale, slow or down costs a query and nothing else.  When
+Redis cannot be reached, cache_get() returns 0, the callback never runs,
+and the caller goes to the database as it would on a miss.
+
+    cache_get(THIS_MODULE, "score:alice", got_score, data);
+    cache_set(THIS_MODULE, "score:alice", json, len, 300, NULL, NULL);
+    cache_del(THIS_MODULE, "score:alice", NULL, NULL);
+
+The answer arrives in the main thread, as for queries.  The pattern is
+read through (ask the cache; on a miss or any failure, ask the database
+and write the answer back -- misses included), invalidate on write (after
+writing to the database, cache_del() the keys that changed rather than
+waiting for them to expire).
+
+Values are binary-safe bytes (JSON is the natural choice); keys are at
+most 255 bytes with the configured prefix, which the core adds; values at
+most 64 KiB; expiries default to 5 minutes and are capped at a day.
+
+4. Worker threads (worker.h)
+----------------------------
+
+The core stays single-threaded; the database and cache connections, the
+store's writer and background fetches, the saves and the migrations run
+in threads, and hand their results back to the main loop through a pipe
+the socket layer watches.  A module may use
+the same machinery for slow work of its own (worker_submit_owned() with
+THIS_MODULE; a dedicated thread with worker_spawn_owned()).
+
+The one rule: a worker thread never touches Services' state.  No User, no
+Channel, no NickInfo, no smalloc()/free() from a file that includes
+services.h (MEMCHECKS redefines them), no log() (use worker_log()), no
+send_*().  Everything a worker needs is copied into its task; everything
+it produces is copied out.  worker.h has the details.
+
+Threads start once Services have forked into the background (a thread
+does not survive a fork); work asked for before that is held until then.
+Unloading a module drops its queued work and waits for any of its work a
+thread is running.
+
+5. Building
+-----------
+
+The core needs libpq, jansson and hiredis (see BUILDING.md):
+
+    Debian, Ubuntu   apt install libpq-dev libjansson-dev libhiredis-dev
+    Fedora           dnf install libpq-devel jansson-devel hiredis-devel
+    Arch, Manjaro    pacman -S postgresql-libs jansson hiredis
+    FreeBSD          pkg install postgresql16-client jansson hiredis
+
+A module that includes <jansson.h> gets the include path from the build;
+it links against nothing, like every module.

@@ -1899,6 +1899,8 @@ OPER_STATS_ALL_NICKINFO_MEM
 	Nicknames : %6d records, %5d kB
 OPER_STATS_ALL_CHANSERV_MEM
 	ChanServ  : %6d records, %5d kB
+OPER_STATS_ALL_RESIDENT
+	            %6d of them in memory
 OPER_STATS_ALL_STATSERV_MEM
 	StatServ  : %6d records, %5d kB
 OPER_STATS_ALL_NEWS_MEM
@@ -2186,6 +2188,8 @@ OPER_UPDATE_COMPLETE
 	Database update complete.
 OPER_UPDATE_FAILED
 	Database update failed.
+OPER_MIGRATION_SYNTAX
+	MIGRATION {LIST | STATUS module | APPLY module [vN] | REVERT module [vN]}
 
 # REHASH responses
 OPER_REHASHING
@@ -4480,7 +4484,8 @@ OPER_HELP_COMMANDS_SERVADMIN
 	    JUPE        "Jupiter" a server
 	    SET         Set various global Services options
 	    UPDATE      Force the Services databases to be
-	                    updated on disk immediately
+	                    saved immediately
+	    MIGRATION   View and apply database schema migrations
 	    SHUTDOWN    Save databases and stop Services
 	    QUIT        Terminate Services without saving databases
 	    RESTART     Save databases and restart Services
@@ -5031,22 +5036,51 @@ OPER_HELP_RAW
 OPER_HELP_UPDATE
 	Syntax: UPDATE [FORCE]
 	
-	Causes Services to update all database files as soon as you
-	send the command.  If the FORCE option is given, Services
-	will attempt to unlock the databases before performing the
-	update; this can be used to fix "databases are locked"
-	errors when updating the databases.
+	Causes Services to save the tables they keep whole in
+	memory (settings, autokills, S-lines, news, statistics)
+	as soon as you send the command; you are told when the
+	save has finished.  Nicknames, channels and memos do not
+	need it: every change to them is written within seconds.
+	The FORCE option is accepted for compatibility and
+	ignored.
 	
 	Limited to Services admins.
+
+OPER_HELP_MIGRATION
+	Syntax: MIGRATION LIST
+	        MIGRATION STATUS module
+	        MIGRATION APPLY module [vN]
+	        MIGRATION REVERT module [vN]
+	
+	Manages the database schema migrations that Services and
+	their modules ship.  LIST shows every migration applied
+	to the database; STATUS shows which of a module's
+	migrations are applied and which are pending (core is
+	Services' own set).
+	
+	APPLY applies a module's pending migrations in order, up
+	to vN if given, stopping at the first one that fails.
+	REVERT reverts only the newest applied migration, or
+	every one down to vN if given: reverting destroys
+	whatever the migration created.  The migrations of the
+	modules Services need to work, and Services' own, are
+	applied automatically when they are loaded, and cannot
+	be reverted.
+	
+	LIST and STATUS are limited to Services admins;
+	APPLY and REVERT to the Services super-user.  Every
+	schema change is logged and announced to the operators.
 
 OPER_HELP_QUIT
 	Syntax: QUIT
 	
-	Causes Services to do an immediate shutdown; databases are
-	not saved.  This command should not be used unless
-	damage to the in-memory copies of the databases is feared
-	and they should not be saved.  For normal shutdowns, use the
-	SHUTDOWN command.
+	Causes Services to do an immediate shutdown, without
+	saving the tables they keep whole in memory (settings,
+	autokills, S-lines, news, statistics); changes to
+	nicknames, channels and memos are written as usual.  This
+	command should not be used unless damage to the in-memory
+	copies of those tables is feared.  For normal shutdowns,
+	use the SHUTDOWN command.
 	
 	Limited to Services admins.
 

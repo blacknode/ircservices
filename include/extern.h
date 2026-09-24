@@ -65,7 +65,6 @@ E char* ServiceHost;
 E char* LogFilename;
 E char PIDFilename[PATH_MAX + 1];
 E char* MOTDFilename;
-E char* LockFilename;
 
 E int16 DefTimeZone;
 
@@ -79,6 +78,8 @@ E int32 BadPassWarning;
 E int32 IgnoreDecay;
 E double IgnoreThreshold;
 E time_t UpdateTimeout;
+E int32 WorkerThreads;
+E int32 WorkerQueueMax;
 E time_t WarningTimeout;
 E int32 ReadTimeout;
 E int32 TimeoutCheck;
@@ -116,7 +117,6 @@ E int readonly;
 E int nofork;
 E int noexpire;
 E int noakill;
-E int forceload;
 E int encrypt_all;
 
 E int linked;
@@ -137,9 +137,6 @@ E void disconnect_callback(Socket* s, void* param);
 E void readfirstline_callback(Socket* s, void* param_unused);
 E void readline_callback(Socket* s, void* param_unused);
 
-E int lock_data(void);
-E int is_data_locked(void);
-E int unlock_data(void);
 E void save_data_now(void);
 
 /**** messages.c ****/
