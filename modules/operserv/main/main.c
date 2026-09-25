@@ -188,8 +188,7 @@ static void *next_operserv_data(void)          { return NULL;           }
 
 /*************************************************************************/
 
-/* Routines to allow external access to OperServ data (for xml-import and
- * xml-export) */
+/* Routines to allow external access to OperServ data (for httpd/dbaccess) */
 
 EXPORT_FUNC(get_operserv_data)
 int get_operserv_data(int what, void *ret)
@@ -384,6 +383,17 @@ static int introduce_operserv(const char *nick)
 
 /*************************************************************************/
 
+static int operserv(const char *source, const char *target, char *buf);
+
+/* Run a command again once its password is ready (see encrypt.h). */
+
+static void operserv_replay(User *u, char *line)
+{
+    operserv(u->nick, s_OperServ, line);
+}
+
+/*************************************************************************/
+
 /* Main OperServ routine. */
 
 static int operserv(const char *source, const char *target, char *buf)
@@ -414,8 +424,11 @@ static int operserv(const char *source, const char *target, char *buf)
         return 1;
     }
 
-    /* Don't log stuff that might be passwords */
-    if (strnicmp(buf, "SU ", 3) == 0) {
+    /* Don't log stuff that might be passwords, and don't log a command
+     * twice when it is run again for its password (see encrypt.h) */
+    if (password_replaying()) {
+        /* logged the first time */
+    } else if (strnicmp(buf, "SU ", 3) == 0) {
         module_log("%s: SU xxxxxx", source);
     } else if (strnicmp(buf, "SET ", 4) == 0
                && (s = stristr(buf, "SUPASS")) != NULL
@@ -428,9 +441,10 @@ static int operserv(const char *source, const char *target, char *buf)
         module_log("%s: %s", source, buf);
     }
 
+    password_command_begin(THIS_MODULE, u, operserv_replay, buf);
     cmd = strtok(buf, " ");
     if (!cmd) {
-        return 1;
+        /* nothing */
     } else if (stricmp(cmd, "\1PING") == 0) {
         if (!(s = strtok_remaining()))
             s = "\1";
@@ -439,6 +453,7 @@ static int operserv(const char *source, const char *target, char *buf)
         if (call_callback_2(cb_command, u, cmd) <= 0)
             run_cmd(s_OperServ, u, THIS_MODULE, cmd);
     }
+    password_command_end();
 
     return 1;
 }
@@ -1170,7 +1185,10 @@ static void do_su(User *u)
         syntax_error(s_OperServ, u, "SU", OPER_SU_SYNTAX);
     } else if (operserv_data.no_supass) {
         notice_lang(s_OperServ, u, OPER_SU_NO_PASSWORD);
-    } else if ((res = check_password(password, &operserv_data.supass)) < 0) {
+    } else if ((res = check_password(password, &operserv_data.supass))
+               == PASSWORD_PENDING) {
+        /* the command will be run again */
+    } else if (res < 0) {
         notice_lang(s_OperServ, u, OPER_SU_FAILED);
     } else if (res == 0) {
         module_log("Failed SU by %s!%s@%s", u->nick, u->username, u->host);
@@ -1268,7 +1286,9 @@ static void do_set(User *u)
         }
         res = encrypt_password(setting, strlen(setting), &newpass);
         memset(setting, 0, strlen(setting));
-        if (res != 0) {
+        if (res == PASSWORD_PENDING) {
+            /* the command will be run again */
+        } else if (res != 0) {
             notice_lang(s_OperServ, u, OPER_SET_SUPASS_FAILED);
         } else {
             operserv_data.no_supass = 0;
@@ -2183,35 +2203,6 @@ int init_module(void)
         module_log("Unable to register database table");
         exit_module(0);
         return 0;
-    }
-
-    if (encrypt_all && !operserv_data.no_supass) {
-        if ((EncryptionType && operserv_data.supass.cipher
-             && strcmp(operserv_data.supass.cipher, EncryptionType) == 0)
-         || (!EncryptionType && !operserv_data.supass.cipher)
-        ) {
-            module_log("-encrypt-all: Superuser password already encrypted");
-        } else {
-            char plainbuf[PASSMAX];
-            int res;
-
-            res = decrypt_password(&operserv_data.supass, plainbuf,
-                                   sizeof(plainbuf));
-            if (res != 0) {
-                module_log("-encrypt-all: Unable to decrypt superuser"
-                           " password");
-            } else {
-                res = encrypt_password(plainbuf, strlen(plainbuf),
-                                       &operserv_data.supass);
-                memset(plainbuf, 0, sizeof(plainbuf));
-                if (res != 0) {
-                    module_log("-encrypt-all: Unable to re-encrypt"
-                               " superuser password");
-                } else {
-                    module_log("Re-encrypted superuser password");
-                }
-            }
-        }
     }
 
     cmd_RAW = lookup_cmd(THIS_MODULE, "RAW");

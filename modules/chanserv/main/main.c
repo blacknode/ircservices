@@ -541,10 +541,10 @@ long count_channelinfo(const char *where, const char *const *params,
 }
 
 EXPORT_FUNC(prefetch_channelinfo)
-int prefetch_channelinfo(const char **names, int count,
+int prefetch_channelinfo(Module *owner, const char **names, int count,
                          void (*done)(void *arg), void *arg)
 {
-    return store_prefetch(THIS_MODULE, &chan_type, names, count, done, arg);
+    return store_prefetch(owner, &chan_type, names, count, done, arg);
 }
 
 /*************************************************************************/
@@ -680,6 +680,17 @@ static int introduce_chanserv(const char *nick)
 
 /*************************************************************************/
 
+static int chanserv(const char *source, const char *target, char *buf);
+
+/* Run a command again once its password is ready (see encrypt.h). */
+
+static void chanserv_replay(User *u, char *line)
+{
+    chanserv(u->nick, s_ChanServ, line);
+}
+
+/*************************************************************************/
+
 /* Main ChanServ routine. */
 
 static int chanserv(const char *source, const char *target, char *buf)
@@ -696,10 +707,11 @@ static int chanserv(const char *source, const char *target, char *buf)
         return 1;
     }
 
+    password_command_begin(THIS_MODULE, u, chanserv_replay, buf);
     cmd = strtok(buf, " ");
 
     if (!cmd) {
-        return 1;
+        /* nothing */
     } else if (stricmp(cmd, "\1PING") == 0) {
         const char *s;
         if (!(s = strtok_remaining()))
@@ -716,6 +728,7 @@ static int chanserv(const char *source, const char *target, char *buf)
         if (call_callback_2(cb_command, u, cmd) <= 0)
             run_cmd(s_ChanServ, u, THIS_MODULE, cmd);
     }
+    password_command_end();
     return 1;
 }
 
@@ -807,7 +820,7 @@ static void chan_record_fetch(Channel *c)
     }
     names[0] = c->name;
     c->ci_pending = 1;
-    if (!prefetch_channelinfo(names, 1, chan_record_ready,
+    if (!prefetch_channelinfo(THIS_MODULE, names, 1, chan_record_ready,
                               sstrdup(c->name))) {
         c->ci_pending = 0;
         chan_record_link(c, get_channelinfo(c->name));
@@ -1273,10 +1286,13 @@ static void do_register(User *u)
 
     } else {
         Password passbuf;
+        int res;
 
         init_password(&passbuf);
-        if (encrypt_password(pass, strlen(pass), &passbuf) != 0) {
+        if ((res = encrypt_password(pass, strlen(pass), &passbuf)) != 0) {
             clear_password(&passbuf);
+            if (res == PASSWORD_PENDING)
+                return;  /* the command will be run again */
             memset(pass, 0, strlen(pass));
             module_log("Failed to encrypt password for %s (register)", chan);
             notice_lang(s_ChanServ, u, CHAN_REGISTRATION_FAILED);
@@ -1339,7 +1355,9 @@ static void do_identify(User *u)
         notice_lang(s_ChanServ, u, CHAN_X_SUSPENDED, chan);
     } else {
         int res = check_password(pass, &ci->founderpass);
-        if (res == 1) {
+        if (res == PASSWORD_PENDING) {
+            /* the command will be run again */
+        } else if (res == 1) {
             ci->bad_passwords = 0;
             ci->last_used = time(NULL);
             if (!is_identified(u, ci)) {
@@ -1387,7 +1405,9 @@ static void do_drop(User *u)
         notice_lang(s_ChanServ, u, CHAN_X_SUSPENDED, chan);
         put_channelinfo(ci);
     } else if ((res = check_password(pass, &ci->founderpass)) != 1) {
-        if (res < 0) {
+        if (res == PASSWORD_PENDING) {
+            /* the command will be run again */
+        } else if (res < 0) {
             module_log("check_password failed for %s", ci->name);
             notice_lang(s_ChanServ, u, INTERNAL_ERROR);
         } else {
@@ -2825,43 +2845,6 @@ static int do_reconfigure(int after_configure)
 
 /*************************************************************************/
 
-/* -encrypt-all: one channel. */
-typedef struct {
-    int done, already, failed;
-} EncryptAllCount;
-
-static int reencrypt_one(ChannelInfo *ci, void *arg)
-{
-    EncryptAllCount *counts = arg;
-    char plainbuf[PASSMAX];
-    Password newpass;
-
-    if ((EncryptionType && ci->founderpass.cipher
-         && strcmp(ci->founderpass.cipher, EncryptionType) == 0)
-     || (!EncryptionType && !ci->founderpass.cipher)
-    ) {
-        counts->already++;
-        return 0;
-    }
-    init_password(&newpass);
-    if (decrypt_password(&ci->founderpass, plainbuf, sizeof(plainbuf)) != 0) {
-        counts->failed++;
-        return 0;
-    }
-    if (encrypt_password(plainbuf, strlen(plainbuf), &newpass) != 0) {
-        memset(plainbuf, 0, sizeof(plainbuf));
-        counts->failed++;
-        return 0;
-    }
-    memset(plainbuf, 0, sizeof(plainbuf));
-    copy_password(&ci->founderpass, &newpass);
-    clear_password(&newpass);
-    counts->done++;
-    return 0;
-}
-
-/*************************************************************************/
-
 int init_module(void)
 {
     Command *cmd;
@@ -2987,14 +2970,6 @@ int init_module(void)
         exit_module(0);
         return 0;
     }
-
-    if (encrypt_all) {
-        EncryptAllCount counts = {0, 0, 0};
-        module_log("Re-encrypting passwords...");
-        foreach_channelinfo(NULL, NULL, 0, reencrypt_one, &counts);
-        module_log("%d passwords re-encrypted, %d already encrypted, %d"
-                   " failed", counts.done, counts.already, counts.failed);
-    } /* if (encrypt_all) */
 
     if (linked)
         introduce_chanserv(NULL);

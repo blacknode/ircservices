@@ -5,6 +5,9 @@
  * Parts written by Andrew Kempe and others.
  * This program is free but copyrighted software; see the file GPL.txt for
  * details.
+ *
+ * Shows a request as httpd/main hands it to a module: what a module
+ * writer sees.  One route (DebugURL), for GET and POST.
  */
 
 #include "services.h"
@@ -18,77 +21,33 @@ static Module *module_httpd;
 
 static char *DebugURL;
 
+/* The URL the routes were claimed for (DebugURL may change on REHASH). */
+static char *claimed;
+
 /*************************************************************************/
-/*************************** Request callback ****************************/
+/**************************** Request handler ****************************/
 /*************************************************************************/
 
-static int do_request(Client *c, int *close_ptr)
+static int do_request(http_req_t id, const struct HttpRequest *req,
+                      struct HttpResponse *res, void *user)
 {
-    /* Check whether this URL belongs to us.  If not, pass control on to
-     * the next callback function.
-     */
-    if (strcmp(c->url, DebugURL) != 0)
-        return 0;
+    unsigned int i;
 
-
-    /* Send initial "200 OK" line and Date: header. */
-    http_send_response(c, HTTP_S_OK);
-
-    /* If not a HEAD request, indicate that we will close the connection
-     * after this request (because we don't send a Content-Length:
-     * header).  If the request is a HEAD request, the blank line after
-     * the headers will signal the end of the response, so we can leave
-     * the connection open for further requests (keepalive).
-     */
-    if (c->method != METHOD_HEAD)
-        sockprintf(c->socket, "Connection: close\r\n");
-
-    /* Send Content-Type: header and end header portion of response */
-    sockprintf(c->socket, "Content-Type: text/plain\r\n\r\n");
-
-
-    /* Now send the body part of the response for non-HEAD requests.
-     *
-     * RFC2616 9.4: Server MUST NOT return a message-body in the response
-     *              to a HEAD request.
-     */
-    if (c->method != METHOD_HEAD) {
-        int i;
-
-        /* Write data to socket. */
-        sockprintf(c->socket, "address: %s\n", c->address);
-        sockprintf(c->socket, "request_len: %d\n", c->request_len);
-        sockprintf(c->socket, "version_major: %d\n", c->version_major);
-        sockprintf(c->socket, "version_minor: %d\n", c->version_minor);
-        sockprintf(c->socket, "method: %d\n", c->method);
-        sockprintf(c->socket, "url: %s\n", c->url);
-        sockprintf(c->socket, "data_len: %d\n", c->data_len);
-        sockprintf(c->socket, "headers_count: %d\n", c->headers_count);
-        ARRAY_FOREACH (i, c->headers)
-            sockprintf(c->socket, "headers[%d]: %s: %s\n", i, c->headers[i],
-                       c->headers[i] + strlen(c->headers[i]) + 1);
-        sockprintf(c->socket, "variables_count: %d\n", c->variables_count);
-        ARRAY_FOREACH (i, c->variables)
-            sockprintf(c->socket, "variables[%d]: %s: %s\n", i,c->variables[i],
-                       c->variables[i] + strlen(c->variables[i]) + 1);
-
-        /* We did not specify a Content-Length: header, so we must close
-         * the connection to signal end-of-data to the client.  However,
-         * we MUST NOT call disconn() directly as that could lead to
-         * use of invalid pointers in the main HTTP server module.
-         * Instead, we set `close_ptr' nonzero, which tells the server to
-         * close the connection when control returns to it.
-         */
-        *close_ptr = 1;
+    http_response_set(res, HTTP_S_OK, "text/plain; charset=utf-8", NULL, 0);
+    http_response_printf(res, "id: %lu\n", id);
+    http_response_printf(res, "method: %s\n", req->hreq_method);
+    http_response_printf(res, "path: %s\n", req->hreq_path);
+    http_response_printf(res, "query: %s\n", req->hreq_query);
+    http_response_printf(res, "remote: %s\n", req->hreq_remote);
+    http_response_printf(res, "tls: %s\n", req->hreq_tls ? "yes" : "no");
+    http_response_printf(res, "headers: %u\n", req->hreq_nheaders);
+    for (i = 0; i < req->hreq_nheaders; i++) {
+        http_response_printf(res, "headers[%u]: %s: %s\n", i,
+                             req->hreq_headers[i].hh_name,
+                             req->hreq_headers[i].hh_value);
     }
-    /* Note that we MUST NOT explicitly set `close_ptr' to zero for HEAD
-     * requests, or any other request for which we can keep the connection
-     * alive; the client may be an old (HTTP/1.0) client that can't handle
-     * keepalive, or it may have explicitly requested the connection be
-     * closed (e.g. with a "Connection: close" header).
-     */
-
-    /* URL was handled by this module; terminate callback chain. */
+    http_response_printf(res, "body: %lu bytes\n",
+                         (unsigned long)req->hreq_bodylen);
     return 1;
 }
 
@@ -103,6 +62,40 @@ ConfigDirective module_config[] = {
 
 /*************************************************************************/
 
+static void unclaim(void)
+{
+    if (claimed) {
+        http_del_route(THIS_MODULE, "GET", claimed);
+        http_del_route(THIS_MODULE, "POST", claimed);
+        free(claimed);
+        claimed = NULL;
+    }
+}
+
+static int claim(void)
+{
+    unclaim();
+    if (!http_add_route(THIS_MODULE, "GET", DebugURL, do_request, NULL)
+     || !http_add_route(THIS_MODULE, "POST", DebugURL, do_request, NULL)
+    ) {
+        module_log("Unable to claim %s (not a path, or already claimed)",
+                   DebugURL);
+        http_del_routes(THIS_MODULE);
+        return 0;
+    }
+    claimed = sstrdup(DebugURL);
+    return 1;
+}
+
+static int do_reconfigure(int after_configure)
+{
+    if (after_configure && (!claimed || strcmp(claimed, DebugURL) != 0))
+        claim();
+    return 0;
+}
+
+/*************************************************************************/
+
 int init_module(void)
 {
     module_httpd = find_module("httpd/main");
@@ -113,11 +106,13 @@ int init_module(void)
     }
     use_module(module_httpd);
 
-    if (!add_callback(module_httpd, "request", do_request)) {
-        module_log("Unable to add callback");
+    if (!add_callback(NULL, "reconfigure", do_reconfigure) || !claim()) {
         exit_module(0);
         return 0;
     }
+    if (!http_available())
+        module_log("httpd/main has no ListenTo: %s will not be reached",
+                   DebugURL);
 
     return 1;
 }
@@ -126,8 +121,10 @@ int init_module(void)
 
 int exit_module(int shutdown_unused)
 {
+    remove_callback(NULL, "reconfigure", do_reconfigure);
     if (module_httpd) {
-        remove_callback(module_httpd, "request", do_request);
+        unclaim();
+        http_del_routes(THIS_MODULE);
         unuse_module(module_httpd);
         module_httpd = NULL;
     }

@@ -1,417 +1,397 @@
-/* HTTP server common utility routines.
+/* httpd/main: building responses and reading requests.
  *
  * IRC Services is copyright (c) 1996-2009 Andrew Church.
  *     E-mail: <achurch@achurch.org>
  * Parts written by Andrew Kempe and others.
  * This program is free but copyrighted software; see the file GPL.txt for
  * details.
+ *
+ * Main thread only.  See modules/httpd/http.h.
  */
 
-#include "services.h"
 #include "modules.h"
-#include "modules/httpd/http.h"
+#include "services.h"
+
+#include "httpd_int.h"
 
 /*************************************************************************/
-/*************************************************************************/
 
-/* List of response texts for each response code, and inline functions to
- * retrieve them.
- */
-
-static struct {
-    int code;
-    const char *text;
-    const char *desc;
-} http_response_text[] = {
-
-    { 100, "Continue" },
-    { 101, "Switching Protocols" },
-
-    { 200, "OK" },
-    { 201, "Created" },
-    { 202, "Accepted" },
-    { 203, "Non-Authoritative Information" },
-    { 204, "No Content" },
-    { 205, "Reset Content" },
-    { 206, "Partial Content" },
-
-    { 300, "Multiple Choices" },
-    { 301, "Moved Permanently" },
-    { 302, "Found" },
-    { 303, "See Other" },
-    { 304, "Not Modified" },
-    { 305, "Use Proxy" },
-    { 307, "Temporary Redirect" },
-
-    { 400, "Bad Request",
-           "Your browser sent a request this server could not understand." },
-    { 401, "Unauthorized",
-           "You are not authorized to access this resource." },
-    { 402, "Payment Required" },
-    { 403, "Forbidden",
-           "You are not permitted to access this resource." },
-    { 404, "Not Found",
-           "The requested resource could not be found." },
-    { 405, "Method Not Allowed",
-           "Your browser sent an invalid method for this resource." },
-    { 406, "Not Acceptable" },
-    { 407, "Proxy Authentication Required" },
-    { 408, "Request Timeout" },
-    { 409, "Conflict" },
-    { 410, "Gone" },
-    { 411, "Length Required",
-           "Your browser sent an invalid request to the server." },
-    { 412, "Precondition Failed" },
-    { 413, "Request Entity Too Large" },
-    { 414, "Request-URI Too Large" },
-    { 415, "Unsupported Media Type" },
-    { 416, "Requested Range Not Satisfiable" },
-    { 417, "Expectation Failed" },
-
-    { 500, "Internal Server Error",
-           "An internal server error has occurred." },
-    { 501, "Not Implemented",
-           "The requested method is not implemented by this server." },
-    { 502, "Bad Gateway" },
-    { 503, "Service Unavailable"
-           "Your request cannot currently be processed.  Please try again"
-           " later." },
-    { 504, "Gateway Timeout" },
-    { 505, "HTTP Version Not Supported" },
-
-    { -1 }
-};
-
-static inline const char *http_lookup_response(int code)
+/* The descriptive text of an error page, for the codes a browser user
+ * might see. */
+static const char* status_description(int status)
 {
-    int i;
-    for (i = 0; http_response_text[i].code > 0; i++) {
-        if (http_response_text[i].code == code)
-            return http_response_text[i].text;
-    }
-    return NULL;
-}
-
-static inline const char *http_lookup_description(int code)
-{
-    int i;
-    for (i = 0; http_response_text[i].code > 0; i++) {
-        if (http_response_text[i].code == code)
-            return http_response_text[i].desc;
-    }
-    return NULL;
-}
-
-/*************************************************************************/
-/*************************************************************************/
-
-/* Return the value of the named header from the client request.  If the
- * request did not include the named header, return NULL.  If `header' is
- * NULL, return the next header with the same name as the previous call
- * which included a non-NULL `header' or NULL if none, a la strtok().
- */
-
-char *http_get_header(Client *c, const char *header)
-{
-    int i;
-    static const char *last_header = NULL;
-    static int last_return;
-
-    if (!c) {
-        module_log("BUG: http_get_header(): client is NULL!");
-        return NULL;
-    }
-    if (!header) {
-        if (!last_header)
+    switch (status) {
+        case 400:
+            return "Your browser sent a request this server could not"
+                   " understand.";
+        case 401:
+            return "You are not authorized to access this resource.";
+        case 403:
+            return "You are not permitted to access this resource.";
+        case 404:
+            return "The requested resource could not be found.";
+        case 405:
+            return "Your browser sent an invalid method for this resource.";
+        case 500:
+            return "The server encountered an internal error.";
+        case 503:
+            return "The server is too busy to answer; try again later.";
+        case 504:
+            return "The server did not find the answer in time.";
+        default:
             return NULL;
-        header = last_header;
-        i = (last_return>=c->headers_count) ? c->headers_count : last_return+1;
-    } else {
-        i = 0;
     }
-    last_header = header;
-    while (i < c->headers_count) {
-        if (stricmp(c->headers[i], header) == 0) {
-            last_return = i;
-            return c->headers[i] + strlen(c->headers[i]) + 1;
-        }
-        i++;
-    }
-    last_return = i;
-    return NULL;
+}
+
+/*************************************************************************/
+/*************************************************************************/
+
+/* Responses. */
+
+void httpd_response_init(struct HttpResponse* res)
+{
+    memset(res, 0, sizeof(*res));
+}
+
+void httpd_response_free(struct HttpResponse* res)
+{
+    free(res->hres_body);
+    res->hres_body = NULL;
+    res->hres_bodylen = res->hres_bodymax = 0;
 }
 
 /*************************************************************************/
 
-/* Return the value of the named variable from the client request.  If the
- * request did not include the named variable, return NULL.  If `variable'
- * is NULL, return the next variable with the same name as the previous
- * call which included a non-NULL `variable' or NULL if none, a la strtok().
- * Variable names are assumed to be case-insensitive.
- */
-
-char *http_get_variable(Client *c, const char *variable)
+EXPORT_FUNC(http_response_write)
+void http_response_write(struct HttpResponse* res, const char* data,
+                         size_t len)
 {
-    int i;
-    static const char *last_variable = NULL;
-    static int last_return;
+    if (res->hres_overflow || !len)
+        return;
+    if (res->hres_bodylen + len > HTTP_REPLY_MAX) {
+        res->hres_overflow = 1;
+        return;
+    }
+    if (res->hres_bodylen + len + 1 > res->hres_bodymax) {
+        size_t size = res->hres_bodymax ? res->hres_bodymax : 4096;
+        while (size < res->hres_bodylen + len + 1)
+            size *= 2;
+        res->hres_body = srealloc(res->hres_body, size);
+        res->hres_bodymax = size;
+    }
+    memcpy(res->hres_body + res->hres_bodylen, data, len);
+    res->hres_bodylen += len;
+    res->hres_body[res->hres_bodylen] = 0;
+}
 
-    if (!c) {
-        module_log("BUG: http_get_variable(): client is NULL!");
-        return NULL;
+EXPORT_FUNC(http_response_vprintf)
+void http_response_vprintf(struct HttpResponse* res, const char* fmt,
+                           va_list args)
+{
+    char buf[4096];
+    va_list copy;
+    int len;
+
+    va_copy(copy, args);
+    len = vsnprintf(buf, sizeof(buf), fmt, copy);
+    va_end(copy);
+    if (len < 0)
+        return;
+    if ((size_t)len < sizeof(buf)) {
+        http_response_write(res, buf, len);
     }
-    if (!variable) {
-        if (!last_variable)
-            return NULL;
-        variable = last_variable;
-        i = (last_return>=c->variables_count) ? c->variables_count
-                                              : last_return+1;
-    } else {
-        i = 0;
+    else {
+        char* big = smalloc(len + 1);
+        vsnprintf(big, len + 1, fmt, args);
+        http_response_write(res, big, len);
+        free(big);
     }
-    last_variable = variable;
-    while (i < c->variables_count) {
-        if (stricmp(c->variables[i], variable) == 0) {
-            last_return = i;
-            return c->variables[i] + strlen(c->variables[i]) + 1;
-        }
-        i++;
-    }
-    last_return = i;
-    return NULL;
+}
+
+EXPORT_FUNC(http_response_printf)
+void http_response_printf(struct HttpResponse* res, const char* fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    http_response_vprintf(res, fmt, args);
+    va_end(args);
 }
 
 /*************************************************************************/
 
-/* HTML-quote (&...;) any HTML-special characters (<,>,&) in `str', and
- * place the result in `outbuf', truncating to `outsize' bytes (including
- * trailing null).  &...; entities inserted by this routine will never be
- * truncated.  Returns `outbuf' on success, NULL on error (invalid
- * parameter).
- */
-
-char *http_quote_html(const char *str, char *outbuf, int32 outsize)
+EXPORT_FUNC(http_response_set)
+void http_response_set(struct HttpResponse* res, int status, const char* type,
+                       const char* body, size_t bodylen)
 {
-    char *retval = outbuf;
+    res->hres_status = status;
+    strbcpy(res->hres_type, type ? type : "text/plain");
+    res->hres_bodylen = 0;
+    res->hres_overflow = 0;
+    res->hres_file[0] = 0;
+    if (body)
+        http_response_write(res, body, bodylen);
+}
 
-    if (!str || !outbuf || outsize <= 0) {
-        if (outsize <= 0)
-            module_log("BUG: http_quote_html(): bad outsize (%d)!", outsize);
-        else
-            module_log("BUG: http_quote_html(): %s is NULL!",
-                       !str ? "str" : "outbuf");
-        errno = EINVAL;
-        return NULL;
+EXPORT_FUNC(http_response_header)
+int http_response_header(struct HttpResponse* res, const char* name,
+                         const char* value)
+{
+    struct HttpHeader* h;
+
+    if (!name || !*name || res->hres_nheaders >= HTTP_HEADERS_MAX)
+        return 0;
+    h = &res->hres_headers[res->hres_nheaders++];
+    strbcpy(h->hh_name, name);
+    strbcpy(h->hh_value, value ? value : "");
+    return 1;
+}
+
+EXPORT_FUNC(http_response_error)
+void http_response_error(struct HttpResponse* res, int status, const char* fmt,
+                         ...)
+{
+    http_response_set(res, status, "text/html; charset=utf-8", NULL, 0);
+    if (fmt) {
+        va_list args;
+        va_start(args, fmt);
+        http_response_vprintf(res, fmt, args);
+        va_end(args);
     }
-    while (*str && outsize > 1) {
+    else {
+        const char* desc = status_description(status);
+        http_response_printf(res,
+                             "<html><head><title>%d %s</title></head><body>"
+                             "<h1 align=center>%s</h1>%s</body></html>\n",
+                             status, http_status_text(status),
+                             http_status_text(status), desc ? desc : "");
+    }
+}
+
+EXPORT_FUNC(http_response_redirect)
+void http_response_redirect(struct HttpResponse* res, int status,
+                            const char* location)
+{
+    http_response_set(res, status, "text/plain", NULL, 0);
+    http_response_header(res, "Location", location);
+}
+
+EXPORT_FUNC(http_response_file)
+int http_response_file(struct HttpResponse* res, const struct HttpRequest* req,
+                       const char* path, const char* type)
+{
+    const char* value;
+
+    if (!path || !*path || strlen(path) > HTTP_PATH_MAX)
+        return 0;
+    strbcpy(res->hres_file, path);
+    /* Empty: the server thread guesses from the name. */
+    strbcpy(res->hres_type, type && *type ? type : "");
+    if (!res->hres_status)
+        res->hres_status = HTTP_S_OK;
+    /* The body is not used for this answer. */
+    res->hres_bodylen = 0;
+    if (req) {
+        if ((value = http_request_header(req, "Range")))
+            strbcpy(res->hres_range, value);
+        if ((value = http_request_header(req, "If-None-Match")))
+            strbcpy(res->hres_inm, value);
+    }
+    return 1;
+}
+
+/*************************************************************************/
+/*************************************************************************/
+
+/* Requests. */
+
+EXPORT_FUNC(http_request_header)
+const char* http_request_header(const struct HttpRequest* req,
+                                const char* name)
+{
+    unsigned int i;
+
+    if (!req || !name)
+        return NULL;
+    for (i = 0; i < req->hreq_nheaders; i++) {
+        if (stricmp(req->hreq_headers[i].hh_name, name) == 0)
+            return req->hreq_headers[i].hh_value;
+    }
+    return NULL;
+}
+
+/* Look for `name' in the urlencoded `data' of `len' bytes. */
+static char* find_var(const char* data, size_t len, const char* name,
+                      char* buf, size_t size)
+{
+    size_t namelen = strlen(name);
+    const char* end = data + len;
+
+    while (data < end) {
+        const char* amp = memchr(data, '&', end - data);
+        const char* stop = amp ? amp : end;
+        const char* eq = memchr(data, '=', stop - data);
+        const char* key_end = eq ? eq : stop;
+        char key[256];
+        size_t n = key_end - data;
+
+        if (n < sizeof(key)) {
+            memcpy(key, data, n);
+            key[n] = 0;
+            http_unquote_url(key);
+            if (strlen(key) == namelen && stricmp(key, name) == 0) {
+                n = eq ? (size_t)(stop - eq - 1) : 0;
+                if (n >= size)
+                    n = size - 1;
+                if (n)
+                    memcpy(buf, eq + 1, n);
+                buf[n] = 0;
+                return http_unquote_url(buf);
+            }
+        }
+        data = stop + 1;
+    }
+    return NULL;
+}
+
+EXPORT_FUNC(http_request_var)
+char* http_request_var(const struct HttpRequest* req, const char* name,
+                       char* buf, size_t size)
+{
+    const char* type;
+    char* ret;
+
+    if (!req || !name || !buf || !size)
+        return NULL;
+    if (req->hreq_query &&
+        (ret = find_var(req->hreq_query, strlen(req->hreq_query), name, buf,
+                        size)))
+        return ret;
+    type = http_request_header(req, "Content-Type");
+    if (req->hreq_bodylen && type &&
+        strnicmp(type, "application/x-www-form-urlencoded", 33) == 0)
+        return find_var(req->hreq_body, req->hreq_bodylen, name, buf, size);
+    return NULL;
+}
+
+/*************************************************************************/
+/*************************************************************************/
+
+/* Utilities. */
+
+EXPORT_FUNC(http_quote_html)
+char* http_quote_html(const char* str, char* outbuf, size_t outsize)
+{
+    char* out = outbuf;
+    size_t left = outsize;
+
+    if (!outsize)
+        return outbuf;
+    while (str && *str && left > 1) {
+        const char* ent = NULL;
         switch (*str) {
-          case '&':
-            if (outsize < 6) {
-                outsize = 0;
+            case '&':
+                ent = "&amp;";
                 break;
-            }
-            memcpy(outbuf, "&amp;", 5);
-            outbuf += 5;
-            outsize -= 5;
-            break;
-          case '<':
-            if (outsize < 5) {
-                outsize = 0;
+            case '<':
+                ent = "&lt;";
                 break;
-            }
-            memcpy(outbuf, "&lt;", 5);
-            outbuf += 4;
-            outsize -= 4;
-            break;
-          case '>':
-            if (outsize < 5) {
-                outsize = 0;
+            case '>':
+                ent = "&gt;";
                 break;
-            }
-            memcpy(outbuf, "&gt;", 5);
-            outbuf += 4;
-            outsize -= 4;
-            break;
-          default:
-            *outbuf++ = *str;
-            outsize--;
-            break;
+            case '"':
+                ent = "&quot;";
+                break;
+        }
+        if (ent) {
+            size_t n = strlen(ent);
+            if (left <= n)
+                break; /* never a truncated entity */
+            memcpy(out, ent, n);
+            out += n;
+            left -= n;
+        }
+        else {
+            *out++ = *str;
+            left--;
         }
         str++;
     }
-    *outbuf = 0;
-    return retval;
+    *out = 0;
+    return outbuf;
 }
 
-/*************************************************************************/
-
-/* URL-quote (%nn) any special characters (anything except A-Z a-z 0-9 - . _)
- * and place the result in `outbuf', truncating to `outsize' bytes (including
- * trailing null).  %nn tokens inserted by this routine will never be
- * truncated.  Returns `outbuf' on success, NULL on error (invalid parameter).
- */
-
-char *http_quote_url(const char *str, char *outbuf, int32 outsize)
+EXPORT_FUNC(http_quote_url)
+char* http_quote_url(const char* str, char* outbuf, size_t outsize)
 {
-    char *retval = outbuf;
+    static const char hex[] = "0123456789ABCDEF";
+    char* out = outbuf;
+    size_t left = outsize;
 
-    if (!str || !outbuf || outsize <= 0) {
-        if (outsize <= 0)
-            module_log("BUG: http_quote_url(): bad outsize (%d)!", outsize);
-        else
-            module_log("BUG: http_quote_url(): %s is NULL!",
-                       !str ? "str" : "outbuf");
-        errno = EINVAL;
-        return NULL;
-    }
-    while (*str && outsize > 1) {
-        if ((*str < 'A' || *str > 'Z')
-         && (*str < 'a' || *str > 'z')
-         && (*str < '0' || *str > '9')
-         && *str != '-'
-         && *str != '.'
-         && *str != '_'
-        ) {
-            if (*str == ' ') {
-                *outbuf++ = '+';
-                outsize--;
-            } else {
-                if (outsize < 4) {
-                    outsize = 0;
-                    break;
-                }
-                sprintf(outbuf, "%%%.02X", (unsigned char)*str);
-                outbuf += 3;
-                outsize -= 3;
-            }
-        } else {
-            *outbuf++ = *str;
-            outsize--;
+    if (!outsize)
+        return outbuf;
+    while (str && *str && left > 1) {
+        unsigned char c = (unsigned char)*str;
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_') {
+            *out++ = c;
+            left--;
+        }
+        else {
+            if (left <= 3)
+                break; /* never a truncated escape */
+            *out++ = '%';
+            *out++ = hex[c >> 4];
+            *out++ = hex[c & 15];
+            left -= 3;
         }
         str++;
     }
-    *outbuf = 0;
-    return retval;
+    *out = 0;
+    return outbuf;
 }
 
-/*************************************************************************/
-
-/* Remove URL-quoting (%nn) from the string in the given buffer, and return
- * the buffer, or NULL on failure (invalid parameter).  If the string ends
- * with an incomplete %nn token, it is discarded; invalid %nn tokens (i.e.
- * "nn" is not a pair of hex digits) are also discarded.  Overwrites the
- * buffer.
- */
-
-char *http_unquote_url(char *buf)
+static int hexval(char c)
 {
-    char *retval = buf, *out = buf, *s;
-    char hexbuf[3] = {0,0,0};
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
 
-    if (!buf) {
-        module_log("BUG: http_unquote_url(): buf is NULL!");
-        errno = EINVAL;
+EXPORT_FUNC(http_unquote_url)
+char* http_unquote_url(char* buf)
+{
+    char *in = buf, *out = buf;
+
+    if (!buf)
         return NULL;
-    }
-    while (*buf) {
-        if (*buf == '%') {
-            if (!buf[1] || !buf[2])
+    while (*in) {
+        if (*in == '%') {
+            int hi, lo;
+            if (!in[1] || !in[2])
                 break;
-            hexbuf[0] = buf[1];
-            hexbuf[1] = buf[2];
-            buf += 3;
-            *out = strtol(hexbuf, &s, 16);
-            if (!*s)  /* i.e. both digits were valid */
-                out++;
-            /* else discard character */
-        } else if (*buf++ == '+') {
+            hi = hexval(in[1]);
+            lo = hexval(in[2]);
+            if (hi >= 0 && lo >= 0 && (hi || lo))
+                *out++ = (char)(hi << 4 | lo);
+            /* else discard it (a %00 included) */
+            in += 3;
+        }
+        else if (*in == '+') {
             *out++ = ' ';
-        } else {
-            *out++ = buf[-1];
+            in++;
+        }
+        else {
+            *out++ = *in++;
         }
     }
     *out = 0;
-    return retval;
+    return buf;
 }
-
-/*************************************************************************/
-
-/* Send an HTTP response line with the given code, plus the Date header. */
-
-void http_send_response(Client *c, int code)
-{
-    const char *text;
-    time_t t;
-    char datebuf[64];
-
-    if (!c) {
-        module_log("BUG: http_send_response(): client is NULL!");
-        return;
-    } else if (code < 0 || code > 999) {
-        module_log("BUG: http_send_response(): code is invalid! (%d)", code);
-        return;
-    }
-    text = http_lookup_response(code);
-    if (text)
-        sockprintf(c->socket, "HTTP/1.1 %03d %s\r\n", code, text);
-    else
-        sockprintf(c->socket, "HTTP/1.1 %03d Code %03d\r\n", code, code);
-    time(&t);
-    if (strftime(datebuf, sizeof(datebuf), "%a, %d %b %Y %H:%M:%S GMT",
-                 gmtime(&t)) > 0)
-        sockprintf(c->socket, "Date: %s\r\n", datebuf);
-    else
-        module_log("http_send_response(): strftime() failed");
-}
-
-/*************************************************************************/
-
-/* Send an error message with the given code and body text, and close the
- * client connection.  If `format' is NULL, the response text for the given
- * code ("Error NNN" if the code is unknown) and descriptive text, if any,
- * are used as the body text.  Note that the client data structure will be
- * unusable after calling this routine.
- */
-
-void http_error(Client *c, int code, const char *format, ...)
-{
-    if (!c) {
-        module_log("BUG: http_error(): client is NULL!");
-        return;
-    } else if (code < 0 || code > 999) {
-        module_log("BUG: http_error(): code is invalid! (%d)", code);
-        http_error(c, HTTP_F_INTERNAL_SERVER_ERROR, NULL);
-        return;
-    }
-    http_send_response(c, code);
-    sockprintf(c->socket,
-               "Content-Type: text/html\r\nConnection: close\r\n\r\n");
-    if (c->method != METHOD_HEAD) {
-        if (format) {
-            va_list args;
-            va_start(args, format);
-            vsockprintf(c->socket, format, args);
-            va_end(args);
-        } else {
-            const char *text, *desc;
-            text = http_lookup_response(code);
-            if (text) {
-                desc = http_lookup_description(code);
-                sockprintf(c->socket, "<h1 align=center>%s</h1>", text);
-                if (desc)
-                    sockprintf(c->socket, "%s", desc);
-            } else {
-                sockprintf(c->socket, "<h1 align=center>Error %d</h1>", code);
-            }
-        }
-    }
-    if (c->in_request)
-        c->in_request = -1;  /* signal handle_request() to close later */
-    else
-        disconn(c->socket);
-}
-
-/*************************************************************************/
 
 /*
  * Local variables:

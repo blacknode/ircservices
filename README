@@ -23,8 +23,8 @@ topic:
     docs/readme.migration  converting an old ircservices.conf/modules.conf
     docs/readme.features   what Services do, feature by feature
     docs/readme.commands   every command of every pseudoclient
-    docs/readme.xml        exporting and importing databases (XML)
     docs/readme.database   PostgreSQL, Redis, and the database API for modules
     docs/readme.migrations the SQL that creates the tables; OperServ MIGRATION
+    docs/readme.http       the HTTP server (Mongoose), and serving pages
     docs/readme.api        the configuration interface for module developers
     docs/readme.copyright  copyright and licenses

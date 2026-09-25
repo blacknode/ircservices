@@ -47,7 +47,6 @@ int readonly = 0;                        /* -readonly */
 int nofork = 0;                          /* -nofork */
 int noexpire = 0;                        /* -noexpire */
 int noakill = 0;                         /* -noakill */
-int encrypt_all = 0;                     /* -encrypt-all */
 
 /* Set to 1 while we are linked to the network */
 int linked = 0;

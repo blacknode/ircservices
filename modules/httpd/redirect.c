@@ -5,6 +5,12 @@
  * Parts written by Andrew Kempe and others.
  * This program is free but copyrighted software; see the file GPL.txt for
  * details.
+ *
+ * Anybody on the Internet can ask for any name, registered or not, so the
+ * records are never read here with the main thread waiting: the request
+ * is kept, the record is fetched in the background (prefetch_nickinfo(),
+ * prefetch_nickgroupinfo(), prefetch_channelinfo()), and the answer goes
+ * when it is in memory.
  */
 
 #include "services.h"
@@ -24,98 +30,199 @@ static Module *module_chanserv;
 static char *NicknamePrefix;
 static char *ChannelPrefix;
 
+/* The prefixes the routes were claimed for (they may change on REHASH). */
+static char *claimed_nick, *claimed_chan;
 
 /* Imported from NickServ: */
-typeof(get_nickinfo) *p_get_nickinfo;
-typeof(put_nickinfo) *p_put_nickinfo;
-typeof(_get_ngi) *p__get_ngi;
-typeof(put_nickgroupinfo) *p_put_nickgroupinfo;
+static typeof(get_nickinfo) *p_get_nickinfo;
+static typeof(get_nickinfo_noexpire) *p_get_nickinfo_noexpire;
+static typeof(put_nickinfo) *p_put_nickinfo;
+static typeof(_get_ngi) *p__get_ngi;
+static typeof(put_nickgroupinfo) *p_put_nickgroupinfo;
+static typeof(prefetch_nickinfo) *p_prefetch_nickinfo;
+static typeof(prefetch_nickgroupinfo) *p_prefetch_nickgroupinfo;
 #define get_nickinfo (*p_get_nickinfo)
+#define get_nickinfo_noexpire (*p_get_nickinfo_noexpire)
 #define put_nickinfo (*p_put_nickinfo)
 #define _get_ngi (*p__get_ngi)
 #define put_nickgroupinfo (*p_put_nickgroupinfo)
+#define prefetch_nickinfo (*p_prefetch_nickinfo)
+#define prefetch_nickgroupinfo (*p_prefetch_nickgroupinfo)
 
 /* Imported from ChanServ: */
-typeof(get_channelinfo) *p_get_channelinfo;
-typeof(put_channelinfo) *p_put_channelinfo;
+static typeof(get_channelinfo) *p_get_channelinfo;
+static typeof(put_channelinfo) *p_put_channelinfo;
+static typeof(prefetch_channelinfo) *p_prefetch_channelinfo;
 #define get_channelinfo (*p_get_channelinfo)
 #define put_channelinfo (*p_put_channelinfo)
+#define prefetch_channelinfo (*p_prefetch_channelinfo)
+
+/* A request waiting for its record. */
+typedef struct lookup_ Lookup;
+struct lookup_ {
+    Lookup *next, *prev;
+    http_req_t id;
+    char name[CHANMAX + 1]; /* The nickname, or the channel with its # */
+};
+static Lookup *lookups;
 
 /*************************************************************************/
-/*************************** Request callback ****************************/
 /*************************************************************************/
 
-static int do_request(Client *c, int *close_ptr)
+static void lookup_free(Lookup *l)
 {
-    if (NicknamePrefix && module_nickserv
-        && strncmp(c->url,NicknamePrefix,strlen(NicknamePrefix)) == 0
-    ) {
-        char *nick;
-        char newnick[NICKMAX*5];  /* for errors; *5 because of & -> &amp; */
-        NickInfo *ni = NULL;
-        NickGroupInfo *ngi = NULL;
+    LIST_REMOVE(l, lookups);
+    free(l);
+}
 
-        nick = c->url + strlen(NicknamePrefix);
-        ni = get_nickinfo(nick);
-        ngi = (ni && ni->nickgroup) ? get_ngi(ni) : NULL;
-        http_quote_html(nick, newnick, sizeof(newnick));
+/* The name in a path: everything after the prefix, up to the next
+ * slash.  Returns 0 if it is empty or too long. */
+static int name_from_path(const char *path, const char *prefix, char *buf,
+                          size_t size)
+{
+    const char *name = path + strlen(prefix);
+    size_t len = strcspn(name, "/");
 
-        if (ngi && ngi->url) {
-            /* URL registered, so send a redirect there */
-            http_send_response(c, HTTP_R_FOUND);
-            sockprintf(c->socket, "Location: %s\r\n", ngi->url);
-            sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
-        } else if (ngi) {
-            /* Nick not registered (or forbidden) */
-            http_error(c, HTTP_E_NOT_FOUND,
-                       "<h1 align=center>URL Not Set</h1>"
-                       "The nickname <b>%s</b> does not have a URL set.",
-                       newnick);
-        } else if (*nick) {
-            /* Nick not registered (or forbidden) */
-            http_error(c, HTTP_E_NOT_FOUND,
-                       "<h1 align=center>Nickname Not Registered</h1>"
-                       "The nickname <b>%s</b> is not registered.", newnick);
-        } else {
-            /* No nick given; just give a standard 404 */
-            http_error(c, HTTP_E_NOT_FOUND, NULL);
-        }
-        put_nickinfo(ni);
-        put_nickgroupinfo(ngi);
-        return 1;
+    if (!len || len >= size)
+        return 0;
+    memcpy(buf, name, len);
+    buf[len] = 0;
+    return 1;
+}
 
-    } else if (ChannelPrefix && module_chanserv
-               && strncmp(c->url,ChannelPrefix,strlen(ChannelPrefix)) == 0) {
-        char *chan;
-        char newchan[CHANMAX*5];
-        ChannelInfo *ci;
+/* Answer `id' with a redirect to `url', or with a page saying why not. */
+static void answer(http_req_t id, const char *url, const char *what,
+                   const char *name, int registered)
+{
+    struct HttpResponse *res = http_response(id);
+    char namehtml[CHANMAX * 6];
 
-        chan = c->url + strlen(ChannelPrefix);
-        snprintf(newchan, sizeof(newchan), "#%s", chan);
-        ci = get_channelinfo(newchan);
-        /* Leave initial "#" in place */
-        http_quote_html(chan, newchan+1, sizeof(newchan)-1);
-        if (ci && ci->url) {
-            http_send_response(c, HTTP_R_FOUND);
-            sockprintf(c->socket, "Location: %s\r\n", ci->url);
-            sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
-        } else if (ci) {
-            http_error(c, HTTP_E_NOT_FOUND,
-                       "<h1 align=center>URL Not Set</h1>"
-                       "The channel <b>%s</b> does not have a URL set.",
-                       newchan);
-        } else if (*chan) {
-            http_error(c, HTTP_E_NOT_FOUND,
-                       "<h1 align=center>Channel Not Registered</h1>"
-                       "The channel <b>%s</b> is not registered.", newchan);
-        } else {
-            http_error(c, HTTP_E_NOT_FOUND, NULL);
-        }
-        put_channelinfo(ci);
-        return 1;
-
+    if (!res)
+        return;  /* timed out meanwhile */
+    http_quote_html(name, namehtml, sizeof(namehtml));
+    if (url) {
+        http_response_redirect(res, HTTP_R_FOUND, url);
+    } else if (registered) {
+        http_response_error(res, HTTP_E_NOT_FOUND,
+                            "<h1 align=center>URL Not Set</h1>"
+                            "The %s <b>%s</b> does not have a URL set.",
+                            what, namehtml);
+    } else {
+        http_response_error(res, HTTP_E_NOT_FOUND,
+                            "<h1 align=center>%s Not Registered</h1>"
+                            "The %s <b>%s</b> is not registered.",
+                            *what == 'n' ? "Nickname" : "Channel", what,
+                            namehtml);
     }
+    http_respond(id, NULL);
+}
 
+/*************************************************************************/
+/******************************* Nicknames *******************************/
+/*************************************************************************/
+
+/* The nickname and its group are in memory: no I/O from here on. */
+static void nick_group_ready(void *arg)
+{
+    Lookup *l = arg;
+    NickInfo *ni;
+    NickGroupInfo *ngi;
+
+    if (!module_nickserv) {
+        answer(l->id, NULL, "nickname", l->name, 0);
+        lookup_free(l);
+        return;
+    }
+    ni = get_nickinfo(l->name);
+    ngi = (ni && ni->nickgroup) ? get_ngi(ni) : NULL;
+    answer(l->id, ngi ? ngi->url : NULL, "nickname", l->name, ngi != NULL);
+    put_nickgroupinfo(ngi);
+    put_nickinfo(ni);
+    lookup_free(l);
+}
+
+/* The nickname is in memory (or known not to exist); now its group. */
+static void nick_ready(void *arg)
+{
+    Lookup *l = arg;
+    NickInfo *ni;
+    uint32 group;
+
+    if (!module_nickserv) {
+        nick_group_ready(l);
+        return;
+    }
+    ni = get_nickinfo_noexpire(l->name);
+    group = ni ? ni->nickgroup : 0;
+    put_nickinfo(ni);
+    if (!group || !prefetch_nickgroupinfo(THIS_MODULE, &group, 1,
+                                          nick_group_ready, l))
+        nick_group_ready(l);
+}
+
+static int route_nick(http_req_t id, const struct HttpRequest *req,
+                   struct HttpResponse *res, void *user)
+{
+    Lookup *l;
+    const char *keys[1];
+
+    l = scalloc(1, sizeof(*l));
+    if (!module_nickserv
+     || !name_from_path(req->hreq_path, NicknamePrefix, l->name, NICKMAX)) {
+        free(l);
+        http_response_error(res, HTTP_E_NOT_FOUND, NULL);
+        return 1;
+    }
+    l->id = id;
+    LIST_INSERT(l, lookups);
+    keys[0] = l->name;
+    /* `nick_ready' may run before this returns, when the record is in
+     * memory already: `l' is not touched again here. */
+    if (!prefetch_nickinfo(THIS_MODULE, keys, 1, nick_ready, l)) {
+        lookup_free(l);
+        http_response_error(res, HTTP_F_SERVICE_UNAVAILABLE, NULL);
+        return 1;
+    }
+    return 0;
+}
+
+/*************************************************************************/
+/******************************* Channels ********************************/
+/*************************************************************************/
+
+static void chan_ready(void *arg)
+{
+    Lookup *l = arg;
+    ChannelInfo *ci = module_chanserv ? get_channelinfo(l->name) : NULL;
+
+    answer(l->id, ci ? ci->url : NULL, "channel", l->name, ci != NULL);
+    put_channelinfo(ci);
+    lookup_free(l);
+}
+
+static int route_chan(http_req_t id, const struct HttpRequest *req,
+                   struct HttpResponse *res, void *user)
+{
+    Lookup *l;
+    const char *keys[1];
+
+    l = scalloc(1, sizeof(*l));
+    l->name[0] = '#';
+    if (!module_chanserv
+     || !name_from_path(req->hreq_path, ChannelPrefix, l->name + 1,
+                        CHANMAX - 1)) {
+        free(l);
+        http_response_error(res, HTTP_E_NOT_FOUND, NULL);
+        return 1;
+    }
+    l->id = id;
+    LIST_INSERT(l, lookups);
+    keys[0] = l->name;
+    if (!prefetch_channelinfo(THIS_MODULE, keys, 1, chan_ready, l)) {
+        lookup_free(l);
+        http_response_error(res, HTTP_F_SERVICE_UNAVAILABLE, NULL);
+        return 1;
+    }
     return 0;
 }
 
@@ -131,36 +238,80 @@ ConfigDirective module_config[] = {
 
 /*************************************************************************/
 
+/* Claim (or give up) the route for one prefix.  A prefix route must end
+ * in a slash: that is what makes it match everything under it. */
+static void claim(char **claimed, const char *prefix, HttpHandlerFn fn,
+                  const char *what)
+{
+    if (*claimed && (!prefix || strcmp(*claimed, prefix) != 0)) {
+        http_del_route(THIS_MODULE, "GET", *claimed);
+        free(*claimed);
+        *claimed = NULL;
+    }
+    if (!prefix || *claimed)
+        return;
+    if (prefix[0] != '/' || prefix[strlen(prefix) - 1] != '/') {
+        module_log("%s `%s' must begin and end with a slash; %s redirects"
+                   " are off", what, prefix,
+                   fn == route_nick ? "nickname" : "channel");
+        return;
+    }
+    if (!http_add_route(THIS_MODULE, "GET", prefix, fn, NULL)) {
+        module_log("Unable to claim %s (already claimed)", prefix);
+        return;
+    }
+    *claimed = sstrdup(prefix);
+}
+
+static void claim_all(void)
+{
+    claim(&claimed_nick, NicknamePrefix, route_nick, "NicknamePrefix");
+    claim(&claimed_chan, ChannelPrefix, route_chan, "ChannelPrefix");
+}
+
+static int do_reconfigure(int after_configure)
+{
+    if (after_configure)
+        claim_all();
+    return 0;
+}
+
+/*************************************************************************/
+
 static int do_load_module(Module *mod, const char *modname)
 {
     if (strcmp(modname, "nickserv/main") == 0) {
         p_get_nickinfo = get_module_symbol(mod, "get_nickinfo");
+        p_get_nickinfo_noexpire =
+            get_module_symbol(mod, "get_nickinfo_noexpire");
         p_put_nickinfo = get_module_symbol(mod, "put_nickinfo");
         p__get_ngi = get_module_symbol(mod, "_get_ngi");
         p_put_nickgroupinfo = get_module_symbol(mod, "put_nickgroupinfo");
-        if (p_get_nickinfo && p_put_nickinfo
-         && p__get_ngi && p_put_nickgroupinfo
+        p_prefetch_nickinfo = get_module_symbol(mod, "prefetch_nickinfo");
+        p_prefetch_nickgroupinfo =
+            get_module_symbol(mod, "prefetch_nickgroupinfo");
+        if (p_get_nickinfo && p_get_nickinfo_noexpire && p_put_nickinfo
+         && p__get_ngi && p_put_nickgroupinfo && p_prefetch_nickinfo
+         && p_prefetch_nickgroupinfo
         ) {
             module_nickserv = mod;
         } else {
             module_log("Required symbols not found, nickname redirects will"
                        " not be available");
-            p_get_nickinfo = NULL;
-            p_put_nickinfo = NULL;
-            p__get_ngi = NULL;
-            p_put_nickgroupinfo = NULL;
             module_nickserv = NULL;
         }
     } else if (strcmp(modname, "chanserv/main") == 0) {
         p_get_channelinfo = get_module_symbol(mod, "get_channelinfo");
         p_put_channelinfo = get_module_symbol(mod, "put_channelinfo");
-        if (p_get_channelinfo && p_put_channelinfo) {
+        p_prefetch_channelinfo =
+            get_module_symbol(mod, "prefetch_channelinfo");
+        if (p_get_channelinfo && p_put_channelinfo
+         && p_prefetch_channelinfo) {
             module_chanserv = mod;
         } else {
             module_log("Required symbols not found, channel redirects will"
                        " not be available");
-            p_get_channelinfo = NULL;
-            p_put_channelinfo = NULL;
+            module_chanserv = NULL;
         }
     }
 
@@ -171,22 +322,12 @@ static int do_load_module(Module *mod, const char *modname)
 
 static int do_unload_module(Module *mod)
 {
-    if (mod == module_nickserv) {
-        p_get_nickinfo = NULL;
-        p_put_nickinfo = NULL;
-        p__get_ngi = NULL;
-        p_put_nickgroupinfo = NULL;
-        p_get_nickinfo = NULL;
-        p_put_nickinfo = NULL;
-        p__get_ngi = NULL;
-        p_put_nickgroupinfo = NULL;
+    /* Its fetches in flight are dropped with it (the store cancels them
+     * by type); the requests they were for time out. */
+    if (mod == module_nickserv)
         module_nickserv = NULL;
-        module_nickserv = NULL;
-    } else if (mod == module_chanserv) {
-        p_get_channelinfo = NULL;
-        p_put_channelinfo = NULL;
+    else if (mod == module_chanserv)
         module_chanserv = NULL;
-    }
     return 0;
 }
 
@@ -206,7 +347,7 @@ int init_module(void)
 
     if (!add_callback(NULL, "load module", do_load_module)
      || !add_callback(NULL, "unload module", do_unload_module)
-     || !add_callback(module_httpd, "request", do_request)
+     || !add_callback(NULL, "reconfigure", do_reconfigure)
     ) {
         module_log("Unable to add callbacks");
         exit_module(0);
@@ -220,6 +361,7 @@ int init_module(void)
     if (tmpmod)
         do_load_module(tmpmod, "chanserv/main");
 
+    claim_all();
     return 1;
 }
 
@@ -227,14 +369,22 @@ int init_module(void)
 
 int exit_module(int shutdown_unused)
 {
+    remove_callback(NULL, "reconfigure", do_reconfigure);
     remove_callback(NULL, "unload module", do_unload_module);
     remove_callback(NULL, "load module", do_load_module);
 
+    /* Our fetches in flight are dropped with this module; so are the
+     * requests they were for. */
+    while (lookups)
+        lookup_free(lookups);
     if (module_httpd) {
-        remove_callback(module_httpd, "request", do_request);
+        http_del_routes(THIS_MODULE);
         unuse_module(module_httpd);
         module_httpd = NULL;
     }
+    free(claimed_nick);
+    free(claimed_chan);
+    claimed_nick = claimed_chan = NULL;
 
     return 1;
 }

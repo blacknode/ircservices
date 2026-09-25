@@ -1,0 +1,208 @@
+readme.http -- the HTTP server, and serving pages from a module
+================================================================
+
+The HTTP server is the httpd/main module: Mongoose, on a thread of its
+own, with modules claiming the paths they serve.  They never see a socket.
+The design is ircu2's (doc/readme.http in ircu2), adapted to Services.
+
+    modules/httpd/http.h            what every other module sees
+    modules/httpd/main/server.c     the server thread; the only file that
+                                    knows Mongoose exists
+    modules/httpd/main/routes.c     the routes, the requests waiting for
+                                    an answer, their deadline
+    modules/httpd/main/util.c       building answers, reading requests
+    modules/httpd/main/main.c       the configuration, start and stop
+    vendor/mongoose/                Mongoose 7.23, never edited
+
+The settings (ListenTo, TLSCertificate, TLSKey, MaxConnections,
+RequestTimeout) are in readme.modules; what the modules that come with
+Services do is in readme.features, section 3-6.
+
+1. Why a library
+----------------
+
+This replaced a hand-written parser that worked.  The argument is not that
+it was broken; it is that HTTP is a protocol where being nearly right is a
+security bug, and the list of ways to get framing wrong -- chunked
+encoding, folded headers, pipelining, Content-Length against
+Transfer-Encoding -- is a list somebody else has already walked, with
+fuzzers, for twenty years.  TLS came with it.
+
+The rule that follows: vendor/mongoose/ is upstream's amalgamation and is
+never edited.  A local patch would give away the only thing it is there
+for.  Updating is replacing the two files and running the tests.
+Mongoose is GPL-2.0-only, so the httpd/main module is distributed under
+GPL-2.0 rather than "2 or later"; see vendor/mongoose/README.
+
+2. Claiming a path
+------------------
+
+A module that serves pages loads after httpd/main, calls use_module() on
+it, and claims routes:
+
+    http_add_route(THIS_MODULE, "GET", "/nick/", handle_nick, NULL);
+
+A path ending in `/' matches everything under it; anything else matches
+exactly.  An exact match beats a prefix, and a longer prefix beats a
+shorter one:
+
+    /stats          matches only that
+    /nick/          matches /nick/anything
+    /               matches every path nothing else claimed
+
+That is the whole routing language, on purpose.  A route for "/" is
+therefore a catch-all, and httpd/top-page answers 404 itself for any path
+other than "/".  The method is part of the route; a route for GET answers
+HEAD too (the body is not sent).  Two claims on the same method and path
+are refused.  A request nothing claimed is answered 404 by httpd/main.
+
+A module gives its routes up from exit_module(), with
+http_del_routes(THIS_MODULE); httpd/main also drops them when the module
+is unloaded, and lets go of the requests that were waiting on them.  A
+route may be claimed while nothing is listening, and http_available() says
+whether anything ever will (a ListenTo is configured): a module that finds
+nothing will reach its pages says so in the log and carries on.
+
+3. Answering, now or later
+--------------------------
+
+A handler runs in the main thread:
+
+    static int handle(http_req_t id, const struct HttpRequest *req,
+                      struct HttpResponse *res, void *user)
+
+It either fills in `res' and returns nonzero, or keeps `id', returns zero,
+and answers later:
+
+    struct HttpResponse *res = http_response(id);   /* NULL: gone */
+    if (res) {
+        http_response_set(res, 200, "text/html", NULL, 0);
+        http_response_printf(res, "<p>%s</p>", html);
+        http_respond(id, NULL);
+    }
+
+Answering later is what a handler does when it needs a record that may
+not be in memory.  Anybody on the Internet can ask for any path, so a
+page that read the database with the main thread waiting would let them
+stop Services at will.  httpd/redirect is the example: it asks for the
+record with store_prefetch() (through prefetch_nickinfo() and friends,
+with its own THIS_MODULE as the owner, so that the call is dropped if it
+is unloaded), and answers from the callback, when the record is in
+memory.  The callback may run before prefetch returns, when the record
+was in memory already.
+
+Every request has a deadline, RequestTimeout (5 seconds by default).  One
+that passes is answered "504 Gateway Timeout", and a later http_respond()
+for it does nothing: a module that answers late has been slow, not
+wrong.
+
+What a handler can build an answer with:
+
+    http_response_set()       status, type, body (replacing)
+    http_response_printf()    append to the body (also _write, _vprintf)
+    http_response_header()    one more header
+    http_response_error()     an HTML error page
+    http_response_redirect()  a 3xx with Location
+    http_response_file()      a file, streamed by the server thread
+
+and read the request with http_request_header() and http_request_var()
+(a variable of the query string or of an urlencoded form, decoded).  The
+body a handler writes may be up to 4 MiB; a bigger answer is a file.  A
+response header holding a newline is dropped when it is sent: a newline
+there is how one response becomes two.
+
+4. Access control
+-----------------
+
+Before a request is routed, httpd/main calls its "auth" callback, which
+httpd/auth-ip and httpd/auth-password use:
+
+    int callback(const struct HttpRequest *req, struct HttpResponse *res)
+
+returning HTTP_AUTH_UNDECIDED (let the next one decide), HTTP_AUTH_ALLOW
+(let it through), or HTTP_AUTH_DENY after filling in `res' with the
+refusal.  It runs for every request, whether anything claimed its path or
+not, so that the answer to a stranger does not say what exists.
+
+5. Which thread is which
+------------------------
+
+    the sockets, the parsing, TLS    the server thread
+    the routes, the handlers         the main thread
+    a request going up               worker_post(): the server thread
+                                     posts it, and it is routed in the
+                                     main thread on the next drain
+    an answer coming down            an outbox under a mutex, and
+                                     mg_wakeup() to wake the poll
+
+Across that line travels a structure of bytes and a connection id -- an
+integer Mongoose guarantees unique -- never a pointer into either side.
+A connection that went away while its answer was being worked out is
+simply not found.
+
+ircu2 passes the answer itself through mg_wakeup().  On POSIX that is a
+datagram sent without waiting and dropped, silently, when its socket
+buffer is full -- and the answer and its memory with it.  Here mg_wakeup()
+is only a doorbell, and the outbox is emptied after every poll, so a lost
+wake-up costs at most one poll interval (200 ms).
+
+Nothing on the server thread touches Services' state: server.c does not
+include services.h (see include/worker.h), and Mongoose's own logging is
+compiled out; what it has to say about a failed listen comes back as a
+task the main thread logs.
+
+6. What it will not read
+------------------------
+
+Mongoose does the framing.  What it deliberately does not do is decide
+what a path means, and that decision is server.c's:
+
+    ".." in a path        400.  Nothing in httpd/main opens a file, but
+                          a path is handed to modules and one of them
+                          may, so the check belongs where the path is
+                          first believed.
+    "%2F", "%5C"          400.  Routing happens on the decoded path, so an
+                          encoded separator would turn what the client
+                          wrote as data into a separator and reach a
+                          prefix route it is not under.
+    "%00"                 400.  It shortens the path for whoever reads it
+                          with str*() next.
+    a control byte        400.
+    a body over 64 KiB    413, at the headers when the request says how
+                          long it is, before any of the body is read; a
+                          chunked body is refused as soon as more than
+                          that has arrived.  The connection is closed.
+
+The path a handler is given is decoded; the query string is not, because
+"+" means a space there and nowhere else.  http_request_var() decodes a
+variable when it is asked for.
+
+7. TLS
+------
+
+A ListenTo followed by ", tls" is an HTTPS port, with the PEM files of
+TLSCertificate and TLSKey (both or neither).  Which TLS depends on the
+build (SERVICES_HTTP_TLS, BUILDING.md):
+
+    openssl     Mongoose uses OpenSSL: any certificate OpenSSL takes.
+                The default ("auto") when OpenSSL is installed.
+    builtin     Mongoose's own: self-contained, TLS 1.3 only and ECDSA
+                certificates only.  An RSA certificate is refused at the
+                handshake, which from the client looks like the
+                connection being dropped.
+
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+      -keyout http-key.pem -out http-cert.pem -days 365 -nodes \
+      -subj "/CN=services.example.net"
+
+That asymmetry is worth knowing before it is diagnosed at three in the
+morning: the same PEM files that work on an OpenSSL build fail on a
+builtin one.
+
+8. See also
+-----------
+
+    readme.modules     the settings of every httpd module
+    readme.features    section 3-6: what the modules do
+    readme.database    records, and fetching them in the background
+    vendor/mongoose/README

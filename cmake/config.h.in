@@ -20,7 +20,7 @@
 #define SIZEOF_TIME_T    @SIZEOF_TIME_T@
 #define SIZEOF_GID_T     @SIZEOF_GID_T@
 #define MAX_TIME_T       @MAX_TIME_T@
-#define HAVE_CRYPT       @HAVE_CRYPT_VALUE@
+#define HAVE_GETENTROPY  @HAVE_GETENTROPY_VALUE@
 
 /* Socket event engines compiled in (src/engine_*.c) */
 #define ENGINE_EPOLL     @ENGINE_EPOLL@

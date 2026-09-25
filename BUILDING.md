@@ -15,7 +15,8 @@ protocol module to choose or load.
   `pacman -S postgresql-libs jansson hiredis`
 * At run time: a PostgreSQL server (and optionally Redis); see
   `docs/readme.database`
-* Optional: `crypt(3)` for the `encryption/unix-crypt` module
+* Optional: OpenSSL, for HTTPS in `httpd/main` (without it the HTTP server
+  uses Mongoose's own TLS; see `SERVICES_HTTP_TLS` below)
 
 ## Build
 
@@ -47,8 +48,18 @@ In-source builds are refused. Presets (`CMakePresets.json`):
 | `SERVICES_MEMCHECKS`    | `OFF`                             | allocation checks |
 | `SERVICES_SHOWALLOCS`   | `OFF`                             | log allocations (needs MEMCHECKS) |
 | `SERVICES_DUMPCORE`     | `OFF`                             | leave a core file after a crash |
+| `SERVICES_HTTP_TLS`     | `auto`                            | TLS of the HTTP server (`httpd/main`): `auto` (OpenSSL if installed, otherwise Mongoose's own), `openssl`, `builtin` (TLS 1.3, ECDSA certificates only), `none` |
 
 `CMAKE_INSTALL_PREFIX` defaults to the source directory.
+
+### Tests
+
+```sh
+ctest --test-dir build --output-on-failure
+```
+
+`tests/argon2_t.c` checks `encryption/argon2` against the published
+vectors of RFC 7693 (BLAKE2b) and RFC 9106 (Argon2id).
 
 ## Source layout
 
@@ -71,7 +82,12 @@ src/                    the core executable (src/CMakeLists.txt)
   databases.c           registry of the Services tables
   postgres/             PostgreSQL driver and table store (from ircu2)
   redis/                Redis driver (from ircu2)
+  encrypt.c             passwords: the ciphers, and the worker round trip
+                        that runs a command again once its hash is ready
 modules/                loadable modules (modules/CMakeLists.txt)
+vendor/mongoose/        Mongoose, the HTTP server of httpd/main (upstream's,
+                        never edited; see its README)
+tests/                  unit tests (ctest)
 lang/                   message catalogs; langstrs.h is generated from lang/index
 data/                   example configuration files
 docs/                   documentation, one readme.<topic> file per topic
@@ -102,7 +118,7 @@ Either way the result is `build/modules/<type>/<name>.so`, loaded with
 `loadmodule <type>/<name>;`. To add a module, create the file or directory
 and rebuild: the globs pick it up. A module that needs a library or a
 flag declares it in `<name>.cmake` (or `<name>/module.cmake`); see
-`modules/encryption/unix-crypt.cmake`.
+`modules/httpd/main/module.cmake`.
 
 ## Linking to ircu2
 

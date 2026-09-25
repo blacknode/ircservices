@@ -11,6 +11,7 @@
 #include "cache.h"
 #include "conffile.h"
 #include "db.h"
+#include "encrypt.h"
 #include "migration.h"
 #include "services.h"
 #include "store.h"
@@ -281,6 +282,7 @@ static void drop_module_work(Module* module)
     cache_drop_module(module);
     migration_drop_module(module);
     store_drop_module(module);
+    password_drop_module(module);
 }
 
 /************************************/

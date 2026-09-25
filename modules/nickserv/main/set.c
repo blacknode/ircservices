@@ -260,6 +260,7 @@ static void do_set_password(User *u, NickGroupInfo *ngi, NickInfo *ni,
                             char *param)
 {
     Password passbuf;
+    int res;
 
     if (NSSecureAdmins && u->ni != ni && nick_is_services_admin(ni)
      && !is_services_root(u)
@@ -274,8 +275,10 @@ static void do_set_password(User *u, NickGroupInfo *ngi, NickInfo *ni,
     }
 
     init_password(&passbuf);
-    if (encrypt_password(param, strlen(param), &passbuf) != 0) {
+    if ((res = encrypt_password(param, strlen(param), &passbuf)) != 0) {
         clear_password(&passbuf);
+        if (res == PASSWORD_PENDING)
+            return;  /* the command will be run again */
         memset(param, 0, strlen(param));
         module_log("Failed to encrypt password for %s (set)", ni->nick);
         notice_lang(s_NickServ, u, NICK_SET_PASSWORD_FAILED);

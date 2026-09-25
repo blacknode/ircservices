@@ -253,9 +253,14 @@ E long count_nickinfo(const char *where, const char *const *params,
 E long count_nickgroupinfo(const char *where, const char *const *params,
                            int nparams);
 /* Fetch nick records in the background; `done' is called when they are
- * ready, and get_nickinfo() of any of them then does no I/O. */
-E int prefetch_nickinfo(const char **nicks, int count,
+ * ready, and get_nickinfo() of any of them then does no I/O.  `owner' is
+ * the caller's THIS_MODULE: the call is dropped if it is unloaded. */
+E int prefetch_nickinfo(struct Module_ *owner, const char **nicks, int count,
                         void (*done)(void *arg), void *arg);
+/* The same for nickname groups, by ID; get_ngi()/get_ngi_id() of any of
+ * them then does no I/O. */
+E int prefetch_nickgroupinfo(struct Module_ *owner, const uint32 *ids, int count,
+                             void (*done)(void *arg), void *arg);
 
 #ifdef STANDALONE_NICKSERV  /* see util.c */
 # define E2 static

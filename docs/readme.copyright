@@ -37,3 +37,9 @@ and `FDL.txt` in the top directory of the Services source code distribution.
 The changes made to adapt Services to ircu2 (P10 protocol, CMake build,
 socket engines, configuration parser and this documentation) are
 distributed under the same terms.
+
+The httpd/main module contains Mongoose (vendor/mongoose/), which is
+distributed under the GPL version 2 only (or a commercial licence from
+Cesanta Software).  That one module is therefore distributable under the
+GPL version 2, without the "or later" option; the rest of Services is
+not affected.  See vendor/mongoose/README.

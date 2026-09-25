@@ -336,6 +336,7 @@ static void do_set_successor(User *u, ChannelInfo *ci, char *param)
 static void do_set_password(User *u, ChannelInfo *ci, char *param)
 {
     Password passbuf;
+    int res;
     User *u2;
 
     if (!(NoAdminPasswordCheck && is_services_admin(u))
@@ -349,8 +350,10 @@ static void do_set_password(User *u, ChannelInfo *ci, char *param)
     }
 
     init_password(&passbuf);
-    if (encrypt_password(param, strlen(param), &passbuf) != 0) {
+    if ((res = encrypt_password(param, strlen(param), &passbuf)) != 0) {
         clear_password(&passbuf);
+        if (res == PASSWORD_PENDING)
+            return;  /* the command will be run again */
         memset(param, 0, strlen(param));
         module_log("Failed to encrypt password for %s (set)", ci->name);
         notice_lang(s_ChanServ, u, CHAN_SET_PASSWORD_FAILED);

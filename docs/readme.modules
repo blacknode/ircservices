@@ -50,8 +50,7 @@ Each setting below is shown as it is written, followed by one of:
 Module list
 -----------
 
-    encryption/md5          MD5 password encryption (one-way)
-    encryption/unix-crypt   crypt(3) password encryption (one-way)
+    encryption/argon2       Argon2id password hashes (required)
     mail/main               mail sending interface (needs one of:)
     mail/smtp                 - sending through an SMTP relay
     mail/sendmail             - sending with a sendmail program
@@ -82,8 +81,6 @@ Module list
     httpd/top-page          top page (/) of the server
     misc/devnull            a pseudoclient that discards messages
     misc/helpserv           HelpServ, serving help files
-    misc/xml-export         XML database export (see readme.xml)
-    misc/xml-import         XML database import (see readme.xml)
 
 Modules must be loaded after the modules they use: encryption before
 the modules whose data holds passwords (their tables are loaded from the
@@ -94,26 +91,38 @@ that sends mail, httpd/main before the other httpd modules.
 Encryption module configuration
 -------------------------------
 
-Only encryption/md5 has a setting; encryption/unix-crypt has none.
+### encryption/argon2
 
-### encryption/md5
+    module "encryption/argon2" { ... };
 
-    module "encryption/md5" { ... };
+Stores passwords as Argon2id hashes (RFC 9106); see readme.features,
+section 3-7.  The hashes are made and checked in worker threads, never in
+the main loop.
 
-EnableAnopeWorkaround;  [OPTIONAL]
-    Enables a workaround for encrypted passwords imported from the
-    Anope or Epona programs, which have a bug (inherited from an old
-    version of Services) causing passwords to be incorrectly
-    encrypted.
-
-    WARNING: Enabling this option may reduce the security of
-    encrypted passwords!  If you need this option for importing an
-    Anope or Epona database, it is recommended that you enable this
-    only long enough to ensure that all users have used SET PASSWORD
-    to reset their passwords (possibly to the same password).
+Memory = <kibibytes>;  [OPTIONAL]
+Passes = <count>;  [OPTIONAL]
+    The cost of a new password: the memory Argon2 fills, in KiB (at
+    least 8192, at most 4 GiB), and how many passes it makes over it.
+    The defaults, 19456 (19 MiB) and 2, are OWASP's recommended minimum
+    and take about a tenth of a second; ircu2's 65536 and 3 take about
+    half a second with this implementation.  Every worker thread busy
+    with a password holds this much memory while it does.  The costs are
+    stored with each password, so raising them is safe: each password is
+    made again with the new costs the next time its owner gives it.
 
     Example:
-        EnableAnopeWorkaround;
+        Memory = 19456;
+        Passes = 2;
+
+Pepper = "<secret>";  [OPTIONAL]
+    A secret mixed into every password (up to 256 bytes) and stored
+    nowhere but here, so that a stolen database alone is not enough to
+    start guessing passwords.  Set it before the first password is
+    stored and never change or lose it: a password stored with one
+    pepper never matches with another.
+
+    Example:
+        Pepper = "a long random string";
 
 Mail module configuration
 -------------------------
@@ -1193,92 +1202,62 @@ HTTP server modules
 
     module "httpd/main" { ... };
 
-ListenTo = <address>:<port>;  [REQUIRED]
-    Specifies the address and port number on which the HTTP server
-    will listen for incoming requests.  <address> may be specified as
-    an IP address (first example below), a hostname (second example),
-    or the special string "*", which means "any IP address" (third
-    example).
+The HTTP server: Mongoose, on a thread of its own (the workers block
+must allow one), with modules claiming the paths they serve.  See
+readme.http for how it works and for writing a module that serves
+pages.  Without any ListenTo the module loads and nothing listens.
 
-    When a hostname is given, as in the second example below,
-    Services will look up the address(es) associated with the
-    hostname at startup time, and bind to every IP address found.
-    This can be useful, for example, with dynamic DNS, in which
-    the server's IP address changes periodically; however, the
-    hostname lookup can take time--especially if there is no DNS
-    server on the local network--and is susceptible to network or
-    DNS server outages, so IP addresses or "*" should be used
-    whenever possible.
+ListenTo = <address>:<port> [, tls];  [RECOMMENDED]
+    An address and port to listen on; give it once per address (at most
+    16).  <address> is an IPv4 address, an IPv6 address in brackets
+    ("[::1]") or "*" for every IPv4 address; host names are not
+    accepted.  With ", tls" the port speaks HTTPS, with TLSCertificate
+    and TLSKey.  A REHASH that changes the listening settings restarts
+    the listener (dropping the connections on it); one that does not,
+    leaves it alone.
 
     Note that many systems restrict low port numbers to the system
-    administrator; in particular, Unix-like systems allow only the
-    root user (UID 0) to use ports less than 1024.
+    administrator; in particular, Unix-like systems allow only the root
+    user (UID 0) to use ports less than 1024.
 
     Example:
         ListenTo = 127.0.0.1:12701;
-        ListenTo = services.example.net:8080;
-        ListenTo = *:80;
+        ListenTo = [::1]:12701;
+        ListenTo = *:8443, tls;
 
-ListenBacklog;  [REQUIRED]
-    Specifies the maximum number of connections that can be received
-    by the operating system without being accepted by Services (the
-    second parameter, `backlog', to the listen() system call).  If
-    you start seeing refused or delayed connections on a busy server,
-    try increasing this value.
-
-    If you don't understand the above, leave this setting alone.
-
-    Example:
-        ListenBacklog = 5;
-
-RequestBufferSize = <bytes>;  [REQUIRED]
-    Specifies the size of the buffer allocated for each HTTP request.
-    Note that this buffer is allocated for every connection, and an
-    additional amount of memory will be allocated for header pointers
-    (in the pathological case this extra amount could reach 4/3 of
-    the value given for this directive).  If a client sends a request
-    (including POST data) exceeding this value, an error will be
-    returned and the connection terminated.
-
-    If you don't understand the above, leave this setting alone.
+TLSCertificate = <file>;  [OPTIONAL]
+TLSKey = <file>;  [OPTIONAL]
+    The certificate and private key (PEM) of the ", tls" ports; both or
+    neither.  With the TLS of OpenSSL (SERVICES_HTTP_TLS=auto with
+    OpenSSL installed, or =openssl; see BUILDING.md) any certificate
+    OpenSSL takes works.  With Mongoose's own TLS (builtin) only TLS 1.3
+    and ECDSA certificates: an RSA certificate looks, from the client,
+    like the connection being dropped.
 
     Example:
-        RequestBufferSize = 4096;
+        TLSCertificate = http-cert.pem;
+        TLSKey = http-key.pem;
 
-MaxConnections = <count>;  [RECOMMENDED]
-    Specifies the maximum number of simultaneous connections allowed.
-    If not given, no limit is placed on the number of connections;
-    however, the operating system may impose its own limits, which
-    are not under the control of Services.
-
-    Example:
-        MaxConnections = 10;
-
-MaxRequests = <count>;  [RECOMMENDED]
-    Specifies the maximum number of requests that can be made over a
-    single connection before the server disconnects it.  If not
-    given, no limit is placed on the number of requests per
-    connection; note that this may allow malicious users to interfere
-    with Services' normal operations by sending large numbers of
-    requests over a single connection.
+MaxConnections = <count>;  [OPTIONAL]
+    The most connections at once; past this, new connections are closed
+    rather than queued.  If not given, 64.
 
     Example:
-        MaxRequests = 20;
+        MaxConnections = 64;
 
-IdleTimeout = <time>;  [RECOMMENDED]
-    Specifies the length of time a connection can be idle (not
-    sending data) before it will be automatically closed.  If not
-    given, connections will never be closed automatically.
-
-    Example:
-        IdleTimeout = 30s;
-
-LogConnections;  [OPTIONAL]
-    If given, a log message will be written for each connection to
-    the server.
+RequestTimeout = <time>;  [OPTIONAL]
+    How long a request may wait for its answer.  A page that needs a
+    record from the database waits for it without stopping Services;
+    past this it is answered "504 Gateway Timeout".  If not given, 5
+    seconds; at most 30.
 
     Example:
-        LogConnections;
+        RequestTimeout = 5s;
+
+ListenBacklog, RequestBufferSize, MaxRequests, IdleTimeout and
+LogConnections no longer exist (Mongoose handles connections itself);
+if left in the block, they are reported as unknown and ignored.  A
+request body larger than 64 KiB is refused (413).
 
 ### httpd/auth-ip
 
@@ -1291,9 +1270,10 @@ DenyHost = <path>, <address>;  [OPTIONAL]
     URL path (not including the "http://host.name"), and matches any
     URL which begins with the same string; for example, "/dir"
     matches both "/dir/file" and "/dirty".  The <address> can be an
-    IP address, a hostname (as with ListenTo in the main server
-    module, all addresses associated with the hostname will be
-    allowed or denied), the string "*" (which means all addresses),
+    IPv4 address, a hostname (all IPv4 addresses associated with the
+    hostname when the configuration is read will be allowed or
+    denied), the string "*" (which means all addresses, IPv6 ones
+    included; the other forms match IPv4 clients only),
     or the special format "<IP-address>/<mask>", where <mask> is an
     integer from 1 to 31 giving the number of bits in the subnet
     address, which indicates that the entire subnet of addressess
@@ -1362,11 +1342,13 @@ Protect = <path>, <user>:<pass>;  [OPTIONAL]
     authorization, and the username and password for each path.  The
     username and password can be different for each path.  The path
     given will match any URL beginning with that string, as with the
-    auth-ip module.
+    auth-ip module.  Only HTTP "Basic" authorization is understood:
+    the password crosses the network readable unless the port is a
+    ", tls" one (httpd/main).
 
     Examples:
         Protect = /debug, "debug:debug";
-        Protect = /~, "nickuser:nickpass";
+        Protect = /nick/, "nickuser:nickpass";
 
     Note: This directive is listed as "optional" only because the
           module will still load even if no directives are listed;
@@ -1397,14 +1379,13 @@ Prefix = <path>;  [REQUIRED]
         <path>/nickserv/          Nickname list and information
         <path>/chanserv/          Channel list and information
         <path>/statserv/          Network statistics
-        <path>/xml-export/        XML-format database download
 
     Categories for which the relevant module is not loaded will not
     be accessible.
 
-    WARNING: These functions, particularly the XML export function,
-             can cause Services to stop for a significant period of
-             time while they are processed!
+    Lists are read from the database a page at a time (500 names), and
+    a page waits for its query, as an operator's LIST command does:
+    these pages are for operators, not for the public.
 
     This is commented out by default; make sure you implement proper
     access protection (see above) before uncommenting it.
@@ -1430,31 +1411,31 @@ DebugURL = <path>;  [REQUIRED]
 NicknamePrefix = <path>;  [OPTIONAL]
     Sets the URL (path) at which nickname redirects will be
     accessible; all characters after this prefix, up to the next
-    slash, will be taken as the nickname.  This must begin with a
-    slash.  The default value, "/~", emulates the traditional home
-    page URL of "http://www.example.net/~username/".  If you use a
-    directory name instead, it must end with a slash, for example:
-    "/nickname/".  See also ChannelPrefix, below.
+    slash, will be taken as the nickname.  It must begin and end with
+    a slash: a module claims a directory (readme.http), so the old
+    "/~" form is no longer possible.  "/nick/" gives URLs like
+    "http://services.example.net/nick/SomeNick".  See also
+    ChannelPrefix, below.
 
     If not set, nickname redirects will not be done.
 
+    The records are looked up in the background (a request waits for
+    its record, RequestTimeout at most), so nobody on the Internet can
+    make Services wait for the database by asking for names.
+
     Example:
-        NicknamePrefix = "/~";
+        NicknamePrefix = "/nick/";
 
 ChannelPrefix = <path>;  [OPTIONAL]
     Sets the URL (path) at which channel redirects will be
     accessible; all characters after this prefix, up to the next
     slash, will be taken as the channel name (without the leading
-    "#", which cannot be used in URLs).  The path must begin with
-    a slash.  The default value, "/channel/", gives URLs like
-    "http://services.example.net/channels/channelname/" for channel
+    "#", which cannot be used in URLs).  The path must begin and end
+    with a slash.  "/channel/" gives URLs like
+    "http://services.example.net/channel/channelname" for channel
     "#channelname".
 
     If not set, channel redirects will not be done.
-
-    Note: If a URL could be interpreted as both a nickname URL and a
-          channel URL, the nickname will take precedence, even if it
-          is not registered or does not have a URL associated with it.
 
     Example:
         ChannelPrefix = "/channel/";
@@ -1468,7 +1449,8 @@ Filename = <path>, [<content-type>];  [OPTIONAL]
     If this does not begin with a slash, then it is taken as relative
     to the Services data directory.  The second parameter specifies
     the MIME content type of the file; if not given, it defaults to
-    text/html.
+    text/html.  The file is streamed by the server thread (with ETag
+    and Range support), and read when it is asked for.
 
     Example:
         Filename = "Top Page.txt", text/plain;
@@ -1516,61 +1498,3 @@ HelpDir = <dirname>;  [REQUIRED]
 
     Example:
         HelpDir = helpfiles;
-
-### misc/xml-export
-
-    module "misc/xml-export" { ... };
-
-This module has no configurable settings.
-
-### misc/xml-import
-
-    module "misc/xml-import" { ... };
-
-OnNicknameCollision = <action>;  [OPTIONAL]
-    Specifies the action to be taken when a nickname in the data to
-    import is already registered.  The string must be one of either
-    "skipgroup" (skip over the nickname group containing the nickname
-    in the imported data), "skipnick" (skip only the colliding
-    nickname), "overwrite" (drop the existing nickname), or "abort"
-    (do not import any data).  Note that when "abort" is selected,
-    the entire XML input is still checked for errors, but Services
-    will abort before actually merging any data.
-
-    When using "overwrite", if a nickname group has only one nickname
-    and that nickname is overwritten, the nickname group will be
-    dropped as well.  As a consequence, any channels owned by such a
-    nickname will be dropped (or shifted to their successors) as
-    well.  All nicknames and channels overwritten or dropped in this
-    manner will be displayed on standard error.
-
-    If not specified, defaults to "skipgroup".
-
-    Example:
-        OnNicknameCollision = skipgroup;
-
-OnChannelCollision = <action>;  [OPTIONAL]
-    Specifies the action to be taken when a channel in the data to
-    import is already registered.  The string must be one of either
-    "skip" (skip over the channel in the imported data), "overwrite"
-    (drop the existing channel), or "abort" (do not import any data).
-    Note that when "abort" is selected, the entire XML input is still
-    checked for errors, but Services will abort before actually
-    merging any data.  If not specified, defaults to "skip".
-
-    Example:
-        OnChannelCollision = skip;
-
-ImportNews;  [OPTIONAL]
-    Causes news items in the XML data to be imported into the
-    database (normally, news items are skipped).
-
-    Example:
-        ImportNews;
-
-VerboseImport;  [OPTIONAL]
-    Causes a detailed list of imported nicknames, channels, and other
-    data to be printed to standard output.
-
-    Example:
-        VerboseImport;

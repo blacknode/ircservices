@@ -12,7 +12,8 @@ Requirements
   headers.
 - A PostgreSQL server (any supported version), where Services keep their
   data; optionally a Redis server, as a cache for modules.
-- Optionally crypt(3), for the encryption/unix-crypt module.
+- Optionally OpenSSL, for HTTPS in the httpd/main module (without it,
+  Mongoose's own TLS is used; see readme.http).
 - An ircu2 network (Undernet ircu 2.10 or later): Services speak the P10
   protocol natively and support no other IRC server.
 
@@ -148,15 +149,9 @@ Command-line options
                            autokills, session exceptions, ...).
     -noakill               Disable autokill checking (the list can still
                            be modified).
-    -encrypt-all           Re-encrypt all passwords on start-up with
-                           options { encryption; }.
 
 Modules add their own options:
 
-    -export[=filename]     misc/xml-export: write the databases as XML and
-                           exit (see readme.xml).
-    -import=filename       misc/xml-import: merge an XML file into the
-                           databases and exit (see readme.xml).
     -clear-nick-email      nickserv/main: clear every nickname's E-mail
                            address on start-up.
 
@@ -183,7 +178,7 @@ they had.  Otherwise the new configuration replaces the old one, and then:
 A few settings are only used when Services connect, and changing them
 takes effect at the next restart (a warning is logged): the uplink block
 (host, port, password, local_address) and serverinfo (name, description,
-user).  Changes to files { log; } and files { pid; } take effect at once.
+user, channel).  Changes to files { log; } and files { pid; } take effect at once.
 
 Signals
 -------

@@ -10,6 +10,7 @@
 #   src/CMakeLists.txt            the ircservices executable (core)
 #   modules/CMakeLists.txt        every loadable module, discovered
 #   lang/CMakeLists.txt           langcomp and the compiled language files
+#   tests/CMakeLists.txt          unit tests (ctest)
 #
 cmake_minimum_required(VERSION 3.20)
 project(IRCServices VERSION 5.1.24 LANGUAGES C)
@@ -60,6 +61,9 @@ endif()
 add_subdirectory(lang)
 add_subdirectory(src)
 add_subdirectory(modules)
+
+enable_testing()
+add_subdirectory(tests)
 
 # ---------------------------------------------------------------------------
 # Data files.

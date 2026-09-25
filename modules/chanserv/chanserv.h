@@ -220,7 +220,7 @@ E int foreach_channelinfo(const char *where, const char *const *params,
 E long count_channelinfo(const char *where, const char *const *params,
                          int nparams);
 /* Fetch channel records in the background; see prefetch_nickinfo(). */
-E int prefetch_channelinfo(const char **names, int count,
+E int prefetch_channelinfo(struct Module_ *owner, const char **names, int count,
                            void (*done)(void *arg), void *arg);
 /* Fill ngi->channels with the channels the group founded, from the
  * database. */

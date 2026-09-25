@@ -218,19 +218,12 @@ While they run:
 ### 1-7. Coming from the file databases
 
 The database/standard (*.sdb files) and database/version4 (*.db files)
-modules are gone.  To bring existing data over, use the XML export and
-import modules (readme.xml):
-
-1. With the old version, still configured for its old database module,
-   load misc/xml-export and export everything to a file by starting it
-   once with `-export=<file>` (readme.xml, section 1).
-2. With this version, configured for PostgreSQL and Redis, load
-   misc/xml-import and start Services once with `-import=<file>`: the
-   data is read, checked, written to the database, and Services exit.
-3. Start Services normally.
-
-Data from other programs (Anope, Epona) goes the same way, through their
-XML conversion tools.
+modules are gone, and so are the XML export and import modules that used
+to carry data between versions.  Services do not read the old files: a
+network moving to this version starts with an empty schema, which the
+migrations create (readme.migrations), and registers its nicknames and
+channels again.  PostgreSQL's own tools (pg_dump, pg_restore) are what
+copies the data from then on.
 
 2. Database access for modules (db.h)
 -------------------------------------

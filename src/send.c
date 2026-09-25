@@ -98,7 +98,8 @@ void send_cmode_cmd(const char* source, const char* channel, const char* fmt,
 /* Introduce a pseudoclient nickname.  `flags' includes PSEUDO_OPER if the
  * pseudoclient requires IRC operator privileges (however, the client may
  * not actually get +o if the server does not require it), and PSEUDO_INVIS
- * if the pseudoclient should be invisible (+i).
+ * if the pseudoclient should be invisible (+i).  The pseudoclient then
+ * joins serverinfo { channel }, if one is configured.
  */
 
 void send_pseudo_nick(const char* nick, const char* realname, int flags)
@@ -109,6 +110,8 @@ void send_pseudo_nick(const char* nick, const char* realname, int flags)
              (flags & PSEUDO_OPER) && pseudoclient_oper ? "o" : "",
              (flags & PSEUDO_INVIS) ? "i" : "");
     send_nick(nick, ServiceUser, ServiceHost, ServerName, realname, modebuf);
+    if (ServicesChannel && *ServicesChannel)
+        send_cmd(nick, "JOIN %s", ServicesChannel);
 }
 
 /*************************************************************************/

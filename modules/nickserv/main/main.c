@@ -684,10 +684,32 @@ long count_nickgroupinfo(const char *where, const char *const *params,
 /* Fetch in the background the records of `nicks', and call `done' when
  * they are ready: for the paths that see the whole network go by. */
 EXPORT_FUNC(prefetch_nickinfo)
-int prefetch_nickinfo(const char **nicks, int count, void (*done)(void *arg),
-                      void *arg)
+int prefetch_nickinfo(Module *owner, const char **nicks, int count,
+                      void (*done)(void *arg), void *arg)
 {
-    return store_prefetch(THIS_MODULE, &nick_type, nicks, count, done, arg);
+    return store_prefetch(owner, &nick_type, nicks, count, done, arg);
+}
+
+EXPORT_FUNC(prefetch_nickgroupinfo)
+int prefetch_nickgroupinfo(Module *owner, const uint32 *ids, int count,
+                           void (*done)(void *arg), void *arg)
+{
+    char (*buf)[16];
+    const char **keys;
+    int i, res;
+
+    if (count <= 0)
+        return store_prefetch(owner, &ngi_type, NULL, 0, done, arg);
+    buf = smalloc(sizeof(*buf) * count);
+    keys = smalloc(sizeof(*keys) * count);
+    for (i = 0; i < count; i++) {
+        snprintf(buf[i], sizeof(buf[i]), "%u", ids[i]);
+        keys[i] = buf[i];
+    }
+    res = store_prefetch(owner, &ngi_type, keys, count, done, arg);
+    free(keys);
+    free(buf);
+    return res;
 }
 
 /*************************************************************************/
@@ -790,6 +812,17 @@ static int introduce_nickserv(const char *nick)
 
 /*************************************************************************/
 
+static int nickserv(const char *source, const char *target, char *buf);
+
+/* Run a command again once its password is ready (see encrypt.h). */
+
+static void nickserv_replay(User *u, char *line)
+{
+    nickserv(u->nick, s_NickServ, line);
+}
+
+/*************************************************************************/
+
 /* Main NickServ routine. */
 
 static int nickserv(const char *source, const char *target, char *buf)
@@ -807,10 +840,11 @@ static int nickserv(const char *source, const char *target, char *buf)
         return 1;
     }
 
+    password_command_begin(THIS_MODULE, u, nickserv_replay, buf);
     cmd = strtok(buf, " ");
 
     if (!cmd) {
-        return 1;
+        /* nothing */
     } else if (stricmp(cmd, "\1PING") == 0) {
         const char *s;
         if (!(s = strtok_remaining()))
@@ -827,6 +861,7 @@ static int nickserv(const char *source, const char *target, char *buf)
         if (call_callback_2(cb_command, u, cmd) <= 0)
             run_cmd(s_NickServ, u, THIS_MODULE, cmd);
     }
+    password_command_end();
     return 1;
 
 }
@@ -961,7 +996,7 @@ static void validate_later(User *user, int nickchange)
     nickchange_user = NULL;
     user->ns_validate = arg;
     keys[0] = user->nick;
-    if (!prefetch_nickinfo(keys, 1, validate_nick_ready, arg)) {
+    if (!prefetch_nickinfo(THIS_MODULE, keys, 1, validate_nick_ready, arg)) {
         arg->user = NULL;
         user->ns_validate = NULL;
         validated(user, nickchange, arg->old_group);
@@ -1256,7 +1291,7 @@ static void do_register(User *u)
     NickGroupInfo *ngi;
     char *pass = strtok(NULL, " ");
     char *email = strtok(NULL, " ");
-    int n;
+    int n, res;
     time_t now = time(NULL);
 
     if (readonly) {
@@ -1367,8 +1402,10 @@ static void do_register(User *u)
 
         /* Make sure the password can be encrypted first */
         init_password(&passbuf);
-        if (encrypt_password(pass, strlen(pass), &passbuf) != 0) {
+        if ((res = encrypt_password(pass, strlen(pass), &passbuf)) != 0) {
             clear_password(&passbuf);
+            if (res == PASSWORD_PENDING)
+                return;  /* the command will be run again */
             memset(pass, 0, strlen(pass));
             module_log("Failed to encrypt password for %s (register)",
                        u->nick);
@@ -2806,43 +2843,6 @@ static int do_reconfigure(int after_configure)
 
 /*************************************************************************/
 
-/* -encrypt-all: one group. */
-typedef struct {
-    int done, already, failed;
-} EncryptAllCount;
-
-static int reencrypt_one(NickGroupInfo *ngi, void *arg)
-{
-    EncryptAllCount *counts = arg;
-    char plainbuf[PASSMAX];
-    Password newpass;
-
-    if ((EncryptionType && ngi->pass.cipher
-         && strcmp(ngi->pass.cipher, EncryptionType) == 0)
-     || (!EncryptionType && !ngi->pass.cipher)
-    ) {
-        counts->already++;
-        return 0;
-    }
-    init_password(&newpass);
-    if (decrypt_password(&ngi->pass, plainbuf, sizeof(plainbuf)) != 0) {
-        counts->failed++;
-        return 0;
-    }
-    if (encrypt_password(plainbuf, strlen(plainbuf), &newpass) != 0) {
-        memset(plainbuf, 0, sizeof(plainbuf));
-        counts->failed++;
-        return 0;
-    }
-    memset(plainbuf, 0, sizeof(plainbuf));
-    copy_password(&ngi->pass, &newpass);
-    clear_password(&newpass);
-    counts->done++;
-    return 0;
-}
-
-/*************************************************************************/
-
 int init_module(void)
 {
     handle_config();
@@ -2952,14 +2952,6 @@ int init_module(void)
         exit_module(0);
         return 0;
     }
-
-    if (encrypt_all) {
-        EncryptAllCount counts = {0, 0, 0};
-        module_log("Re-encrypting passwords...");
-        foreach_nickgroupinfo(NULL, NULL, 0, reencrypt_one, &counts);
-        module_log("%d passwords re-encrypted, %d already encrypted, %d"
-                   " failed", counts.done, counts.already, counts.failed);
-    } /* if (encrypt_all) */
 
     old_REGISTER_SYNTAX =
         mapstring(NICK_REGISTER_SYNTAX, NICK_REGISTER_SYNTAX);

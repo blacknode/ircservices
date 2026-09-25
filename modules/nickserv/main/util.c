@@ -756,7 +756,8 @@ void unsuspend_nick(NickGroupInfo *ngi, int set_time)
  * correct (or the encryption routine fails).  `command' is the name of
  * the command calling this function, and `failure_msg' is the message to
  * send to the user if the encryption routine fails.  Returns 1 if the
- * password matches, 0 otherwise.
+ * password matches, 0 otherwise -- including, silently, when the answer is
+ * being worked out and the command will be run again (see encrypt.h).
  */
 
 int nick_check_password(User *u, NickInfo *ni, const char *password,
@@ -774,7 +775,9 @@ int nick_check_password(User *u, NickInfo *ni, const char *password,
 
     res = check_password(password, &ngi->pass);
     put_nickgroupinfo(ngi);
-    if (res == 0) {
+    if (res == PASSWORD_PENDING) {
+        return 0;
+    } else if (res == 0) {
         module_log("%s: bad password for %s from %s!%s@%s",
                    command, ni->nick, u->nick, u->username, u->host);
         bad_password(s_NickServ, u, ni->nick);

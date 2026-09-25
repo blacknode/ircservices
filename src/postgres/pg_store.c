@@ -583,7 +583,7 @@ static void store_put(void* record, const StoreColumn* col, const char* value,
             free(buf);
             return;
         case DBTYPE_PASSWORD: {
-            char password[PASSMAX];
+            char password[PASSHASHMAX];
             if (!store_unhex(value, (unsigned char*)password,
                              sizeof(password)))
                 memset(password, 0, sizeof(password));
@@ -778,7 +778,7 @@ static int store_snapshot(const DBTable* table, const StoreColumn* cols,
                             pgbuf_append(buf, "\\N", 2);
                     }
                     else {
-                        size_t len = PASSMAX;
+                        size_t len = sizeof(v.pass.password);
                         /* Trailing NULs are restored on load. */
                         while (len > 0 && !v.pass.password[len - 1])
                             len--;

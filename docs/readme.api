@@ -239,6 +239,10 @@ way; read them with the functions of section 3.
 The same header conventions apply to the other services the core offers
 modules, described in readme.database: db.h (asynchronous PostgreSQL
 queries), cache.h (Redis), store.h (records kept in PostgreSQL through
-Redis) and worker.h (worker threads); and to migration.h, described in
-readme.migrations.
+Redis) and worker.h (worker threads); to migration.h, described in
+readme.migrations; to modules/httpd/http.h (serving pages from a module),
+described in readme.http; and to encrypt.h, whose check_password() and
+encrypt_password() may answer PASSWORD_PENDING: the password is being
+worked on in a worker thread and the command will be run again (see the
+header, and readme.features section 3-7).
 

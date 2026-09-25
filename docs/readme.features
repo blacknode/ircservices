@@ -1544,73 +1544,36 @@ discussed in the following sections.
 ### 3-6-1. Core HTTP server module
 
 The core HTTP server module, `httpd/main`, provides the foundation for the
-other HTTP modules, including the ability to listen for and parse HTTP
-requests. This module is akin to, although considerably less full-featured
-than, a typical standalone HTTP server (httpd).
+other HTTP modules. The server itself is Mongoose (vendor/mongoose/, the
+same library ircu2 uses), running on a thread of its own: it owns the
+sockets, parses the requests (including chunked bodies and keep-alive
+connections) and does TLS, and hands each request, already parsed, to the
+module that claimed its path, in Services' main thread. A module that
+needs a record from the database to answer does not stop Services while
+it waits: it answers when the record arrives. How this works, and how to
+write a module that serves pages, is in readme.http.
 
 The HTTP server's behavior is defined by the settings of the `httpd/main`
-module block. The most important of these, `ListenTo`, specifies the IP address and
-port number on which the HTTP server listens for connections; it is possible
-to specify multiple addresses, which will cause Services to listen for
-connections on all of them. The port number can be any port which is not
-already used by another service on the same machine, although using ports
-below 1024 normally requires super-user privileges. The IP address can be
-specified as "`*`" in the simplest case; this means "listen for connections
-on any IP address". However, if you are using a machine with multiple IP
-addresses, you may need to enter a specific IP address to avoid collisions
-with services listening on other IP addresses. You may also choose to only
-allow connections from clients on the same machine by specifying the
-"`localhost`" address, `127.0.0.1`; the same sort of access control can also
-be performed on a per-resource basis using the `httpd/auth-ip` authorization
-module, discussed later, but if you want to limit all resources to the local
-machine, this method is safer and more efficient.
+module block. The most important of these, `ListenTo`, specifies the IP
+address and port number on which the HTTP server listens for connections;
+it may be given several times, and Services listen on all of them. The
+address can be an IPv4 address, an IPv6 address in brackets, or "`*`" for
+every IPv4 address; to allow connections only from the same machine, use
+`127.0.0.1` (or `[::1]`). Host names are not accepted. A `ListenTo` whose
+address is followed by "`, tls`" speaks HTTPS, with the certificate and
+key given by `TLSCertificate` and `TLSKey`. Without any `ListenTo`, nothing
+listens.
 
-It is also possible to use a hostname in place of the IP address; in this
-case, Services will look up the hostname at startup and use the IP address
-found (all addresses, if more than one is found) as the address to listen
-to. However, these addresses will not change even if the hostname's DNS
-information changes, unless Services is restarted or instructed to reread
-the configuration file (see readme.install).
+`MaxConnections` sets the maximum number of simultaneous connections
+(connections beyond it are closed as soon as they are accepted), and
+`RequestTimeout` how long a request may wait for its answer before it is
+answered "504 Gateway Timeout". A request body larger than 64 KiB is
+refused. A REHASH that changes the listening settings restarts the
+listener; one that does not leaves the connections alone.
 
-The number of connections allowed at once and the length of time a single
-connection can remain open are set by the `MaxConnections`, `MaxRequests`,
-and `IdleTimeout` directives. `MaxConnections` sets the maximum number of
-simultaneous connections Services will accept; any connections above this
-limit will be dropped as soon as they are accepted. `MaxRequests` sets the
-maximum number of HTTP requests that can be sent over a single connection,
-while `IdleTimeout` gives the maximum length of time a connection can be
-idle (*i.e.,* not receiving any data from the client); if either of these
-limits are passed, the connection is dropped. (Note that some resources
-cause the connection to be dropped after the server finishes sending data,
-regardless of these settings.)
-
-If the `LogConnections` directive is given, the HTTP server will write a log
-message to the Services log file for each connection accepted. Note that the
-resource (URL) requested is not logged, and only one message is written per
-connection, even if several HTTP requests are made over the same connection.
-(If per-request logging is desired, `MaxRequests` can be set to 1 to force
-clients to open a new connection for each request.)
-
-The remaining settings, `ListenBacklog` and `RequestBufferSize`, can usually
-be left as is. `ListenBacklog` specifies how many connections the OS should
-allow to be made to a single HTTP server port without being accepted by
-Services, a situation which can arise if the HTTP server is under heavy load
-and requests come in faster than Services can process them. (However, some
-operating systems do not allow a value greater than the default of 5; on
-such systems, increasing the value will not cause an error but will have no
-effect.) `RequestBufferSize` specifies the size of the receive buffer
-allocated for each request; if a request exceeds this size, the client will
-be sent a "Request Entity Too Large" error and the connection will be
-dropped. There should be no need to modify this value for the modules
-distributed with Services.
-
-Note that the `RequestBufferSize` setting only affects the size of the
-receive buffer itself. In addition to this buffer, a fixed-size control
-structure and a list of headers and form variables are also allocated for
-each connection; in the worst case, these will require approximately 4/3 of
-the value given for `RequestBufferSize`. Thus, the maximum amount of memory
-used by the HTTP server module can be conservatively calculated as
-approximately `MaxConnections * RequestBufferSize * 2.5`.
+The server refuses, before any module sees them, paths it will not route:
+"`..`" anywhere, an encoded "`/`", "`\`" or NUL (`%2F`, `%5C`, `%00`), and
+control characters.
 
 ### 3-6-2. Authorization modules
 
@@ -1637,10 +1600,10 @@ to include a "`/`" at the end of the resource URL, *e.g.* "`/dir/`". Access
 control can be applied to every resource on the server by using the resource
 URL "`/`".
 
-The second parameter, the IP address, is specified much the same as with the
-core module's `ListenTo` directive: the string "`*`" can be used to mean
-"all IP addresses", and a hostname will be replaced with the IP address or
-addresses associated with that hostname. (Keep in mind that hostnames are
+The second parameter, the IP address, is an IPv4 address: the string "`*`"
+can be used to mean "all IP addresses" (IPv6 clients included; the other
+forms match IPv4 clients only), and a hostname will be replaced with the
+IPv4 address or addresses associated with that hostname. (Keep in mind that hostnames are
 resolved to IP address only once, at program startup; if the hostname's IP
 address changes while Services is running, Services will not recognize the
 new IP address for authorization purposes.) For these directives, one
@@ -1724,7 +1687,10 @@ takes precedence, and `Filename` is ignored.
 
 Note that with `Filename`, the file specified is served as-is; Services will
 not attempt to execute it even if it looks like a CGI script, and cannot
-process PHP or other such languages embedded in the file.
+process PHP or other such languages embedded in the file. It is streamed by
+the server thread, read when it is asked for, with ETag and Range support.
+The top page is "`/`" itself: any other path no module claimed is "404 Not
+Found".
 
 **Providing links to nickname and channel URLs: the `httpd/redirect`
 module**
@@ -1739,17 +1705,15 @@ Nickname and channel redirects each use a base URL specified in the
 module's block: `NicknamePrefix` for nicknames, and `ChannelPrefix` for
 channels. The nickname or channel whose URL is used is the string
 immediately following the given prefix (in the case of channels, the leading
-"`#`" is discarded, since it cannot be used in URLs). This means that to get
-URLs like "`http://services.example.net/channel/channel-name`", the prefix
-should be specified as "`/channel/`" with a trailing slash, but also allows
-you to specify "`/~`" for the nickname prefix and get URLs like
-"`http://services.example.net/~nickname`". (Both of these are the default
-settings.)
+"`#`" is discarded, since it cannot be used in URLs). A prefix is a
+directory, and must begin and end with a slash: "`/channel/`" gives URLs
+like "`http://services.example.net/channel/channel-name`", and "`/nick/`"
+URLs like "`http://services.example.net/nick/nickname`". (The old "`/~`"
+form is no longer possible.)
 
-`NicknamePrefix` and `ChannelPrefix` should be specified so that they do not
-overlap; if a particular URL can be interpreted as both a nickname reference
-and a channel reference, the nickname will always take precedence, even if
-it is not registered or does not have a URL associated with it.
+Anybody can ask for any name, so the records are looked up in the
+background: a request waits for its record (`RequestTimeout` at most),
+never Services.
 
 **Online database access: the `httpd/dbaccess` module**
 
@@ -1763,15 +1727,12 @@ Services databases to be accessed through the simple point-and-click
 interface of a browser rather than the text-based commands of IRC. While the
 module does not permit the databases to be modified, registered nicknames
 and channels, autokills and S-lines, and so on can all be accessed and
-viewed through a simple menu system. Additionally, a copy of all Services
-data in XML format can be downloaded if the `misc/xml-export` module is
-loaded (see readme.xml for details).
+viewed through a simple menu system.
 
-Especially when performing an XML download of the Services databases, keep
-in mind that Services will not respond to any network activity until the
-HTTP request completes; if you have a slow machine or a large database, this
-can cause Services to appear to "lag" on the IRC network, or in extreme
-cases get disconnected from the network entirely, so use caution.
+Lists of nicknames and channels are read from the database a page at a
+time (500 names per page), and each page waits for its query the way an
+operator's `LIST` command does: these pages are for operators, not for the
+public.
 
 The URL at which the data is accessible is set by the `Prefix` directive in the
 module's block; if it does not end with a slash, one will be appended
@@ -1798,8 +1759,6 @@ refer to the following table for the appropriate pathnames (in all cases,
 
 | `path/statserv/` | Network statistics
 
-| `path/xml-export/` | XML-format database download
-
 **Debugging information: the `httpd/debug` module**
 
 The `httpd/debug` module is intended primarily for module developers, and
@@ -1810,51 +1769,44 @@ when testing the HTTP server.
 
 ## 3-7. Password encryption
 
-Services has the ability to encrypt passwords (nickname passwords, channel
-passwords, and the OperServ super-user password) to provide an additional
-layer of protection against password theft. Normally, passwords are not
-encrypted, and if an unauthorized user gains access to the databases, users'
-passwords will be compromised; encryption prevents this compromise from
-occurring (although it is still possible for an attacker to "crack" the
-encrypted passwords, especially if the passwords are easily guessable). Note
-that under the default installation procedures, only the user installing
-Services and the administrator of the machine Services is installed on will
-have access to the databases.
+Every password Services keep -- nickname passwords, channel passwords and
+the OperServ super-user password -- is stored as an Argon2id hash (RFC
+9106), made by the `encryption/argon2` module, which is required. Argon2
+is a password hashing function: slow and memory-hungry on purpose, so that
+an attacker holding a copy of the database has to spend real time and
+memory on every guess of every password. Each password has its own random
+salt, so two users with the same password do not share a hash. The code is
+ircu2's (the same Argon2id and BLAKE2b), checked against the test vectors of
+RFC 9106 and RFC 7693 (`ctest`, `tests/argon2_t.c`).
 
-The downside to using encryption, although minor, is that the NickServ and
-ChanServ `GETPASS` commands will become unusable. This is because some types
-of encryption, including all the types supported by Services, are one-way
-only (also known as "trapdoor functions"); such encryption types allow a
-password to be converted into an encrypted string, but do not allow the
-password to be recovered from that string.
+A hash cannot be turned back into the password, so the NickServ and
+ChanServ `GETPASS` commands report that the password is not available.
 
-To enable encryption of passwords, ensure that the desired encryption module
-is loaded with a `loadmodule` directive, then enter the encryption type (the
-name of the module without the leading "`encryption/`") in the
-`options { encryption }` directive in `ircservices.conf`. There is no penalty for
-loading multiple encryption modules, but only the module specified by the
-`options { encryption }` directive will be used to encrypt new passwords.
+**Where the work is done.** Making or checking a hash takes around a tenth
+of a second and 19 MiB of memory with the default costs, and it never runs
+in Services' main loop: it goes to a worker thread (the `workers` block of
+`ircservices.conf`), and the command that asked for it -- IDENTIFY,
+REGISTER, SET PASSWORD, GHOST, SU, ... -- is run again from the start once
+the answer is in, with everything it checked before the password checked
+again (the user may have quit or changed nick meanwhile). To the user it
+looks like an ordinary command that took a moment longer. A user has one
+password check running at a time; a second command that needs one while
+the first is running is ignored.
 
-The available encryption modules are as follows:
+**The settings** are in the `encryption/argon2` block: `Memory` and `Passes`
+(the cost of new hashes) and `Pepper`, a secret mixed into every hash and
+stored nowhere but in the configuration, so that a stolen database alone is
+not enough to start guessing (set it before any password is stored, and
+never change or lose it). The costs are stored with every hash, so they can
+be raised at any time: old passwords keep working, and each is made again
+with the current costs the next time its owner gives it.
 
-- **`encryption/md5`**: Uses the MD5 hashing algorithm to encrypt passwords.
-  This is a one-way encryption algorithm which generates a 128-bit "digest"
-  of the password, and is used by several Unix systems to encrypt user
-  passwords as well.
-
-- **`encryption/unix-crypt`**: **DISCOURAGED.** Uses the `crypt()` function
-  available in most Unix systems, typically a variant of the DES encryption
-  algorithm, to encrypt passwords. This is a one-way encryption algorithm;
-  as it is not very strong (only 56 bits), recent operating systems tend to
-  avoid it in favor of MD5, SHA1, or other stronger algorithms, and this
-  module is provided primarily for compatibility with externally-generated
-  passwords or databases from other Services-like programs. Note that this
-  module requires that your operating system support the `crypt()` function,
-  and it will refuse to load otherwise.
-
-When a password is encrypted, Services stores the encryption type used, so
-that even if the `options { encryption }` directive is later changed, older
-passwords can still be used (provided the appropriate module is loaded).
+**Older passwords.** A password stored without a cipher (by an earlier
+version of Services, where encryption was optional) still works, and is
+replaced by an Argon2 hash the first time its owner gives it. Passwords of
+the old `encryption/md5` and `encryption/unix-crypt` modules, which no
+longer exist, cannot be checked: their owners need a new password (SET
+PASSWORD by a Services administrator).
 
 ## 3-8. E-mail sending
 

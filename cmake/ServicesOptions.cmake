@@ -40,6 +40,14 @@ set(SERVICES_ENGINE auto CACHE STRING
 set_property(CACHE SERVICES_ENGINE PROPERTY STRINGS
   auto epoll kqueue poll select)
 
+# TLS for the HTTP server (httpd/main, which carries Mongoose): "auto" is
+# OpenSSL when it is installed and Mongoose's own otherwise (TLS 1.3 only,
+# and ECDSA certificates only); "none" builds it without TLS.
+set(SERVICES_HTTP_TLS auto CACHE STRING
+  "TLS for httpd/main: auto, openssl, builtin or none")
+set_property(CACHE SERVICES_HTTP_TLS PROPERTY STRINGS
+  auto openssl builtin none)
+
 if(SERVICES_SHOWALLOCS AND NOT SERVICES_MEMCHECKS)
   message(FATAL_ERROR "SERVICES_SHOWALLOCS requires SERVICES_MEMCHECKS=ON")
 endif()

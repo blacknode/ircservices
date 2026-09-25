@@ -32,19 +32,38 @@ static int protected_count = 0;
 /************************ Authorization callback *************************/
 /*************************************************************************/
 
-static int do_auth(Client *c, int *close_ptr)
+static int do_auth(const struct HttpRequest *req, struct HttpResponse *res)
 {
+    static const unsigned char v4mapped[12] =
+        {0,0,0,0, 0,0,0,0, 0,0,0xFF,0xFF};
+    uint32 ip = 0;
+    int have_v4 = 0;
     int i;
 
+    /* The rules are IPv4 addresses.  An IPv4 client arrives as such, or
+     * over IPv6 as ::ffff:a.b.c.d; any other IPv6 client matches only a
+     * rule for every address ("*"). */
+    if (!req->hreq_ip6) {
+        memcpy(&ip, req->hreq_ip, 4);
+        have_v4 = 1;
+    } else if (memcmp(req->hreq_ip, v4mapped, sizeof(v4mapped)) == 0) {
+        memcpy(&ip, req->hreq_ip + 12, 4);
+        have_v4 = 1;
+    }
+
     ARRAY_FOREACH (i, protected) {
-        if (strncmp(c->url, protected[i].path, protected[i].pathlen) != 0)
+        if (strncmp(req->hreq_path, protected[i].path,
+                    protected[i].pathlen) != 0)
             continue;
-        if ((c->ip & protected[i].mask) != protected[i].ip)
+        if (protected[i].mask
+            && (!have_v4 || (ip & protected[i].mask) != protected[i].ip))
             continue;
         if (protected[i].allow) {
             return HTTP_AUTH_UNDECIDED;
         } else {
-            module_log("Denying request for %s from %s", c->url, c->address);
+            module_log("Denying request for %s from %s", req->hreq_path,
+                       req->hreq_remote);
+            http_response_error(res, HTTP_E_FORBIDDEN, NULL);
             return HTTP_AUTH_DENY;
         }
     }

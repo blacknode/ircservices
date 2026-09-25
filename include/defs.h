@@ -65,10 +65,9 @@
  * still work fine, albeit with a tiny amount of wasted memory for each
  * nickname and channel.
  *
- * WARNING:  If you change these, you MUST back up your data to an XML file
- * before making the change, and re-import the data afterwards.  Database
- * files created with different calues of CHANMAX/NICKMAX/PASSMAX are not
- * compatible!
+ * The database keeps names as text of any length, so it does not care; but
+ * a registered name longer than a new, smaller limit can no longer be used
+ * from IRC.
  */
 
 /* Maximum length of a channel name, including the trailing null.  Any
@@ -84,6 +83,11 @@
 
 /* Maximum length of an unencrypted password, including the trailing null. */
 #define PASSMAX 32
+
+/* Size of a stored password: what a cipher writes (an Argon2 hash in its
+ * "$argon2id$..." encoding is about a hundred characters), including the
+ * trailing null. */
+#define PASSHASHMAX 256
 
 /*************************************************************************/
 

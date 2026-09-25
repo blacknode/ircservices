@@ -11,6 +11,7 @@
 #include "conffile.h"
 #include "databases.h"
 #include "db.h"
+#include "encrypt.h"
 #include "migration.h"
 #include "store.h"
 #include "language.h"
@@ -54,6 +55,7 @@ char* ServerName;
 char* ServerDesc;
 char* ServiceUser;
 char* ServiceHost;
+char* ServicesChannel;
 
 char* LogFilename;
 char PIDFilename[PATH_MAX + 1];
@@ -101,6 +103,7 @@ static int do_PIDFilename(const char* filename, int linenum, char* param);
 static int do_RejectEmail(const char* filename, int linenum, char* param);
 static int do_RunGroup(const char* filename, int linenum, char* param);
 static int do_ServiceUser(const char* filename, int linenum, char* param);
+static int do_ServicesChannel(const char* filename, int linenum, char* param);
 static int do_Umask(const char* filename, int linenum, char* param);
 
 /*************************************************************************/
@@ -116,6 +119,7 @@ static ConfigDirective toplevel_directives[] = {
 
 /* serverinfo { }: how Services present themselves to the network. */
 static ConfigDirective serverinfo_directives[] = {
+    {"channel", {{CD_FUNC, 0, do_ServicesChannel}}},
     {"description", {{CD_STRING, CF_DIRREQ, &ServerDesc}}},
     {"name", {{CD_STRING, CF_DIRREQ, &ServerName}}},
     {"numeric", {{CD_INT, CF_DIRREQ, &ServerNumeric}}},
@@ -820,6 +824,55 @@ static int do_ServiceUser(const char* filename, int linenum, char* param)
 
 /*************************************************************************/
 
+/* serverinfo { channel }: the channel every pseudoclient joins once it is
+ * introduced.  Optional; without it the pseudoclients join no channel. */
+
+static int do_ServicesChannel(const char* filename, int linenum, char* param)
+{
+    static char* new_ServicesChannel = NULL;
+
+    if (!filename) {
+        switch (linenum) {
+            case CDFUNC_INIT:
+                free(new_ServicesChannel);
+                new_ServicesChannel = NULL;
+                break;
+            case CDFUNC_SET:
+                free(ServicesChannel);
+                ServicesChannel = new_ServicesChannel;
+                new_ServicesChannel = NULL;
+                break;
+            case CDFUNC_DECONFIG:
+                free(ServicesChannel);
+                ServicesChannel = NULL;
+                break;
+        }
+        return 1;
+    } /* if (!filename) */
+
+    /* A network-wide channel (ircu2 has only `#' ones; `&' ones are local
+     * to a server) with none of the characters ircu refuses in a name:
+     * space, comma (which would also make the JOIN a list of channels)
+     * and ^G. */
+    if (*param != '#' || !param[1] ||
+        param[strcspn(param, " ,\a")] != 0) {
+        config_error(filename, linenum,
+                     "serverinfo channel: `%s' is not a channel name", param);
+        return 0;
+    }
+    if (strlen(param) >= CHANMAX) {
+        config_error(filename, linenum,
+                     "serverinfo channel: name too long (maximum %d)",
+                     CHANMAX - 1);
+        return 0;
+    }
+    free(new_ServicesChannel);
+    new_ServicesChannel = sstrdup(param);
+    return 1;
+}
+
+/*************************************************************************/
+
 static int do_Umask(const char* filename, int linenum, char* param)
 {
     char* s;
@@ -970,10 +1023,6 @@ static int parse_options(int ac, char** av, int call_modules)
                 if (!call_modules)
                     noakill = 1;
             }
-            else if (strcmp(s, "encrypt-all") == 0) {
-                if (!call_modules)
-                    encrypt_all = 1;
-            }
             else if (strcmp(s, "h") == 0 || strcmp(s, "help") == 0 ||
                      strcmp(s, "-help") == 0) {
                 fputs("The following options are recognized:\n"
@@ -1006,8 +1055,6 @@ static int parse_options(int ac, char** av, int call_modules)
                       "limit exceptions, etc.)\n"
                       "       -noakill                Disables autokill "
                       "checking\n"
-                      "       -encrypt-all            Re-encrypt all "
-                      "passwords on startup\n"
                       "Other options may be available depending on loaded "
                       "modules; see the manual\n"
                       "for details.\n",
@@ -1244,6 +1291,7 @@ int init(int ac, char** av)
         }
     }
     log_debug(1, "Loaded modules");
+    check_encryption();
 
     /* Load external language files (now that modules have had a chance to
      * add their own strings). */
@@ -1341,6 +1389,7 @@ int reconfigure(void)
     char *old_RemoteServer, *old_RemotePassword, *old_LocalHost;
     int old_RemotePort, old_LocalPort;
     char *old_ServerName, *old_ServerDesc, *old_ServiceUser, *old_ServiceHost;
+    char* old_ServicesChannel;
     char *old_LogFilename, *old_PIDFilename;
     char** old_LoadModules;
     int old_LoadModules_count;
@@ -1358,6 +1407,7 @@ int reconfigure(void)
     old_ServerDesc = sstrdup(ServerDesc);
     old_ServiceUser = sstrdup(ServiceUser);
     old_ServiceHost = sstrdup(ServiceHost);
+    old_ServicesChannel = ServicesChannel ? sstrdup(ServicesChannel) : NULL;
     old_LogFilename = sstrdup(LogFilename);
     old_PIDFilename = sstrdup(PIDFilename);
     old_LoadModules = LoadModules;
@@ -1378,6 +1428,7 @@ int reconfigure(void)
         free(old_ServerDesc);
         free(old_ServiceUser);
         free(old_ServiceHost);
+        free(old_ServicesChannel);
         free(old_LogFilename);
         free(old_PIDFilename);
         return 0;
@@ -1406,6 +1457,18 @@ int reconfigure(void)
         (ServiceHost && strcmp(ServiceHost, old_ServiceHost) != 0))
         log("warning: reconfigure: new serverinfo user will not take"
             " effect until restart");
+    /* The pseudoclients already on the old channel stay there, so the
+     * ones introduced from now on (modules loaded later, a pseudoclient
+     * brought back after a KILL) keep joining it too. */
+    if ((!old_ServicesChannel) != (!ServicesChannel) ||
+        (ServicesChannel && irc_stricmp(ServicesChannel,
+                                        old_ServicesChannel) != 0)) {
+        log("warning: reconfigure: new serverinfo channel will not take"
+            " effect until restart");
+        free(ServicesChannel);
+        ServicesChannel = old_ServicesChannel;
+        old_ServicesChannel = NULL; /* don't free it below */
+    }
     if (strcmp(LogFilename, old_LogFilename) != 0) {
         log("reconfigure: log file changed, closing log file");
         set_logfile(LogFilename);
@@ -1491,6 +1554,8 @@ int reconfigure(void)
         }
     }
 
+    check_encryption();
+
     /* Free old configuration data and return */
     free(old_RemoteServer);
     free(old_RemotePassword);
@@ -1499,6 +1564,7 @@ int reconfigure(void)
     free(old_ServerDesc);
     free(old_ServiceUser);
     free(old_ServiceHost);
+    free(old_ServicesChannel);
     free(old_LogFilename);
     free(old_PIDFilename);
     ARRAY_FOREACH(i, old_LoadModules)

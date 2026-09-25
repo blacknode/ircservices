@@ -138,7 +138,32 @@ modules, their module blocks and their loadmodule entries no longer exist
 LockFilename (files { lock; }) and the -forceload option went with them.
 
 Add a database block with the connection string and a redis block (both
-are required), and bring the data over with the XML export and import
-modules: export with the old version (-export=<file>), then start this one
-once with -import=<file>.  readme.database, section 1-7, has the details.
+are required).  The data of the old files is not converted: the XML
+export and import modules are gone as well (readme.database, section 1-7).
+
+Passwords
+---------
+
+encryption/md5 and encryption/unix-crypt are gone; passwords are stored as
+Argon2id hashes by encryption/argon2, which must be loaded (replace the
+old loadmodule entries and remove their module blocks; EnableAnopeWorkaround
+went with md5).  options { encryption } may be left out: it defaults to
+argon2, and a password can no longer be stored as given.  A password that
+was stored without encryption still works and is converted the first time
+its owner gives it; one stored by md5 or unix-crypt cannot be checked any
+more.  -encrypt-all no longer exists.  See readme.features, section 3-7.
+
+The HTTP server
+---------------
+
+httpd/main is now Mongoose on a thread of its own (readme.http).  In its
+block, ListenBacklog, RequestBufferSize, MaxRequests, IdleTimeout and
+LogConnections no longer exist (they are reported as unknown and
+ignored); ListenTo takes IP addresses only (no host names), and gained
+", tls" with TLSCertificate and TLSKey; RequestTimeout is new.  In
+httpd/redirect, NicknamePrefix and ChannelPrefix must end with a slash:
+"/~" becomes, for example, "/nick/".  httpd/dbaccess no longer offers an
+XML download.  A module written against the old httpd API ("request"
+callback, sockprintf() on the client's socket) has to be ported to
+routes: readme.http.
 

@@ -5,6 +5,9 @@
  * Parts written by Andrew Kempe and others.
  * This program is free but copyrighted software; see the file GPL.txt for
  * details.
+ *
+ * Claims "/" exactly.  A file is not read here: the server thread streams
+ * it (http_response_file()), outside the main loop.
  */
 
 #include "services.h"
@@ -22,38 +25,24 @@ static const char *ContentType = "text/html";
 static const char *Redirect = NULL;
 
 /*************************************************************************/
-/*************************** Request callback ****************************/
+/**************************** Request handler ****************************/
 /*************************************************************************/
 
-static int do_request(Client *c, int *close_ptr)
+static int do_request(http_req_t id, const struct HttpRequest *req,
+                      struct HttpResponse *res, void *user)
 {
-    if (*c->url && strcmp(c->url, "/") != 0) {
-        return 0;
-    }
-    if (Redirect) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s\r\n", Redirect);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+    /* A route for "/" is a prefix, and so receives every path no other
+     * module claimed: only the top page itself is ours. */
+    if (strcmp(req->hreq_path, "/") != 0) {
+        http_response_error(res, HTTP_E_NOT_FOUND, NULL);
+    } else if (Redirect) {
+        http_response_redirect(res, HTTP_R_FOUND, Redirect);
     } else if (Filename) {
-        FILE *f = fopen(Filename, "rb");
-        if (f) {
-            char buf[4096];
-            int i;
-            *close_ptr = 1;
-            http_send_response(c, HTTP_S_OK);
-            sockprintf(c->socket,
-                       "Content-Type: %s\r\nConnection: close\r\n\r\n",
-                       ContentType);
-            while ((i = fread(buf, 1, sizeof(buf), f)) > 0)
-                swrite(c->socket, buf, i);
-            fclose(f);
-        } else if (errno == EACCES) {
-            http_error(c, HTTP_E_FORBIDDEN, NULL);
-        } else {
-            http_error(c, HTTP_E_NOT_FOUND, NULL);
-        }
+        if (!http_response_file(res, req, Filename,
+                                ContentType ? ContentType : "text/html"))
+            http_response_error(res, HTTP_F_INTERNAL_SERVER_ERROR, NULL);
     } else {
-        http_error(c, HTTP_E_NOT_FOUND, NULL);
+        http_response_error(res, HTTP_E_NOT_FOUND, NULL);
     }
     return 1;
 }
@@ -81,8 +70,8 @@ int init_module(void)
     }
     use_module(module_httpd);
 
-    if (!add_callback(module_httpd, "request", do_request)) {
-        module_log("Unable to add callback");
+    if (!http_add_route(THIS_MODULE, "GET", "/", do_request, NULL)) {
+        module_log("Unable to claim / (already claimed)");
         exit_module(0);
         return 0;
     }
@@ -95,7 +84,7 @@ int init_module(void)
 int exit_module(int shutdown_unused)
 {
     if (module_httpd) {
-        remove_callback(module_httpd, "request", do_request);
+        http_del_routes(THIS_MODULE);
         unuse_module(module_httpd);
         module_httpd = NULL;
     }

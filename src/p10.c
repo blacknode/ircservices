@@ -1151,6 +1151,15 @@ static int out_kill(OutMsg* m)
     return 1;
 }
 
+/* The last channel one of our clients created (CREATE) and its timestamp.
+ * Our clients are not Users, so a channel holding only them has no
+ * Channel here: without this, the next of our clients to join it (the
+ * pseudoclients joining serverinfo { channel } one after another, or one
+ * brought back later) would CREATE it again with a newer timestamp, which
+ * ircu answers outside a burst by bouncing the op with a HACK notice. */
+static char created_chan[CHANMAX];
+static time_t created_ts;
+
 /* JOIN of one of our clients: CREATE if the channel does not exist. */
 static int out_join(OutMsg* m)
 {
@@ -1160,12 +1169,17 @@ static int out_join(OutMsg* m)
     if (m->ac < 1)
         return 0;
     c = get_channel(m->av[0]);
-    if (!c) {
-        m->token = "C";
-        snprintf(tsbuf, sizeof(tsbuf), "%ld", (long)time(NULL));
+    if (c) {
+        snprintf(tsbuf, sizeof(tsbuf), "%ld", (long)c->creation_time);
+    }
+    else if (*created_chan && irc_stricmp(m->av[0], created_chan) == 0) {
+        snprintf(tsbuf, sizeof(tsbuf), "%ld", (long)created_ts);
     }
     else {
-        snprintf(tsbuf, sizeof(tsbuf), "%ld", (long)c->creation_time);
+        m->token = "C";
+        strbcpy(created_chan, m->av[0]);
+        created_ts = time(NULL);
+        snprintf(tsbuf, sizeof(tsbuf), "%ld", (long)created_ts);
     }
     m->av[1] = tsbuf;
     m->ac = 2;

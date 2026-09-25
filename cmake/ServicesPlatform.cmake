@@ -2,8 +2,8 @@
 # Platform probes and the generated config.h.
 #
 # The code base assumes a C99 compiler and a POSIX system, so only what
-# genuinely varies between platforms is probed here: type sizes, crypt(3)
-# and which socket event engines exist.
+# genuinely varies between platforms is probed here: type sizes,
+# getentropy(3) and which socket event engines exist.
 #
 
 include(CheckIncludeFile)
@@ -14,14 +14,14 @@ check_type_size("long"   SIZEOF_LONG   LANGUAGE C)
 check_type_size("time_t" SIZEOF_TIME_T LANGUAGE C)
 check_type_size("gid_t"  SIZEOF_GID_T  LANGUAGE C)
 
-# crypt(3), for the encryption/unix-crypt module.
-find_library(CRYPT_LIBRARY crypt)
+# getentropy(3), for the salts of encryption/argon2 (which reads
+# /dev/urandom where it is missing).
 set(CMAKE_REQUIRED_DEFINITIONS -D_GNU_SOURCE)
-if(CRYPT_LIBRARY)
-  set(CMAKE_REQUIRED_LIBRARIES "${CRYPT_LIBRARY}")
+check_symbol_exists(getentropy "unistd.h" HAVE_GETENTROPY)
+if(NOT HAVE_GETENTROPY)
+  unset(HAVE_GETENTROPY CACHE)
+  check_symbol_exists(getentropy "sys/random.h" HAVE_GETENTROPY)
 endif()
-check_symbol_exists(crypt "unistd.h;crypt.h" HAVE_CRYPT)
-unset(CMAKE_REQUIRED_LIBRARIES)
 unset(CMAKE_REQUIRED_DEFINITIONS)
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ else()
 endif()
 
 foreach(flag SERVICES_SORTED_LISTS SERVICES_WARNINGS SERVICES_DUMPCORE
-             SERVICES_MEMCHECKS SERVICES_SHOWALLOCS HAVE_CRYPT)
+             SERVICES_MEMCHECKS SERVICES_SHOWALLOCS HAVE_GETENTROPY)
   if(${flag})
     set(${flag}_VALUE 1)
   else()

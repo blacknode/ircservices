@@ -30,14 +30,27 @@ static int protected_count = 0;
 /************************ Authorization callback *************************/
 /*************************************************************************/
 
-static int do_auth(Client *c, int *close_ptr)
+/* Compare two strings without saying where they differ. */
+static int same_secret(const char *a, const char *b)
+{
+    size_t la = strlen(a), lb = strlen(b), i;
+    unsigned char diff = la != lb;
+
+    for (i = 0; i < la && i < lb; i++)
+        diff |= (unsigned char)(a[i] ^ b[i]);
+    return diff == 0;
+}
+
+static int do_auth(const struct HttpRequest *req, struct HttpResponse *res)
 {
     int i;
-    char *authinfo, *s;
+    const char *authinfo;
+    char realm[256];
 
     /* Search for a matching path prefix. */
     ARRAY_FOREACH (i, protected) {
-        if (strncmp(c->url, protected[i].path, protected[i].pathlen) == 0)
+        if (strncmp(req->hreq_path, protected[i].path,
+                    protected[i].pathlen) == 0)
             break;
     }
     if (i >= protected_count) {
@@ -45,38 +58,33 @@ static int do_auth(Client *c, int *close_ptr)
         return HTTP_AUTH_UNDECIDED;
     }
 
-    /* Check for an Authorization: header. */
-    authinfo = http_get_header(c, "Authorization");
-    if (authinfo) {
-        /* Retrieve the encoded username and password. */
-        s = strchr(authinfo, ' ');
-        /* Check and make sure they're actually there. */
-        if (s) {
-            /* Skip past any extra whitespace... */
-            while (*s == ' ' || *s == '\t')
-                s++;
-            /* ... then compare against the configured username/password. */
-            if (strcmp(s, protected[i].userpass) == 0) {
-                /* Allow the next authorization callback to check this
-                 * request.  In general, it is not a good idea to
-                 * explicitly allow requests unless the requesting user
-                 * has (for example) been authorized as the Services root
-                 * or otherwise should clearly have access despite any
-                 * other suthorization checks.
-                 */
-                return HTTP_AUTH_UNDECIDED;
-            }
+    /* Check for an Authorization: header with basic credentials. */
+    authinfo = http_request_header(req, "Authorization");
+    if (authinfo && strnicmp(authinfo, "Basic", 5) == 0
+        && (authinfo[5] == ' ' || authinfo[5] == '\t')) {
+        authinfo += 5;
+        /* Skip past any extra whitespace... */
+        while (*authinfo == ' ' || *authinfo == '\t')
+            authinfo++;
+        /* ... then compare against the configured username/password. */
+        if (same_secret(authinfo, protected[i].userpass)) {
+            /* Allow the next authorization callback to check this
+             * request.  In general, it is not a good idea to
+             * explicitly allow requests unless the requesting user
+             * has (for example) been authorized as the Services root
+             * or otherwise should clearly have access despite any
+             * other authorization checks.
+             */
+            return HTTP_AUTH_UNDECIDED;
         }
     }
 
     /* If the username or password are incorrect (or no Authorization:
-     * header was supplied, deny the request.
+     * header was supplied), deny the request.
      */
-    http_send_response(c, HTTP_E_UNAUTHORIZED);
-    sockprintf(c->socket, "WWW-Authenticate: basic realm=%s\r\n", AuthName);
-    sockprintf(c->socket, "Content-Type: text/html\r\n");
-    sockprintf(c->socket, "Content-Length: 14\r\n\r\n");
-    sockprintf(c->socket, "Access denied.");
+    http_response_error(res, HTTP_E_UNAUTHORIZED, NULL);
+    snprintf(realm, sizeof(realm), "Basic realm=\"%s\"", AuthName);
+    http_response_header(res, "WWW-Authenticate", realm);
     return HTTP_AUTH_DENY;
 }
 

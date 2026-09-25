@@ -61,6 +61,7 @@ E char* ServerName;
 E char* ServerDesc;
 E char* ServiceUser;
 E char* ServiceHost;
+E char* ServicesChannel;
 
 E char* LogFilename;
 E char PIDFilename[PATH_MAX + 1];
@@ -117,7 +118,6 @@ E int readonly;
 E int nofork;
 E int noexpire;
 E int noakill;
-E int encrypt_all;
 
 E int linked;
 E int quitting;

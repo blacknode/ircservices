@@ -1,0 +1,31 @@
+Mongoose, vendored
+==================
+
+  https://github.com/cesanta/mongoose
+  version 7.23 (the same copy ircu2 carries in ircd/mongoose/)
+
+Two files, taken from upstream and never edited: mongoose.c and
+mongoose.h, the amalgamation upstream publishes and supports.  Updating
+means replacing both and running the HTTP tests; there is no patch to
+carry forward, and there must never be one -- the reason to use this
+instead of the hand-written server it replaced is that it is somebody
+else's tested code, and a local edit gives that away.
+
+It is compiled into one module, httpd/main, with its own definitions (see
+modules/httpd/main/module.cmake), and nothing else includes mongoose.h
+except modules/httpd/main/server.c, which is the only file that knows this
+library exists.  Every other module sees modules/httpd/http.h.
+
+LICENCE
+-------
+
+Mongoose is GPL-2.0-only, or a commercial licence from Cesanta.  Services
+are GPL-2.0-or-later, and code offered under "version 2 or any later
+version" may be used under version 2, so the combined work is
+distributable under GPL-2.0.  What that costs is the "or later" -- for the
+httpd/main module, the one object that contains Mongoose.  The executable
+and every other module stay "2 or later".
+
+If that is not acceptable for a given deployment, the answer is a
+commercial licence from Cesanta, or not building httpd/main -- not a fork
+of this file.

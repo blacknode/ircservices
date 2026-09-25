@@ -719,8 +719,10 @@ Returns the password for the given nickname. **Note** that whenever this
 command is used, a message including the person who issued the command and
 the nickname it was used on will be logged.
 
-If encryption (see readme.features, section 3-7) is in use, this command may not be available
-depending on the type of encryption used.
+Passwords are stored as Argon2 hashes (readme.features, section 3-7), which
+cannot be turned back into the password: the command answers that it is not
+available, except for a password stored without encryption by an earlier
+version and not given by its owner since.
 
 Limited to **Services admins**.
 
@@ -1642,8 +1644,10 @@ Returns the password for the given channel. **Note** that whenever this
 command is used, a message including the person who issued the command and
 the channel it was used on will be logged.
 
-If encryption (see readme.features, section 3-7) is in use, encryption may not be available
-depending on the type of encryption used.
+Passwords are stored as Argon2 hashes (readme.features, section 3-7), which
+cannot be turned back into the password: the command answers that it is not
+available, except for a password stored without encryption by an earlier
+version and not given by its owner since.
 
 Limited to **Services admins**.
 

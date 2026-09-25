@@ -1849,7 +1849,7 @@ json_t* store_encode_fields(const void* record, const DBField* fields)
             value = store_json_string(v.s);
             break;
         case DBTYPE_PASSWORD: {
-            size_t len = PASSMAX;
+            size_t len = sizeof(v.pass.password);
             char cname[STORE_NAME_MAX + 16];
             while (len > 0 && !v.pass.password[len - 1])
                 len--;
@@ -1937,7 +1937,7 @@ void store_decode_fields(json_t* row, void* record, const DBField* fields)
             continue;
         }
         case DBTYPE_PASSWORD: {
-            char password[PASSMAX], cname[STORE_NAME_MAX + 16];
+            char password[PASSHASHMAX], cname[STORE_NAME_MAX + 16];
             json_t* cipher;
             snprintf(cname, sizeof(cname), "%s_cipher", name);
             cipher = json_object_get(row, cname);

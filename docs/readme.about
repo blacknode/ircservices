@@ -13,9 +13,9 @@ readme.config).  The documentation files are:
     readme.migration   moving an old ircservices.conf/modules.conf over
     readme.features    what Services do, feature by feature
     readme.commands    every command of every pseudoclient
-    readme.xml         exporting and importing databases, the XML format
     readme.database    PostgreSQL, Redis and worker threads
     readme.migrations  the SQL that creates the tables; OperServ MIGRATION
+    readme.http        the HTTP server (Mongoose), and serving pages
     readme.api         configuration interface for module developers
     readme.copyright   copyright and licenses
 

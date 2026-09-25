@@ -20,9 +20,42 @@
 #include "modules/chanserv/chanserv.h"
 #include "modules/chanserv/access.h"
 #include "modules/statserv/statserv.h"
-#include "modules/misc/xml.h"
 
 #include "modules/httpd/http.h"
+
+/*************************************************************************/
+
+/* One request, as the handlers below see it. */
+typedef struct {
+    const struct HttpRequest *req;
+    struct HttpResponse *res;
+    char url[HTTP_PATH_MAX + 1];  /* The path: the handlers cut it up */
+    char vars[4][256];            /* What getvar() returned */
+    int nvars;
+} Client;
+
+/* A variable of the request (query string or form), or NULL. */
+static char *getvar(Client *c, const char *name)
+{
+    char *buf;
+
+    if (c->nvars >= lenof(c->vars))
+        return NULL;
+    buf = c->vars[c->nvars];
+    if (!http_request_var(c->req, name, buf, sizeof(c->vars[0])))
+        return NULL;
+    c->nvars++;
+    return buf;
+}
+
+/* Redirect to `path' followed by `suffix'. */
+static void redirect_to(Client *c, const char *path, const char *suffix)
+{
+    char buf[HTTP_PATH_MAX + 2];
+
+    snprintf(buf, sizeof(buf), "%s%s", path, suffix);
+    http_response_redirect(c->res, HTTP_R_FOUND, buf);
+}
 
 /*************************************************************************/
 
@@ -35,10 +68,14 @@ static Module *module_operserv_sline;
 static Module *module_nickserv;
 static Module *module_chanserv;
 static Module *module_statserv;
-static Module *module_xml_export;
 
 static char *Prefix;
-int Prefix_len;
+static int Prefix_len;
+
+/* The routes claimed: Prefix (without its trailing slash) exactly, and
+ * everything under Prefix/. */
+static char claimed_exact[HTTP_PATH_MAX + 1];
+static char claimed_prefix[HTTP_PATH_MAX + 2];
 
 
 /* Note that none of the following are used if the respective module is not
@@ -99,7 +136,7 @@ typeof(next_serverstats) *p_next_serverstats;
  * make links to various ways of listing nicknames and channels. */
 
 #define PRINT_SELOPT(c,prefix,select,value,text)                            \
-    sockprintf((c)->socket, "%s%s%d%s%s%s", prefix,                         \
+    http_response_printf((c)->res, "%s%s%d%s%s%s", prefix,                         \
                (select)==(value) ? "<!--" : "<a href=\"./?select=", (value),\
                (select)==(value) ? "-->(" : "\">", text,                    \
                (select)==(value) ? ")" : "</a>")
@@ -108,16 +145,15 @@ typeof(next_serverstats) *p_next_serverstats;
 
 /* Handlers for individual databases: */
 
-static int handle_operserv(Client *c, int *close_ptr, char *path);
-static int handle_operserv_akill(Client *c, int *close_ptr, char *path);
-static int handle_operserv_exclude(Client *c, int *close_ptr, char *path);
-static int handle_operserv_news(Client *c, int *close_ptr, char *path);
-static int handle_operserv_sessions(Client *c, int*close_ptr, char *path);
-static int handle_operserv_sline(Client *c, int *close_ptr, char *path);
-static int handle_nickserv(Client *c, int *close_ptr, char *path);
-static int handle_chanserv(Client *c, int *close_ptr, char *path);
-static int handle_statserv(Client *c, int *close_ptr, char *path);
-static int handle_xml_export(Client *c, int *close_ptr, char *path);
+static int handle_operserv(Client *c, char *path);
+static int handle_operserv_akill(Client *c, char *path);
+static int handle_operserv_exclude(Client *c, char *path);
+static int handle_operserv_news(Client *c, char *path);
+static int handle_operserv_sessions(Client *c, char *path);
+static int handle_operserv_sline(Client *c, char *path);
+static int handle_nickserv(Client *c, char *path);
+static int handle_chanserv(Client *c, char *path);
+static int handle_statserv(Client *c, char *path);
 
 /*************************************************************************/
 /**************************** Local routines *****************************/
@@ -142,7 +178,7 @@ static int my_strftime(char *buf, int size, time_t t)
 /******************** Request callback and handlers **********************/
 /*************************************************************************/
 
-static int do_request(Client *c, int *close_ptr)
+static int do_request(Client *c)
 {
     char *subpath;
 
@@ -150,9 +186,7 @@ static int do_request(Client *c, int *close_ptr)
         return 0;
     subpath = c->url + Prefix_len;
     if (!*subpath) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s/\r\n", c->url);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+        redirect_to(c, c->url, "/");
         return 1;
     } else if (*subpath != '/') {
         return 0;
@@ -160,48 +194,40 @@ static int do_request(Client *c, int *close_ptr)
     subpath++;
 
     if (strncmp(subpath,"operserv",8) == 0)
-        return handle_operserv(c, close_ptr, subpath+8);
+        return handle_operserv(c, subpath+8);
     if (strncmp(subpath,"nickserv",8) == 0)
-        return handle_nickserv(c, close_ptr, subpath+8);
+        return handle_nickserv(c, subpath+8);
     if (strncmp(subpath,"chanserv",8) == 0)
-        return handle_chanserv(c, close_ptr, subpath+8);
+        return handle_chanserv(c, subpath+8);
     if (strncmp(subpath,"statserv",8) == 0)
-        return handle_statserv(c, close_ptr, subpath+8);
-    if (strncmp(subpath,"xml-export",10) == 0)
-        return handle_xml_export(c, close_ptr, subpath+10);
+        return handle_statserv(c, subpath+8);
 
     if (!*subpath) {
-        *close_ptr = 1;  /* Don't bother to count response length */
-        http_send_response(c, HTTP_S_OK);
-        sockprintf(c->socket, "Content-Type: text/html\r\n");
-        sockprintf(c->socket, "Connection: close\r\n\r\n");
-        sockprintf(c->socket,
+        http_response_set(c->res, HTTP_S_OK, "text/html", NULL, 0);
+        http_response_printf(c->res,
                    "<html><head><title>IRC Services database access</title>"
                    "</head><body><h1 align=center>IRC Services database"
                    " access</h1><p>");
         if (!module_operserv) {  /* this implies !nickserv etc. */
-            sockprintf(c->socket,
+            http_response_printf(c->res,
                        "No service modules are currently loaded.</body>"
                        "</html>");
         } else {
-            sockprintf(c->socket, "Please select one of the following:<ul>");
-            sockprintf(c->socket,
+            http_response_printf(c->res, "Please select one of the following:<ul>");
+            http_response_printf(c->res,
                        "<li><a href=operserv/>OperServ data</a>");
             if (module_nickserv)
-                sockprintf(c->socket,
+                http_response_printf(c->res,
                            "<li><a href=nickserv/>List of registered"
                            " nicknames</a>");
             if (module_chanserv)
-                sockprintf(c->socket,
+                http_response_printf(c->res,
                            "<li><a href=chanserv/>List of registered"
                            " channels</a>");
             if (module_statserv)
-                sockprintf(c->socket,
+                http_response_printf(c->res,
                            "<li><a href=statserv/>Network statistics</a>");
-            if (module_xml_export)
-                sockprintf(c->socket, "<li><a href=xml-export/>"
-                           "XML database download</a>");
-            sockprintf(c->socket, "</ul></body></html>");
+            http_response_printf(c->res, "</ul></body></html>");
         }
         return 1;
     }
@@ -211,15 +237,13 @@ static int do_request(Client *c, int *close_ptr)
 
 /*************************************************************************/
 
-static int handle_operserv(Client *c, int *close_ptr, char *path)
+static int handle_operserv(Client *c, char *path)
 {
     if (!module_operserv)
         return 0;
 
     if (!*path) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s/\r\n", c->url);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+        redirect_to(c, c->url, "/");
         return 1;
     } else if (*path != '/') {
         return 0;
@@ -227,25 +251,22 @@ static int handle_operserv(Client *c, int *close_ptr, char *path)
     path++;
 
     if (strncmp(path,"akill",5) == 0)
-        return handle_operserv_akill(c, close_ptr, path+5);
+        return handle_operserv_akill(c, path+5);
     if (strncmp(path,"exclude",7) == 0)
-        return handle_operserv_exclude(c, close_ptr, path+7);
+        return handle_operserv_exclude(c, path+7);
     if (strncmp(path,"news",4) == 0)
-        return handle_operserv_news(c, close_ptr, path+4);
+        return handle_operserv_news(c, path+4);
     if (strncmp(path,"sessions",6) == 0)
-        return handle_operserv_sessions(c, close_ptr, path+8);
+        return handle_operserv_sessions(c, path+8);
     if (strncmp(path,"sline",5) == 0)
-        return handle_operserv_sline(c, close_ptr, path+5);
+        return handle_operserv_sline(c, path+5);
 
     if (!*path) {
         int32 maxusercnt;
         time_t maxusertime;
 
-        *close_ptr = 1;
-        http_send_response(c, HTTP_S_OK);
-        sockprintf(c->socket, "Content-Type: text/html\r\n");
-        sockprintf(c->socket, "Connection: close\r\n\r\n");
-        sockprintf(c->socket,
+        http_response_set(c->res, HTTP_S_OK, "text/html", NULL, 0);
+        http_response_printf(c->res,
                    "<html><head><title>OperServ database access</title>"
                    "</head><body><h1 align=center>OperServ database"
                    " access</h1><p><ul><li>Current number of users:"
@@ -256,32 +277,32 @@ static int handle_operserv(Client *c, int *close_ptr, char *path)
         ) {
             char timebuf[BUFSIZE];
             my_strftime(timebuf, sizeof(timebuf), maxusertime);
-            sockprintf(c->socket, "<li>Maximum user count: <b>%d</b>"
+            http_response_printf(c->res, "<li>Maximum user count: <b>%d</b>"
                    " (reached at %s)</ul>", maxusercnt, timebuf);
         }
-        sockprintf(c->socket, "Please select one of the following:<ul>");
+        http_response_printf(c->res, "Please select one of the following:<ul>");
         if (module_operserv_akill
          || module_operserv_news
          || module_operserv_sessions
          || module_operserv_sline
         ) {
             if (module_operserv_akill)
-                sockprintf(c->socket,
+                http_response_printf(c->res,
                            "<li><a href=akill/>List of autokills</a><li>"
                            "<a href=exclude/>List of autokill exclusions</a>");
             if (module_nickserv)
-                sockprintf(c->socket,
+                http_response_printf(c->res,
                            "<li><a href=news/>List of news items</a>");
             if (module_chanserv)
-                sockprintf(c->socket,
+                http_response_printf(c->res,
                            "<li><a href=sessions/>List of session"
                            " exceptions</a>");
             if (module_statserv)
-                sockprintf(c->socket,
+                http_response_printf(c->res,
                            "<li><a href=sline/>List of S-lines</a>");
         }
-        sockprintf(c->socket, "<li><a href=../>Return to previous menu</a>");
-        sockprintf(c->socket, "</ul></body></html>");
+        http_response_printf(c->res, "<li><a href=../>Return to previous menu</a>");
+        http_response_printf(c->res, "</ul></body></html>");
         return 1;
     }
 
@@ -298,7 +319,7 @@ static int handle_operserv(Client *c, int *close_ptr, char *path)
  * exception, S-line).
  */
 
-static int handle_maskdata(Client *c, int *close_ptr, char *path, uint8 type,
+static int handle_maskdata(Client *c, char *path, uint8 type,
                            const char *a_an, const char *typename)
 {
     char urlbuf[BUFSIZE*3];   /* *3 because of / -> %2F */
@@ -306,38 +327,33 @@ static int handle_maskdata(Client *c, int *close_ptr, char *path, uint8 type,
     MaskData *md;
 
     if (!*path) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s/\r\n", c->url);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+        redirect_to(c, c->url, "/");
         return 1;
     } else if (*path != '/') {
         return 0;
     }
     path++;
 
-    *close_ptr = 1;
-    http_send_response(c, HTTP_S_OK);
-    sockprintf(c->socket, "Content-Type: text/html\r\n");
-    sockprintf(c->socket, "Connection: close\r\n\r\n");
-    sockprintf(c->socket, "<html><head><title>%c%s database access</title>"
+    http_response_set(c->res, HTTP_S_OK, "text/html", NULL, 0);
+    http_response_printf(c->res, "<html><head><title>%c%s database access</title>"
                "</head><body>", toupper(*typename), typename+1);
     if (!*path) {
         int count = 0;
 
-        sockprintf(c->socket, "<h1 align=center>%c%s database access</h1>"
+        http_response_printf(c->res, "<h1 align=center>%c%s database access</h1>"
                    "<p>Click on %s %s for detailed information.<p>"
                    "<a href=../>(Return to previous menu)</a><p><ul>",
                    toupper(*typename), typename+1, a_an, typename);
         for (md = first_maskdata(type); md; md = next_maskdata(type)) {
             http_quote_html(md->mask, htmlbuf, sizeof(htmlbuf));
             http_quote_url(md->mask, urlbuf, sizeof(urlbuf));
-            sockprintf(c->socket, "<li><a href=\"%s\">%s</a>",
+            http_response_printf(c->res, "<li><a href=\"%s\">%s</a>",
                        urlbuf, htmlbuf);
             if (type == MD_EXCEPTION)
-                sockprintf(c->socket, " (%d)", md->limit);
+                http_response_printf(c->res, " (%d)", md->limit);
             count++;
         }
-        sockprintf(c->socket, "</ul><p>%d %s%s.</body></html>",
+        http_response_printf(c->res, "</ul><p>%d %s%s.</body></html>",
                    count, typename, count==1 ? "" : "s");
         return 1;
     }
@@ -346,53 +362,53 @@ static int handle_maskdata(Client *c, int *close_ptr, char *path, uint8 type,
     md = get_maskdata(type, path);
     http_quote_html(path, htmlbuf, sizeof(htmlbuf));
     if (!md) {
-        sockprintf(c->socket, "<h1 align=center>%c%s not found</h1>"
+        http_response_printf(c->res, "<h1 align=center>%c%s not found</h1>"
                    "<p>No %s was found for <b>%s</b>.<p><a href=./>Return"
                    " to %s list</a></body></html>", toupper(*typename),
                    typename+1, typename, htmlbuf, typename);
         return 1;
     }
 
-    sockprintf(c->socket, "<h1 align=center>%c%s database access</h1>"
+    http_response_printf(c->res, "<h1 align=center>%c%s database access</h1>"
                "<h2 align=center>%s</h2><div align=center>",
                toupper(*typename), typename+1, htmlbuf);
-    sockprintf(c->socket, "<table border=0 cellspacing=4>");
+    http_response_printf(c->res, "<table border=0 cellspacing=4>");
     if (type == MD_EXCEPTION) {
-        sockprintf(c->socket, "<tr><th align=right valign=top>Limit:&nbsp;"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Limit:&nbsp;"
                    "<td>%d", md->limit);
     }
-    sockprintf(c->socket, "<tr><th align=right valign=top>Set by:&nbsp;<td>");
+    http_response_printf(c->res, "<tr><th align=right valign=top>Set by:&nbsp;<td>");
     http_quote_html(md->who, htmlbuf, sizeof(htmlbuf));
     if (module_nickserv && get_nickinfo(md->who)) {
         http_quote_url(md->who, urlbuf, sizeof(urlbuf));
-        sockprintf(c->socket, "<a href=\"../../nickserv/%s\">%s</a>",
+        http_response_printf(c->res, "<a href=\"../../nickserv/%s\">%s</a>",
                                urlbuf, htmlbuf);
     } else {
-        sockprintf(c->socket, "%s", htmlbuf);
+        http_response_printf(c->res, "%s", htmlbuf);
     }
     http_quote_html(md->reason ? md->reason : "", htmlbuf, sizeof(htmlbuf));
-    sockprintf(c->socket, "<tr><th align=right valign=top>Reason:&nbsp;<td>%s",
+    http_response_printf(c->res, "<tr><th align=right valign=top>Reason:&nbsp;<td>%s",
                htmlbuf);
     my_strftime(htmlbuf, sizeof(htmlbuf), md->time);
-    sockprintf(c->socket, "<tr><th align=right valign=top>Set on:&nbsp;<td>%s",
+    http_response_printf(c->res, "<tr><th align=right valign=top>Set on:&nbsp;<td>%s",
                htmlbuf);
-    sockprintf(c->socket,
+    http_response_printf(c->res,
                "<tr><th align=right valign=top>Expires on:&nbsp;<td>");
     if (md->expires) {
         my_strftime(htmlbuf, sizeof(htmlbuf), md->expires);
-        sockprintf(c->socket, "%s", htmlbuf);
+        http_response_printf(c->res, "%s", htmlbuf);
     } else {
-        sockprintf(c->socket, "<font color=green>Does not expire</font>");
+        http_response_printf(c->res, "<font color=green>Does not expire</font>");
     }
-    sockprintf(c->socket,
+    http_response_printf(c->res,
                "<tr><th align=right valign=top>Last triggered:&nbsp;<td>");
     if (md->lastused) {
         my_strftime(htmlbuf, sizeof(htmlbuf), md->lastused);
-        sockprintf(c->socket, "%s", htmlbuf);
+        http_response_printf(c->res, "%s", htmlbuf);
     } else {
-        sockprintf(c->socket, "<font color=red>Never</font>");
+        http_response_printf(c->res, "<font color=red>Never</font>");
     }
-    sockprintf(c->socket, "</table></div><p><a href=./>Return to %s list"
+    http_response_printf(c->res, "</table></div><p><a href=./>Return to %s list"
                "</a></body></html>", typename);
     put_maskdata(md);
     return 1;
@@ -400,26 +416,26 @@ static int handle_maskdata(Client *c, int *close_ptr, char *path, uint8 type,
 
 /*************************************************************************/
 
-static int handle_operserv_akill(Client *c, int *close_ptr, char *path)
+static int handle_operserv_akill(Client *c, char *path)
 {
     if (!module_operserv_akill)
         return 0;
-    return handle_maskdata(c, close_ptr, path, MD_AKILL, "an", "autokill");
+    return handle_maskdata(c, path, MD_AKILL, "an", "autokill");
 }
 
 /*************************************************************************/
 
-static int handle_operserv_exclude(Client *c, int *close_ptr, char *path)
+static int handle_operserv_exclude(Client *c, char *path)
 {
     if (!module_operserv_akill)
         return 0;
-    return handle_maskdata(c, close_ptr, path, MD_EXCLUDE,
+    return handle_maskdata(c, path, MD_EXCLUDE,
                            "an", "autokill exclusion");
 }
 
 /*************************************************************************/
 
-static int handle_operserv_news(Client *c, int *close_ptr, char *path)
+static int handle_operserv_news(Client *c, char *path)
 {
     char htmlbuf[BUFSIZE*5];
     NewsItem *news;
@@ -428,66 +444,61 @@ static int handle_operserv_news(Client *c, int *close_ptr, char *path)
         return 0;
 
     if (!*path) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s/\r\n", c->url);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+        redirect_to(c, c->url, "/");
         return 1;
     } else if (*path != '/') {
         return 0;
     }
     path++;
 
-    *close_ptr = 1;
-    http_send_response(c, HTTP_S_OK);
-    sockprintf(c->socket, "Content-Type: text/html\r\n");
-    sockprintf(c->socket, "Connection: close\r\n\r\n");
-    sockprintf(c->socket, "<html><head><title>News database access"
+    http_response_set(c->res, HTTP_S_OK, "text/html", NULL, 0);
+    http_response_printf(c->res, "<html><head><title>News database access"
                "</title></head><body>");
-    sockprintf(c->socket, "<h1 align=center>News database"
+    http_response_printf(c->res, "<h1 align=center>News database"
                " access</h1><p><a href=../>(Return to previous menu)</a>");
-    sockprintf(c->socket, "<h2 align=center>Logon news</h2><p>"
+    http_response_printf(c->res, "<h2 align=center>Logon news</h2><p>"
                "<table border=2><tr><th>Num<th>Added by<th>Date<th>Text");
     for (news = first_news(); news; news = next_news()) {
         if (news->type != NEWS_LOGON)
             continue;
         http_quote_html(news->who, htmlbuf, sizeof(htmlbuf));
-        sockprintf(c->socket, "<tr><td>%d<td>%s", news->num, htmlbuf);
+        http_response_printf(c->res, "<tr><td>%d<td>%s", news->num, htmlbuf);
         my_strftime(htmlbuf, sizeof(htmlbuf), news->time);
-        sockprintf(c->socket, "<td>%s", htmlbuf);
+        http_response_printf(c->res, "<td>%s", htmlbuf);
         http_quote_html(news->text ? news->text : "",
                         htmlbuf, sizeof(htmlbuf));
-        sockprintf(c->socket, "<td>%s", htmlbuf);
+        http_response_printf(c->res, "<td>%s", htmlbuf);
     }
-    sockprintf(c->socket, "</table><h2 align=center>Oper news</h2><p>"
+    http_response_printf(c->res, "</table><h2 align=center>Oper news</h2><p>"
                "<table border=2><tr><th>Num<th>Added by<th>Date<th>Text");
     for (news = first_news(); news; news = next_news()) {
         if (news->type != NEWS_OPER)
             continue;
         http_quote_html(news->who, htmlbuf, sizeof(htmlbuf));
-        sockprintf(c->socket, "<tr><td>%d<td>%s", news->num, htmlbuf);
+        http_response_printf(c->res, "<tr><td>%d<td>%s", news->num, htmlbuf);
         my_strftime(htmlbuf, sizeof(htmlbuf), news->time);
-        sockprintf(c->socket, "<td>%s", htmlbuf);
+        http_response_printf(c->res, "<td>%s", htmlbuf);
         http_quote_html(news->text ? news->text : "",
                         htmlbuf, sizeof(htmlbuf));
-        sockprintf(c->socket, "<td>%s", htmlbuf);
+        http_response_printf(c->res, "<td>%s", htmlbuf);
     }
-    sockprintf(c->socket, "</table></body></html>");
+    http_response_printf(c->res, "</table></body></html>");
     return 1;
 }
 
 /*************************************************************************/
 
-static int handle_operserv_sessions(Client *c, int *close_ptr, char *path)
+static int handle_operserv_sessions(Client *c, char *path)
 {
     if (!module_operserv_sessions)
         return 0;
-    return handle_maskdata(c, close_ptr, path, MD_EXCEPTION,
+    return handle_maskdata(c, path, MD_EXCEPTION,
                            "a", "session exception");
 }
 
 /*************************************************************************/
 
-static int handle_operserv_sline(Client *c, int *close_ptr, char *path)
+static int handle_operserv_sline(Client *c, char *path)
 {
     char typename[7] = "S.line";
 
@@ -495,9 +506,7 @@ static int handle_operserv_sline(Client *c, int *close_ptr, char *path)
         return 0;
 
     if (!*path) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s/\r\n", c->url);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+        redirect_to(c, c->url, "/");
         return 1;
     } else if (*path != '/') {
         return 0;
@@ -505,13 +514,10 @@ static int handle_operserv_sline(Client *c, int *close_ptr, char *path)
     path++;
 
     if (!*path) {
-        *close_ptr = 1;
-        http_send_response(c, HTTP_S_OK);
-        sockprintf(c->socket, "Content-Type: text/html\r\n");
-        sockprintf(c->socket, "Connection: close\r\n\r\n");
-        sockprintf(c->socket, "<html><head><title>S-line database access"
+        http_response_set(c->res, HTTP_S_OK, "text/html", NULL, 0);
+        http_response_printf(c->res, "<html><head><title>S-line database access"
                    "</title></head><body>");
-        sockprintf(c->socket, "<p>Please select one of the following:<ul>"
+        http_response_printf(c->res, "<p>Please select one of the following:<ul>"
                    "<li><a href=G/>List of SGlines</a>"
                    "<li><a href=Q/>List of SQlines</a>"
                    "<li><a href=Z/>List of SZlines</a>"
@@ -523,7 +529,7 @@ static int handle_operserv_sline(Client *c, int *close_ptr, char *path)
     }
 
     typename[1] = *path;
-    return handle_maskdata(c, close_ptr, path+1, *path, "an", typename);
+    return handle_maskdata(c, path+1, *path, "an", typename);
 }
 
 /* Listing nicknames and channels, a page at a time. */
@@ -562,7 +568,7 @@ static int nick_list_one(NickInfo *ni, void *arg_)
         ngi = get_ngi(ni);
     http_quote_html(ni->nick, nickhtml, sizeof(nickhtml));
     http_quote_url(ni->nick, nickurl, sizeof(nickurl));
-    sockprintf(arg->c->socket, "<li><tt>%s%s%s%s&nbsp;</tt>"
+    http_response_printf(arg->c->res, "<li><tt>%s%s%s%s&nbsp;</tt>"
                "<a href=\"%s\">%s</a>",
                ni->status & NS_VERBOTEN ? "-" : "&nbsp;",
                ngi && (ngi->flags & NF_SUSPENDED) ? "*" : "&nbsp;",
@@ -586,7 +592,7 @@ static int chan_list_one(ChannelInfo *ci, void *arg_)
     }
     http_quote_html(ci->name, chanhtml, sizeof(chanhtml));
     http_quote_url(ci->name+1, chanurl, sizeof(chanurl));
-    sockprintf(arg->c->socket, "<li><tt>%s%s%s&nbsp;</tt>"
+    http_response_printf(arg->c->res, "<li><tt>%s%s%s&nbsp;</tt>"
                "<a href=\"%s\">%s</a>",
                ci->flags & CF_VERBOTEN  ? "-" : "&nbsp;",
                ci->flags & CF_SUSPENDED ? "*" : "&nbsp;",
@@ -626,7 +632,7 @@ static struct {
     { 0 }
 };
 
-static int handle_nickserv(Client *c, int *close_ptr, char *path)
+static int handle_nickserv(Client *c, char *path)
 {
     char nickhtml[NICKMAX*5];
     NickInfo *ni;
@@ -636,30 +642,25 @@ static int handle_nickserv(Client *c, int *close_ptr, char *path)
         return 0;
 
     if (!*path) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s/\r\n", c->url);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+        redirect_to(c, c->url, "/");
         return 1;
     } else if (*path != '/') {
         return 0;
     }
     path++;
 
-    *close_ptr = 1;
-    http_send_response(c, HTTP_S_OK);
-    sockprintf(c->socket, "Content-Type: text/html\r\n");
-    sockprintf(c->socket, "Connection: close\r\n\r\n");
+    http_response_set(c->res, HTTP_S_OK, "text/html", NULL, 0);
 
     if (!*path) {
         int count = 0;
-        char *select_var = http_get_variable(c, "select");
-        char *start_var = http_get_variable(c, "start");
+        char *select_var = getvar(c, "select");
+        char *start_var = getvar(c, "start");
         enum {SEL_ALL, SEL_FORBIDDEN,SEL_SUSPENDED,SEL_NOEXPIRE,SEL_NOAUTH}
             select = SEL_ALL;
 
         if (select_var)
             select = atoi(select_var);
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<html><head><title>Nickname database access</title>"
                    "</head><body><h1 align=center>Nickname database"
                    " access</h1><p>Click to display:");
@@ -669,7 +670,7 @@ static int handle_nickserv(Client *c, int *close_ptr, char *path)
         PRINT_SELOPT(c, " | ", select, SEL_NOEXPIRE, "Non-expiring nicknames");
         PRINT_SELOPT(c, " | ", select, SEL_NOAUTH,
                      "Not-yet-authenticated nicknames");
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<br>Or click on a nickname for detailed information."
                    "<p><a href=../>(Return to previous menu)</a><p><ul>");
         {
@@ -705,11 +706,11 @@ static int handle_nickserv(Client *c, int *close_ptr, char *path)
             if (arg.more) {
                 char urlbuf[BUFSIZE*3];
                 http_quote_url(arg.last, urlbuf, sizeof(urlbuf));
-                sockprintf(c->socket, "</ul><p><a href=\"./?select=%d&start="
+                http_response_printf(c->res, "</ul><p><a href=\"./?select=%d&start="
                            "%s\">Next page</a><ul>", select, urlbuf);
             }
         }
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "</ul><p>%d %snickname%s %s shown.<p>Key:<br>"
                    "<tt>&nbsp;&nbsp;-&nbsp;</tt>Nickname is forbidden<br>"
                    "<tt>&nbsp;&nbsp;*&nbsp;</tt>Nickname is suspended<br>"
@@ -728,83 +729,83 @@ static int handle_nickserv(Client *c, int *close_ptr, char *path)
     http_unquote_url(path);
     ni = get_nickinfo(path);
     http_quote_html(path, nickhtml, sizeof(nickhtml));
-    sockprintf(c->socket,
+    http_response_printf(c->res,
                "<html><head><title>Information on nickname \"%s\"</title>"
                "</head><body><h1 align=center>Information on nickname"
                " \"%s\"</h1><div align=center>", nickhtml, nickhtml);
 
     if (!ni) {
-        sockprintf(c->socket, "<p>Nickname \"%s\" is not registered.",
+        http_response_printf(c->res, "<p>Nickname \"%s\" is not registered.",
                    nickhtml);
     } else if (ni->status & NS_VERBOTEN) {
-        sockprintf(c->socket, "<p>Nickname \"%s\" is <b>forbidden</b>.",
+        http_response_printf(c->res, "<p>Nickname \"%s\" is <b>forbidden</b>.",
                    nickhtml);
     } else if (!(ngi = get_ngi(ni))) {
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<p>Error retrieving information for nickname \"%s\".",
                    nickhtml);
     } else {
         char buf[BUFSIZE*5], urlbuf[BUFSIZE*3];
         int need_comma = 0, i;
 
-        sockprintf(c->socket, "<table border=0 cellspacing=4>");
+        http_response_printf(c->res, "<table border=0 cellspacing=4>");
         http_quote_html(ni->last_realname ? ni->last_realname : "", buf,
                         sizeof(buf));
-        sockprintf(c->socket, "<tr><th align=right valign=top>Registered"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Registered"
                    " to:&nbsp;<td>%s", buf);
         my_strftime(buf, sizeof(buf), ni->time_registered);
-        sockprintf(c->socket, "<tr><th align=right valign=top>Time"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Time"
                    " registered:&nbsp;<td>%s", buf);
         http_quote_html(ni->last_realmask ? ni->last_realmask : "", buf,
                         sizeof(buf));
         if (get_user(ni->nick)) {
-            sockprintf(c->socket,
+            http_response_printf(c->res,
                        "<tr><th align=right valign=top><font color=green>Is"
                        " online from:</font>&nbsp;<td>%s", buf);
-            sockprintf(c->socket,
+            http_response_printf(c->res,
                        "<tr><th align=right valign=top>Authorization"
                        " status:&nbsp;<td>%s",
                        nick_identified(ni) ? "Identified" :
                        nick_recognized(ni) ? "Recognized (via access list)" :
                        "Not recognized");
         } else {
-            sockprintf(c->socket, "<tr><th align=right valign=top>Last seen"
+            http_response_printf(c->res, "<tr><th align=right valign=top>Last seen"
                        " address:&nbsp;<td>%s", buf);
             my_strftime(buf, sizeof(buf), ni->last_seen);
-            sockprintf(c->socket, "<tr><th align=right valign=top>Last seen"
+            http_response_printf(c->res, "<tr><th align=right valign=top>Last seen"
                        " on:&nbsp;<td>%s", buf);
         }
         if (ni->last_quit) {
             http_quote_html(ni->last_quit, buf, sizeof(buf));
-            sockprintf(c->socket, "<tr><th align=right valign=top>Last quit"
+            http_response_printf(c->res, "<tr><th align=right valign=top>Last quit"
                        " message:&nbsp;<td>%s", buf);
         }
 
-        sockprintf(c->socket, "<tr><td colspan=2><hr>");
+        http_response_printf(c->res, "<tr><td colspan=2><hr>");
 
         if (ngi->info) {
             http_quote_html(ngi->info, buf, sizeof(buf));
-            sockprintf(c->socket, "<tr><th align=right valign=top>"
+            http_response_printf(c->res, "<tr><th align=right valign=top>"
                        "Information:&nbsp;<td>%s", buf);
         }
         if (ngi->url) {
             http_quote_html(ngi->url, buf, sizeof(buf));
             http_quote_html(ngi->url, urlbuf, sizeof(urlbuf));
-            sockprintf(c->socket,
+            http_response_printf(c->res,
                        "<tr><th align=right valign=top>URL:&nbsp;"
                        "<td><a href=\"%s\">%s</a>", urlbuf, buf);
         }
         if (ngi->email) {
             http_quote_html(ngi->email, buf, sizeof(buf));
             http_quote_html(ngi->email, urlbuf, sizeof(urlbuf));
-            sockprintf(c->socket,
+            http_response_printf(c->res,
                        "<tr><th align=right valign=top>E-mail address:&nbsp;"
                        "<td><a href=\"mailto:%s\">%s</a>", urlbuf, buf);
         }
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<tr><th align=right valign=top>Options:&nbsp;<td>");
         if (ni->status & NS_NOEXPIRE) {
-            sockprintf(c->socket, "<b>Will not expire</b>");
+            http_response_printf(c->res, "<b>Will not expire</b>");
             need_comma++;
         }
         for (i = 0; nickopts[i].mask; i++) {
@@ -812,138 +813,138 @@ static int handle_nickserv(Client *c, int *close_ptr, char *path)
                 http_quote_html(nickopts[i].text, buf, sizeof(buf));
                 if (!need_comma)
                     *buf = toupper(*buf);
-                sockprintf(c->socket, "%s%s", need_comma++ ? ", " : "", buf);
+                http_response_printf(c->res, "%s%s", need_comma++ ? ", " : "", buf);
             }
         }
         if (!need_comma)
-            sockprintf(c->socket, "None");
-        sockprintf(c->socket, "<tr><th align=right valign=top>OperServ"
+            http_response_printf(c->res, "None");
+        http_response_printf(c->res, "<tr><th align=right valign=top>OperServ"
                    " privilege level:");
         if (irc_stricmp(ni->nick, ServicesRoot) == 0)
-            sockprintf(c->socket, "<td>Services super-user");
+            http_response_printf(c->res, "<td>Services super-user");
         else if (ngi->os_priv >= NP_SERVADMIN)
-            sockprintf(c->socket, "<td>Services administrator");
+            http_response_printf(c->res, "<td>Services administrator");
         else if (ngi->os_priv >= NP_SERVOPER)
-            sockprintf(c->socket, "<td>Services operator");
+            http_response_printf(c->res, "<td>Services operator");
         else 
-            sockprintf(c->socket, "<td>None");
+            http_response_printf(c->res, "<td>None");
 
-        sockprintf(c->socket, "<tr><td colspan=2><hr>");
+        http_response_printf(c->res, "<tr><td colspan=2><hr>");
 
         if (ngi->authcode) {
-            sockprintf(c->socket, "<tr><td colspan=2 align=center>"
+            http_response_printf(c->res, "<tr><td colspan=2 align=center>"
                        "<font color=red>This nickname's E-mail address has"
                        " not yet been authenticated.</font>");
-            sockprintf(c->socket, "<tr><th align=right>Authenticatation code:"
+            http_response_printf(c->res, "<tr><th align=right>Authenticatation code:"
                        "&nbsp;<td>%d", ngi->authcode);
             my_strftime(buf, sizeof(buf), ngi->authset);
-            sockprintf(c->socket, "<tr><th align=right>Code set at:&nbsp;"
+            http_response_printf(c->res, "<tr><th align=right>Code set at:&nbsp;"
                        "<td>%s", buf);
-            sockprintf(c->socket, "<tr><td colspan=2><hr>");
+            http_response_printf(c->res, "<tr><td colspan=2><hr>");
         }
 
         if (ngi->flags & NF_SUSPENDED) {
-            sockprintf(c->socket, "<tr><td colspan=2 align=center>"
+            http_response_printf(c->res, "<tr><td colspan=2 align=center>"
                        "<font color=red>This nickname group is"
                        " <b>suspended</b>.</font>");
             my_strftime(buf, sizeof(buf), ngi->suspend_time);
-            sockprintf(c->socket, "<tr><th align=right valign=top>"
+            http_response_printf(c->res, "<tr><th align=right valign=top>"
                        "Suspended on:&nbsp;<td>%s", buf);
             http_quote_html(ngi->suspend_who, buf, sizeof(buf));
             http_quote_url(ngi->suspend_who, urlbuf, sizeof(urlbuf));
-            sockprintf(c->socket, "<tr><th align=right valign=top>"
+            http_response_printf(c->res, "<tr><th align=right valign=top>"
                        "Suspended by:&nbsp;<td><a href=\"%s\">%s</a>",
                        urlbuf, buf);
             http_quote_html(ngi->suspend_reason ? ngi->suspend_reason
                             : "", buf, sizeof(buf));
-            sockprintf(c->socket, "<tr><th align=right valign=top>"
+            http_response_printf(c->res, "<tr><th align=right valign=top>"
                        "Reason for suspension:&nbsp;<td>%s", buf);
             if (ngi->suspend_expires)
                 my_strftime(buf, sizeof(buf), ngi->suspend_expires);
             else
                 strbcpy(buf, "<b>Never</b>");
-            sockprintf(c->socket, "<tr><th align=right valign=top>"
+            http_response_printf(c->res, "<tr><th align=right valign=top>"
                        "Suspension expires on:&nbsp;<td>%s", buf);
-            sockprintf(c->socket, "<tr><td colspan=2><hr>");
+            http_response_printf(c->res, "<tr><td colspan=2><hr>");
         }
 
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<tr><th align=right valign=top>Linked nicks:<td>");
         if (ngi->nicks_count == 1) {
-            sockprintf(c->socket, "-");
+            http_response_printf(c->res, "-");
         } else {
             int count = 0;
             ARRAY_FOREACH (i, ngi->nicks) {
                 if (irc_stricmp(ngi->nicks[i], path) == 0)
                     continue;
                 if (count > 0)
-                    sockprintf(c->socket, "<br>");
+                    http_response_printf(c->res, "<br>");
                 if (i == ngi->mainnick)
-                    sockprintf(c->socket, "<b>");
+                    http_response_printf(c->res, "<b>");
                 http_quote_html(ngi->nicks[i], buf, sizeof(buf));
-                sockprintf(c->socket, "%s", buf);
+                http_response_printf(c->res, "%s", buf);
                 if (i == ngi->mainnick)
-                    sockprintf(c->socket, "</b>");
+                    http_response_printf(c->res, "</b>");
                 count++;
             }
         }
 
-        sockprintf(c->socket, "<tr><td colspan=2><hr>");
+        http_response_printf(c->res, "<tr><td colspan=2><hr>");
 
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<tr><th align=right valign=top>Channels registered:<td>");
         if (module_chanserv)
             update_owned_channels(ngi);
         if (!ngi->channels_count) {
-            sockprintf(c->socket, "None");
+            http_response_printf(c->res, "None");
         } else {
             int i;
             ARRAY_FOREACH (i, ngi->channels) {
                 if (i > 0)
-                    sockprintf(c->socket, "<br>");
+                    http_response_printf(c->res, "<br>");
                 http_quote_html(ngi->channels[i], buf, sizeof(buf));
                 if (module_chanserv) {
                     http_quote_url(ngi->channels[i]+1, urlbuf, sizeof(urlbuf));
-                    sockprintf(c->socket, "<a href=\"../chanserv/%s\">"
+                    http_response_printf(c->res, "<a href=\"../chanserv/%s\">"
                                "%s</a>", urlbuf, buf);
                 } else {
-                    sockprintf(c->socket, "%s", buf);
+                    http_response_printf(c->res, "%s", buf);
                 }
             }
         }
-        sockprintf(c->socket, "<tr><th align=right valign=top>Channel"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Channel"
                    " registration limit:<td>");
         if (ngi->channelmax == CHANMAX_DEFAULT) {
             if (module_chanserv)
-                sockprintf(c->socket, "Default (%d)", CSMaxReg);
+                http_response_printf(c->res, "Default (%d)", CSMaxReg);
             else
-                sockprintf(c->socket, "Default");
+                http_response_printf(c->res, "Default");
         } else if (ngi->channelmax == CHANMAX_UNLIMITED) {
-            sockprintf(c->socket, "None");
+            http_response_printf(c->res, "None");
         } else {
-            sockprintf(c->socket, "%d", ngi->channelmax);
+            http_response_printf(c->res, "%d", ngi->channelmax);
         }
 
-        sockprintf(c->socket, "<tr><td colspan=2><hr>");
+        http_response_printf(c->res, "<tr><td colspan=2><hr>");
 
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<tr><th align=right valign=top>Access list:<td>");
         if (!ngi->access_count) {
-            sockprintf(c->socket, "None");
+            http_response_printf(c->res, "None");
         } else {
             int i;
             ARRAY_FOREACH (i, ngi->access) {
                 if (i > 0)
-                    sockprintf(c->socket, "<br>");
+                    http_response_printf(c->res, "<br>");
                 http_quote_html(ngi->access[i], buf, sizeof(buf));
-                sockprintf(c->socket, "%s", buf);
+                http_response_printf(c->res, "%s", buf);
             }
         }
 
-        sockprintf(c->socket, "</table>");
+        http_response_printf(c->res, "</table>");
     }
 
-    sockprintf(c->socket,
+    http_response_printf(c->res,
                "</div><p><a href=./>Return to nickname list</a></body>"
                "</html>");
     put_nickinfo(ni);
@@ -969,7 +970,7 @@ static struct {
     { 0 }
 };
 
-static int handle_chanserv(Client *c, int *close_ptr, char *path)
+static int handle_chanserv(Client *c, char *path)
 {
     char chanurl[CHANMAX*3];
     char chanhtml[CHANMAX*5];
@@ -985,9 +986,7 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
         return 0;
 
     if (!*path) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s/\r\n", c->url);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+        redirect_to(c, c->url, "/");
         return 1;
     } else if (*path != '/') {
         return 0;
@@ -996,18 +995,15 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
 
     if (!*path) {
         int count = 0;
-        char *select_var = http_get_variable(c, "select");
-        char *start_var = http_get_variable(c, "start");
+        char *select_var = getvar(c, "select");
+        char *start_var = getvar(c, "start");
         enum {SEL_ALL, SEL_FORBIDDEN,SEL_SUSPENDED,SEL_NOEXPIRE}
             select = SEL_ALL;
 
         if (select_var)
             select = atoi(select_var);
-        *close_ptr = 1;
-        http_send_response(c, HTTP_S_OK);
-        sockprintf(c->socket, "Content-Type: text/html\r\n");
-        sockprintf(c->socket, "Connection: close\r\n\r\n");
-        sockprintf(c->socket,
+        http_response_set(c->res, HTTP_S_OK, "text/html", NULL, 0);
+        http_response_printf(c->res,
                    "<html><head><title>Channel database access</title>"
                    "</head><body><h1 align=center>Channel database"
                    " access</h1><p>Click to display:");
@@ -1015,7 +1011,7 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
         PRINT_SELOPT(c, " | ", select, SEL_FORBIDDEN, "Forbidden channels");
         PRINT_SELOPT(c, " | ", select, SEL_SUSPENDED, "Suspended channels");
         PRINT_SELOPT(c, " | ", select, SEL_NOEXPIRE, "Non-expiring channels");
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<br>Or click on a channel for detailed information."
                    "<p><a href=../>(Return to previous menu)</a><p><ul>");
         {
@@ -1044,11 +1040,11 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
             if (arg.more) {
                 char urlbuf[BUFSIZE*3];
                 http_quote_url(arg.last, urlbuf, sizeof(urlbuf));
-                sockprintf(c->socket, "</ul><p><a href=\"./?select=%d&start="
+                http_response_printf(c->res, "</ul><p><a href=\"./?select=%d&start="
                            "%s\">Next page</a><ul>", select, urlbuf);
             }
         }
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "</ul><p>%d %schannel%s %s shown.<p>Key:"
                    "<tt>&nbsp;&nbsp;-&nbsp;</tt>Channel is forbidden<br>"
                    "<tt>&nbsp;&nbsp;*&nbsp;</tt>Channel is suspended<br>"
@@ -1073,10 +1069,8 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
         else if (*s)
             return 0;
         else {  /* ".../chanserv/channel-name/" */
-            http_send_response(c, HTTP_R_FOUND);
             /* Note that we just modified c->url above */
-            sockprintf(c->socket, "Location: %s\r\n", c->url);
-            sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+            redirect_to(c, c->url, "");
             return 1;
         }
     }
@@ -1088,32 +1082,29 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
     http_quote_html(chantmp, chanhtml, sizeof(chanhtml));
     http_quote_url(chantmp+1, chanurl, sizeof(chanurl));
 
-    *close_ptr = 1;
-    http_send_response(c, HTTP_S_OK);
-    sockprintf(c->socket, "Content-Type: text/html\r\n");
-    sockprintf(c->socket, "Connection: close\r\n\r\n");
+    http_response_set(c->res, HTTP_S_OK, "text/html", NULL, 0);
 
     if (!ci) {
-        sockprintf(c->socket, "<p>Channel \"%s\" is not registered.",
+        http_response_printf(c->res, "<p>Channel \"%s\" is not registered.",
                    chanhtml);
 
     } else if (ci->flags & CF_VERBOTEN) {
-        sockprintf(c->socket, "<p>Channel \"%s\" is <b>forbidden</b>.",
+        http_response_printf(c->res, "<p>Channel \"%s\" is <b>forbidden</b>.",
                    chanhtml);
 
     } else if (mode == MODE_LEVELS) {
         LevelInfo *levelinfo;  /* from ChanServ */
 
         levelinfo = get_module_symbol(module_chanserv, "levelinfo");
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<html><head><title>Access levels for channel \"%s\""
                    "</title></head><body><h1 align=center>Access levels"
                    " for channel \"%s\"</h1>", chanhtml, chanhtml);
         if (!levelinfo) {
-            sockprintf(c->socket, "<p><font color=red><b>Error accessing"
+            http_response_printf(c->res, "<p><font color=red><b>Error accessing"
                        " level data!</b></font>");
         } else {
-            sockprintf(c->socket, "<div align=center><table border=1><tr>"
+            http_response_printf(c->res, "<div align=center><table border=1><tr>"
                        "<th>Name<th>Level<th>Description<tr><td height=2>");
             for (i = 0; levelinfo[i].what >= 0; i++) {
                 char buf2[BUFSIZE*5];
@@ -1126,22 +1117,22 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
                 http_quote_html(getstring(NULL,levelinfo[i].desc),
                                 buf2, sizeof(buf2));
                 if (level == ACCLEV_FOUNDER)
-                    sockprintf(c->socket, "<tr><td>%s<td align=center>"
+                    http_response_printf(c->res, "<tr><td>%s<td align=center>"
                                "(Founder only)<td>%s", buf, buf2);
                 else if (level == ACCLEV_INVALID)
-                    sockprintf(c->socket, "<tr><td>%s<td align=center>"
+                    http_response_printf(c->res, "<tr><td>%s<td align=center>"
                                "(Disabled)<td>%s", buf, buf2);
                 else
-                    sockprintf(c->socket, "<tr><td>%s<td align=right>%d&nbsp;"
+                    http_response_printf(c->res, "<tr><td>%s<td align=right>%d&nbsp;"
                                "<td>%s", buf, level, buf2);
             }
-            sockprintf(c->socket, "</table></div>");
+            http_response_printf(c->res, "</table></div>");
         }
-        sockprintf(c->socket, "<p><a href=\"../%s\">Return to channel"
+        http_response_printf(c->res, "<p><a href=\"../%s\">Return to channel"
                    " information</a>", chanurl);
 
     } else if (mode == MODE_ACCESS) {
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<html><head><title>Access list for channel \"%s\"</title>"
                    "</head><body><h1 align=center>Access list for channel"
                    " \"%s\"</h1>", chanhtml, chanhtml);
@@ -1150,35 +1141,35 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
                 break;
         }
         if (i >= ci->access_count) {
-            sockprintf(c->socket, "<p>Access list is empty.");
+            http_response_printf(c->res, "<p>Access list is empty.");
         } else {
             int count = 0;
-            sockprintf(c->socket, "<div align=center>");
-            sockprintf(c->socket, "<table border=1><tr>"
+            http_response_printf(c->res, "<div align=center>");
+            http_response_printf(c->res, "<table border=1><tr>"
                        "<th>Nickname<th>Level<tr><td height=2>");
             ARRAY_FOREACH (i, ci->access) {
                 if (!ci->access[i].nickgroup)
                     continue;
-                sockprintf(c->socket, "<tr><td>");
+                http_response_printf(c->res, "<tr><td>");
                 ngi = get_ngi_id(ci->access[i].nickgroup);
                 if (ngi) {
                     http_quote_html(ngi_mainnick(ngi), buf, sizeof(buf));
                     http_quote_url(ngi_mainnick(ngi), urlbuf, sizeof(urlbuf));
-                    sockprintf(c->socket, "<a href=\"../../nickserv/%s\">%s"
+                    http_response_printf(c->res, "<a href=\"../../nickserv/%s\">%s"
                                "</a>", urlbuf, buf);
                 } else {
-                    sockprintf(c->socket, "<font color=red>(Error)</font>");
+                    http_response_printf(c->res, "<font color=red>(Error)</font>");
                 }
-                sockprintf(c->socket, "<td>%d", ci->access[i].level);
+                http_response_printf(c->res, "<td>%d", ci->access[i].level);
                 count++;
             }
-            sockprintf(c->socket, "</table></div><p>%d entries.", count);
+            http_response_printf(c->res, "</table></div><p>%d entries.", count);
         }
-        sockprintf(c->socket, "<p><a href=\"../%s\">Return to channel"
+        http_response_printf(c->res, "<p><a href=\"../%s\">Return to channel"
                    " information</a>", chanurl);
 
     } else if (mode == MODE_AUTOKICK) {
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<html><head><title>Autokick list for channel \"%s\""
                    "</title></head><body><h1 align=center>Autokick list"
                    " for channel \"%s\"</h1>", chanhtml, chanhtml);
@@ -1187,121 +1178,121 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
                 break;
         }
         if (i >= ci->akick_count) {
-            sockprintf(c->socket, "<p>Autokick list is empty.");
+            http_response_printf(c->res, "<p>Autokick list is empty.");
         } else {
             int count = 0;
-            sockprintf(c->socket, "<div align=center><table border=1><tr>"
+            http_response_printf(c->res, "<div align=center><table border=1><tr>"
                        "<th>Mask<th>Set by<th>Set at<th>Last used<th>Reason"
                        "<tr><td height=2>");
             ARRAY_FOREACH (i, ci->akick) {
                 if (!ci->akick[i].mask)
                     continue;
                 http_quote_html(ci->akick[i].mask, buf, sizeof(buf));
-                sockprintf(c->socket, "<tr><td>%s", buf);
+                http_response_printf(c->res, "<tr><td>%s", buf);
                 http_quote_html(ci->akick[i].who, buf, sizeof(buf));
                 if (get_nickinfo(ci->akick[i].who)) {
                     http_quote_url(ci->akick[i].who, urlbuf, sizeof(urlbuf));
-                    sockprintf(c->socket,
+                    http_response_printf(c->res,
                                "<td><a href=\"../../nickserv/%s\">%s</a>",
                                urlbuf, buf);
                 } else {
-                    sockprintf(c->socket, "<td>%s", buf);
+                    http_response_printf(c->res, "<td>%s", buf);
                 }
                 my_strftime(buf, sizeof(buf), ci->akick[i].set);
-                sockprintf(c->socket, "<td>%s", buf);
+                http_response_printf(c->res, "<td>%s", buf);
                 if (ci->akick[i].lastused) {
                     my_strftime(buf, sizeof(buf), ci->akick[i].lastused);
-                    sockprintf(c->socket, "<td>%s", buf);
+                    http_response_printf(c->res, "<td>%s", buf);
                 } else {
-                    sockprintf(c->socket, "<td><font color=red>Never</font>");
+                    http_response_printf(c->res, "<td><font color=red>Never</font>");
                 }
                 if (ci->akick[i].reason)
                     http_quote_html(ci->akick[i].reason, buf, sizeof(buf));
                 else
                     strcpy(buf, "&nbsp;");  /* to ensure the cell is drawn */
-                sockprintf(c->socket, "<td>%s", buf);
+                http_response_printf(c->res, "<td>%s", buf);
                 count++;
             }
-            sockprintf(c->socket, "</table></div><p>%d entries.", count);
+            http_response_printf(c->res, "</table></div><p>%d entries.", count);
         }
-        sockprintf(c->socket, "<p><a href=\"../%s\">Return to channel"
+        http_response_printf(c->res, "<p><a href=\"../%s\">Return to channel"
                    " information</a>", chanurl);
 
     } else {
         int need_comma = 0;
 
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<html><head><title>Information on channel \"%s\"</title>"
                    "</head><body><h1 align=center>Information on channel"
                    " \"%s\"</h1><div align=center>", chanhtml, chanhtml);
-        sockprintf(c->socket, "<table border=0 cellspacing=4>");
-        sockprintf(c->socket,
+        http_response_printf(c->res, "<table border=0 cellspacing=4>");
+        http_response_printf(c->res,
                    "<tr><th align=right valign=top>Founder:&nbsp;<td>");
         ngi = get_ngi_id(ci->founder);
         if (ngi) {
             http_quote_html(ngi_mainnick(ngi), buf, sizeof(buf));
             http_quote_url(ngi_mainnick(ngi), urlbuf, sizeof(urlbuf));
-            sockprintf(c->socket, "<a href=\"../nickserv/%s\">%s</a>",
+            http_response_printf(c->res, "<a href=\"../nickserv/%s\">%s</a>",
                        urlbuf, buf);
         } else {
-            sockprintf(c->socket, "<font color=red>(Error)</font>");
+            http_response_printf(c->res, "<font color=red>(Error)</font>");
         }
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<tr><th align=right valign=top>Successor:&nbsp;<td>");
         if (ci->successor) {
             ngi = get_ngi_id(ci->successor);
             if (ngi) {
                 http_quote_html(ngi_mainnick(ngi), buf, sizeof(buf));
                 http_quote_url(ngi_mainnick(ngi), urlbuf, sizeof(urlbuf));
-                sockprintf(c->socket, "<a href=\"../nickserv/%s\">%s</a>",
+                http_response_printf(c->res, "<a href=\"../nickserv/%s\">%s</a>",
                            urlbuf, buf);
             } else {
-                sockprintf(c->socket, "<font color=red>(Error)</font>");
+                http_response_printf(c->res, "<font color=red>(Error)</font>");
             }
         } else {
-            sockprintf(c->socket, "(None)");
+            http_response_printf(c->res, "(None)");
         }
         http_quote_html(ci->desc, buf, sizeof(buf));
-        sockprintf(c->socket, "<tr><th align=right valign=top>Description:"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Description:"
                    "&nbsp;<td>%s", buf);
         if (ci->url) {
             http_quote_html(ci->url, buf, sizeof(buf));
             http_quote_html(ci->url, urlbuf, sizeof(urlbuf));
-            sockprintf(c->socket,
+            http_response_printf(c->res,
                        "<tr><th align=right valign=top>URL:&nbsp;"
                        "<td><a href=\"%s\">%s</a>", urlbuf, buf);
         }
         if (ci->email) {
             http_quote_html(ci->email, buf, sizeof(buf));
             http_quote_html(ci->email, urlbuf, sizeof(urlbuf));
-            sockprintf(c->socket,
+            http_response_printf(c->res,
                        "<tr><th align=right valign=top>E-mail address:&nbsp;"
                        "<td><a href=\"mailto:%s\">%s</a>", urlbuf, buf);
         }
         my_strftime(buf, sizeof(buf), ci->time_registered);
-        sockprintf(c->socket, "<tr><th align=right valign=top>Time"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Time"
                    " registered:&nbsp;<td>%s", buf);
         my_strftime(buf, sizeof(buf), ci->last_used);
-        sockprintf(c->socket, "<tr><th align=right valign=top>Last used:"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Last used:"
                    "&nbsp;<td>%s", buf);
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<tr><th align=right valign=top>Mode lock:&nbsp;<td>");
         if (ci->mlock.on) {
             http_quote_html(mode_flags_to_string(ci->mlock.on,MODE_CHANNEL),
                             buf, sizeof(buf));
-            sockprintf(c->socket, "+%s", buf);
+            http_response_printf(c->res, "+%s", buf);
         }
         if (ci->mlock.off) {
             http_quote_html(mode_flags_to_string(ci->mlock.off,MODE_CHANNEL),
                             buf, sizeof(buf));
-            sockprintf(c->socket, "-%s", buf);
+            http_response_printf(c->res, "-%s", buf);
         }
         if (!ci->mlock.on && !ci->mlock.off)
-            sockprintf(c->socket, "(None)");
-        sockprintf(c->socket,
+            http_response_printf(c->res, "(None)");
+        http_response_printf(c->res,
                    "<tr><th align=right valign=top>Options:&nbsp;<td>");
         if (ci->flags & CF_NOEXPIRE) {
-            sockprintf(c->socket, "<b>Will not expire</b>");
+            http_response_printf(c->res, "<b>Will not expire</b>");
             need_comma++;
         }
         for (i = 0; chanopts[i].mask; i++) {
@@ -1309,70 +1300,70 @@ static int handle_chanserv(Client *c, int *close_ptr, char *path)
                 http_quote_html(chanopts[i].text, buf, sizeof(buf));
                 if (!need_comma)
                     *buf = toupper(*buf);
-                sockprintf(c->socket, "%s%s", need_comma++ ? ", " : "", buf);
+                http_response_printf(c->res, "%s%s", need_comma++ ? ", " : "", buf);
             }
         }
         if (!need_comma)
-            sockprintf(c->socket, "None");
+            http_response_printf(c->res, "None");
 
-        sockprintf(c->socket, "<tr><td colspan=2><hr>");
+        http_response_printf(c->res, "<tr><td colspan=2><hr>");
 
         if ((ci->flags & CF_KEEPTOPIC) && ci->last_topic) {
             http_quote_html(ci->last_topic, buf, sizeof(buf));
-            sockprintf(c->socket, "<tr><th align=right valign=top>Last"
+            http_response_printf(c->res, "<tr><th align=right valign=top>Last"
                        " topic:<td>%s", buf);
             http_quote_html(ci->last_topic_setter, buf, sizeof(buf));
-            sockprintf(c->socket, "<tr><th align=right valign=top>Topic"
+            http_response_printf(c->res, "<tr><th align=right valign=top>Topic"
                        " set by:<td>%s", buf);
             my_strftime(buf, sizeof(buf), ci->last_topic_time);
-            sockprintf(c->socket, "<tr><th align=right valign=top>Topic"
+            http_response_printf(c->res, "<tr><th align=right valign=top>Topic"
                        " set on:&nbsp;<td>%s", buf);
-            sockprintf(c->socket, "<tr><td colspan=2><hr>");
+            http_response_printf(c->res, "<tr><td colspan=2><hr>");
         }
 
         if (ci->flags & CF_SUSPENDED) {
-            sockprintf(c->socket, "<tr><td colspan=2 align=center>"
+            http_response_printf(c->res, "<tr><td colspan=2 align=center>"
                        "<font color=red>This channel is <b>suspended</b>."
                        "</font>");
             my_strftime(buf, sizeof(buf), ci->suspend_time);
-            sockprintf(c->socket, "<tr><th align=right valign=top>"
+            http_response_printf(c->res, "<tr><th align=right valign=top>"
                        "Suspended on:&nbsp;<td>%s", buf);
             http_quote_html(ci->suspend_who, buf, sizeof(buf));
             http_quote_url(ci->suspend_who, urlbuf, sizeof(urlbuf));
-            sockprintf(c->socket, "<tr><th align=right valign=top>"
+            http_response_printf(c->res, "<tr><th align=right valign=top>"
                        "Suspended by:&nbsp;<td><a href=\"%s\">%s</a>",
                        urlbuf, buf);
             http_quote_html(ci->suspend_reason ? ci->suspend_reason
                             : "", buf, sizeof(buf));
-            sockprintf(c->socket, "<tr><th align=right valign=top>"
+            http_response_printf(c->res, "<tr><th align=right valign=top>"
                        "Reason for suspension:&nbsp;<td>%s", buf);
             if (ci->suspend_expires)
                 my_strftime(buf, sizeof(buf), ci->suspend_expires);
             else
                 strbcpy(buf, "<b>Never</b>");
-            sockprintf(c->socket, "<tr><th align=right valign=top>"
+            http_response_printf(c->res, "<tr><th align=right valign=top>"
                        "Suspension expires on:&nbsp;<td>%s", buf);
-            sockprintf(c->socket, "<tr><td colspan=2><hr>");
+            http_response_printf(c->res, "<tr><td colspan=2><hr>");
         }
 
-        sockprintf(c->socket, "<tr><th colspan=2><a href=\"%s/levels\">"
+        http_response_printf(c->res, "<tr><th colspan=2><a href=\"%s/levels\">"
                    "View access level settings</a>", chanurl);
-        sockprintf(c->socket, "<tr><th colspan=2><a href=\"%s/access\">"
+        http_response_printf(c->res, "<tr><th colspan=2><a href=\"%s/access\">"
                    "View access list</a>", chanurl);
-        sockprintf(c->socket, "<tr><th colspan=2><a href=\"%s/autokick\">"
+        http_response_printf(c->res, "<tr><th colspan=2><a href=\"%s/autokick\">"
                    "View autokick list</a>", chanurl);
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "</table></div><p><a href=./>Return to channel list</a>");
     }
 
-    sockprintf(c->socket, "</body></html>");
+    http_response_printf(c->res, "</body></html>");
     put_channelinfo(ci);
     return 1;
 }
 
 /*************************************************************************/
 
-static int handle_statserv(Client *c, int *close_ptr, char *path)
+static int handle_statserv(Client *c, char *path)
 {
     ServerStats *ss;
     char servurl[BUFSIZE*3];
@@ -1382,23 +1373,18 @@ static int handle_statserv(Client *c, int *close_ptr, char *path)
         return 0;
 
     if (!*path) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s/\r\n", c->url);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
+        redirect_to(c, c->url, "/");
         return 1;
     } else if (*path != '/') {
         return 0;
     }
     path++;
 
-    *close_ptr = 1;
-    http_send_response(c, HTTP_S_OK);
-    sockprintf(c->socket, "Content-Type: text/html\r\n");
-    sockprintf(c->socket, "Connection: close\r\n\r\n");
+    http_response_set(c->res, HTTP_S_OK, "text/html", NULL, 0);
 
     if (!*path) {
         int count = 0;
-        sockprintf(c->socket,
+        http_response_printf(c->res,
                    "<html><head><title>StatServ database access</title>"
                    "</head><body><h1 align=center>StatServ database"
                    " access</h1><p>Click on a server for detailed information."
@@ -1406,13 +1392,13 @@ static int handle_statserv(Client *c, int *close_ptr, char *path)
         for (ss = first_serverstats(); ss; ss = next_serverstats()) {
             http_quote_html(ss->name, servhtml, sizeof(servhtml));
             http_quote_url(ss->name, servurl, sizeof(servurl));
-            sockprintf(c->socket, "<li><a href=\"%s\">%s (<font color=%s>"
+            http_response_printf(c->res, "<li><a href=\"%s\">%s (<font color=%s>"
                        "%sline</font>)</a>", servurl, servhtml,
                        ss->t_join > ss->t_quit ? "green" : "red",
                        ss->t_join > ss->t_quit ? "on" : "off");
             count++;
         }
-        sockprintf(c->socket, "</ul><p>%d server%s found.</body></html>",
+        http_response_printf(c->res, "</ul><p>%d server%s found.</body></html>",
                    count, count==1 ? "" : "s");
         return 1;
     }
@@ -1420,38 +1406,38 @@ static int handle_statserv(Client *c, int *close_ptr, char *path)
     http_unquote_url(path);
     ss = get_serverstats(path);
     http_quote_html(path, servhtml, sizeof(servhtml));
-    sockprintf(c->socket,
+    http_response_printf(c->res,
                "<html><head><title>Information on server \"%s\"</title>"
                "</head><body><h1 align=center>Information on server"
                " \"%s\"</h1><div align=center>", servhtml, servhtml);
 
     if (!ss) {
-        sockprintf(c->socket, "<p>Server \"%s\" is not known.", servhtml);
+        http_response_printf(c->res, "<p>Server \"%s\" is not known.", servhtml);
     } else {
-        sockprintf(c->socket, "<p>Server is currently <font color=%s>%sline"
+        http_response_printf(c->res, "<p>Server is currently <font color=%s>%sline"
                    "</font>.", ss->t_join > ss->t_quit ? "green" : "red",
                    ss->t_join > ss->t_quit ? "on" : "off");
-        sockprintf(c->socket, "<table border=0 cellspacing=4>");
+        http_response_printf(c->res, "<table border=0 cellspacing=4>");
         if (ss->t_join > ss->t_quit) {
-            sockprintf(c->socket, "<tr><th align=right valign=top>Current"
+            http_response_printf(c->res, "<tr><th align=right valign=top>Current"
                        " user count:&nbsp;<td>%d", ss->usercnt);
-            sockprintf(c->socket, "<tr><th align=right valign=top>Current"
+            http_response_printf(c->res, "<tr><th align=right valign=top>Current"
                        " operator count:&nbsp;<td>%d", ss->opercnt);
         }
         my_strftime(servhtml, sizeof(servhtml), ss->t_join);
-        sockprintf(c->socket, "<tr><th align=right valign=top>Time of last"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Time of last"
                    " join:&nbsp;<td>%s", ss->t_join ? servhtml : "none");
         my_strftime(servhtml, sizeof(servhtml), ss->t_quit);
-        sockprintf(c->socket, "<tr><th align=right valign=top>Time of last"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Time of last"
                    " quit:&nbsp;<td>%s", ss->t_quit ? servhtml : "none");
         http_quote_html(ss->quit_message ? ss->quit_message : "",
                         servhtml, sizeof(servhtml));
-        sockprintf(c->socket, "<tr><th align=right valign=top>Last quit"
+        http_response_printf(c->res, "<tr><th align=right valign=top>Last quit"
                    " message:&nbsp;<td>%s", servhtml);
-        sockprintf(c->socket, "</table>");
+        http_response_printf(c->res, "</table>");
     }
 
-    sockprintf(c->socket,
+    http_response_printf(c->res,
                "</div><p><a href=./>Return to server list</a></body></html>");
     put_serverstats(ss);
     return 1;
@@ -1459,38 +1445,18 @@ static int handle_statserv(Client *c, int *close_ptr, char *path)
 
 /*************************************************************************/
 
-static int handle_xml_export(Client *c, int *close_ptr, char *path)
+/* The route: every request under Prefix comes here. */
+static int do_route(http_req_t id, const struct HttpRequest *req,
+                    struct HttpResponse *res, void *user)
 {
-    void (*p_xml_export)(xml_writefunc_t writefunc, void *data);
+    Client c;
 
-    if (!module_xml_export)
-        return 0;
-    if (!(p_xml_export = get_module_symbol(module_xml_export, "xml_export"))) {
-        module_xml_export = NULL;
-        return 0;
-    }
-
-    if (!*path) {
-        http_send_response(c, HTTP_R_FOUND);
-        sockprintf(c->socket, "Location: %s/\r\n", c->url);
-        sockprintf(c->socket, "Content-Length: 0\r\n\r\n");
-        return 1;
-    } else if (*path != '/') {
-        return 0;
-    }
-    path++;
-
-    if (*path)
-        return 0;
-
-    http_send_response(c, HTTP_S_OK);
-    /* Use "text/plain" to keep browsers from trying to do anything funny
-     * with the data.  MSIE can go to hell. */
-    sockprintf(c->socket, "Content-Type: text/plain\r\n");
-    sockprintf(c->socket, "Connection: close\r\n\r\n");
-    *close_ptr = 1;
-    if (c->method != METHOD_HEAD)
-        (*p_xml_export)((xml_writefunc_t)sockprintf, c->socket);
+    memset(&c, 0, sizeof(c));
+    c.req = req;
+    c.res = res;
+    strbcpy(c.url, req->hreq_path);
+    if (!do_request(&c))
+        http_response_error(res, HTTP_E_NOT_FOUND, NULL);
     return 1;
 }
 
@@ -1604,8 +1570,6 @@ static int do_load_module(Module *mod, const char *modname)
             p_first_serverstats = NULL;
             p_next_serverstats = NULL;
         }
-    } else if (strcmp(modname, "misc/xml-export") == 0) {
-        module_xml_export = mod;
     }
 
     return 0;
@@ -1652,9 +1616,50 @@ static int do_unload_module(Module *mod)
         p_first_serverstats = NULL;
         p_next_serverstats = NULL;
         module_statserv = NULL;
-    } else if (mod == module_xml_export) {
-        module_xml_export = NULL;
     }
+    return 0;
+}
+
+/*************************************************************************/
+
+/* Claim the routes for Prefix (again, if it changed). */
+static int claim(void)
+{
+    char exact[HTTP_PATH_MAX + 1], prefix[HTTP_PATH_MAX + 2];
+
+    Prefix_len = strlen(Prefix);
+    while (Prefix_len > 0 && Prefix[Prefix_len-1] == '/')
+        Prefix_len--;
+    if (Prefix[0] != '/' || Prefix_len == 0 || Prefix_len + 1 > HTTP_PATH_MAX) {
+        module_log("Prefix `%s' must be a path below / (e.g. /dbaccess)",
+                   Prefix);
+        return 0;
+    }
+    snprintf(exact, sizeof(exact), "%.*s", Prefix_len, Prefix);
+    snprintf(prefix, sizeof(prefix), "%s/", exact);
+    if (strcmp(exact, claimed_exact) == 0)
+        return 1;
+    if (*claimed_exact) {
+        http_del_route(THIS_MODULE, "GET", claimed_exact);
+        http_del_route(THIS_MODULE, "GET", claimed_prefix);
+        *claimed_exact = *claimed_prefix = 0;
+    }
+    if (!http_add_route(THIS_MODULE, "GET", exact, do_route, NULL)
+     || !http_add_route(THIS_MODULE, "GET", prefix, do_route, NULL)
+    ) {
+        module_log("Unable to claim %s (already claimed)", prefix);
+        http_del_routes(THIS_MODULE);
+        return 0;
+    }
+    strbcpy(claimed_exact, exact);
+    strbcpy(claimed_prefix, prefix);
+    return 1;
+}
+
+static int do_reconfigure(int after_configure)
+{
+    if (after_configure)
+        claim();
     return 0;
 }
 
@@ -1663,10 +1668,6 @@ static int do_unload_module(Module *mod)
 int init_module(void)
 {
     Module *tmpmod;
-
-    Prefix_len = strlen(Prefix);
-    while (Prefix_len > 0 && Prefix[Prefix_len-1] == '/')
-        Prefix_len--;
 
     module_httpd = find_module("httpd/main");
     if (!module_httpd) {
@@ -1678,7 +1679,8 @@ int init_module(void)
 
     if (!add_callback(NULL, "load module", do_load_module)
      || !add_callback(NULL, "unload module", do_unload_module)
-     || !add_callback(module_httpd, "request", do_request)
+     || !add_callback(NULL, "reconfigure", do_reconfigure)
+     || !claim()
     ) {
         module_log("Unable to add callbacks");
         exit_module(0);
@@ -1709,9 +1711,6 @@ int init_module(void)
     tmpmod = find_module("statserv/main");
     if (tmpmod)
         do_load_module(tmpmod, "statserv/main");
-    tmpmod = find_module("misc/xml-export");
-    if (tmpmod)
-        do_load_module(tmpmod, "misc/xml-export");
 
     return 1;
 }
@@ -1723,8 +1722,9 @@ int exit_module(int shutdown_unused)
     remove_callback(NULL, "unload module", do_unload_module);
     remove_callback(NULL, "load module", do_load_module);
 
+    remove_callback(NULL, "reconfigure", do_reconfigure);
     if (module_httpd) {
-        remove_callback(module_httpd, "request", do_request);
+        http_del_routes(THIS_MODULE);
         unuse_module(module_httpd);
         module_httpd = NULL;
     }
