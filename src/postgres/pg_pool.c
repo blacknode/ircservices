@@ -27,7 +27,7 @@
  * The pool for a role is built the first time a query asks for it, and
  * torn down when db_conf_generation() says the configuration underneath it
  * has changed.  Services that never run a query never open a pooled
- * connection.  A query sent from a module's init_module(), before Services
+ * connection.  A query sent from a module's `init', before Services
  * have forked into the background, builds its pool all the same: the
  * connection threads are held until the worker subsystem comes up after
  * the fork (see worker_spawn_owned()), and the query waits in the queue.

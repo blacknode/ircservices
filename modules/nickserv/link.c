@@ -52,43 +52,43 @@ static void do_link(User *u)
     int n;
 
     if (readonly && !is_services_admin(u)) {
-        notice_lang(s_NickServ, u, NICK_LINK_DISABLED);
+        notice_lang(nickserv_service.nick, u, NICK_LINK_DISABLED);
     } else if (!nick) {
-        syntax_error(s_NickServ, u, "LINK", NICK_LINK_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "LINK", NICK_LINK_SYNTAX);
     } else if (strlen(nick) > protocol_nickmax) {
-        notice_lang(s_NickServ, u, NICK_TOO_LONG, protocol_nickmax);
+        notice_lang(nickserv_service.nick, u, NICK_TOO_LONG, protocol_nickmax);
     } else if (!valid_nick(nick)) {
-        notice_lang(s_NickServ, u, NICK_INVALID, nick);
+        notice_lang(nickserv_service.nick, u, NICK_INVALID, nick);
     } else if (!reglink_check(u, nick, NULL, NULL)) {
-        notice_lang(s_NickServ, u, NICK_CANNOT_BE_LINKED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_CANNOT_BE_LINKED, nick);
         return;
     } else if (!ni || !ngi || ngi == NICKGROUPINFO_INVALID) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
     } else if (!user_identified(u)) {
-        notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
+        notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
     } else if (irc_stricmp(u->nick, nick) == 0) {
-        notice_lang(s_NickServ, u, NICK_LINK_SAME);
+        notice_lang(nickserv_service.nick, u, NICK_LINK_SAME);
     } else if ((ni2 = get_nickinfo(nick)) != NULL) {
         int i;
         ARRAY_SEARCH_PLAIN(ngi->nicks, nick, irc_stricmp, i);
         if (i < ngi->nicks_count)
-            notice_lang(s_NickServ, u, NICK_LINK_ALREADY_LINKED, nick);
+            notice_lang(nickserv_service.nick, u, NICK_LINK_ALREADY_LINKED, nick);
         else if (ni2->status & NS_VERBOTEN)
-            notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+            notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
         else
-            notice_lang(s_NickServ, u, NICK_X_ALREADY_REGISTERED, nick);
+            notice_lang(nickserv_service.nick, u, NICK_X_ALREADY_REGISTERED, nick);
         put_nickinfo(ni2);
     } else if (get_user(nick)) {
-        notice_lang(s_NickServ, u, NICK_LINK_IN_USE, nick);
+        notice_lang(nickserv_service.nick, u, NICK_LINK_IN_USE, nick);
     } else if (ngi->nicks_count >= NSLinkMax) {
-        notice_lang(s_NickServ, u, NICK_LINK_TOO_MANY, NSLinkMax);
+        notice_lang(nickserv_service.nick, u, NICK_LINK_TOO_MANY, NSLinkMax);
     } else if (NSRegEmailMax && ngi->email && !is_services_admin(u)
             && (n=abs(count_nicks_with_email(ngi->email))) >= NSRegEmailMax) {
-        notice_lang(s_NickServ, u, NICK_LINK_TOO_MANY_NICKS, n,
+        notice_lang(nickserv_service.nick, u, NICK_LINK_TOO_MANY_NICKS, n,
                     NSRegEmailMax);
     } else if (!(ni2 = makenick(nick, NULL))) {
         module_log("makenick(%s) failed (link)", nick);
-        notice_lang(s_NickServ, u, NICK_LINK_FAILED);
+        notice_lang(nickserv_service.nick, u, NICK_LINK_FAILED);
     } else {
         if (ni->last_usermask)
             ni2->last_usermask = sstrdup(ni->last_usermask);
@@ -105,9 +105,9 @@ static void do_link(User *u)
         strbcpy(ngi->nicks[ngi->nicks_count-1], nick);
         module_log("%s!%s@%s linked nick %s to %s",
                    u->nick, u->username, u->host, nick, u->nick);
-        notice_lang(s_NickServ, u, NICK_LINKED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_LINKED, nick);
         if (readonly)
-            notice_lang(s_NickServ, u, READ_ONLY_MODE);
+            notice_lang(nickserv_service.nick, u, READ_ONLY_MODE);
     }
 } /* do_link() */
 
@@ -123,25 +123,25 @@ static void do_unlink(User *u)
     int force = (extra != NULL && stricmp(extra,"FORCE") == 0);
 
     if (readonly && !is_servadmin) {
-        notice_lang(s_NickServ, u, NICK_LINK_DISABLED);
+        notice_lang(nickserv_service.nick, u, NICK_LINK_DISABLED);
     } else if (!nick || (extra && (!is_oper(u) || !force))) {
-        syntax_error(s_NickServ, u, "UNLINK",
+        syntax_error(nickserv_service.nick, u, "UNLINK",
                      is_oper(u) ? NICK_UNLINK_OPER_SYNTAX
                                 : NICK_UNLINK_SYNTAX);
     } else if (force && !is_servadmin) {
-        notice_lang(s_NickServ, u, PERMISSION_DENIED);
+        notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
     } else if (!ni || !ngi || ngi == NICKGROUPINFO_INVALID) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
     } else if (!user_identified(u)) {
-        notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
+        notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
     } else if (irc_stricmp(nick, u->nick) == 0) {
-        notice_lang(s_NickServ, u, NICK_UNLINK_SAME);
+        notice_lang(nickserv_service.nick, u, NICK_UNLINK_SAME);
     } else if (!(ni2 = get_nickinfo(nick)) || !ni2->nickgroup
                || !(ngi2 = get_ngi(ni2)) || ngi2->nicks_count == 1) {
-        notice_lang(s_NickServ, u, force ? NICK_UNLINK_NOT_LINKED
+        notice_lang(nickserv_service.nick, u, force ? NICK_UNLINK_NOT_LINKED
                                          : NICK_UNLINK_NOT_LINKED_YOURS, nick);
     } else if (!force && ni2->nickgroup != ni->nickgroup) {
-        notice_lang(s_NickServ, u, NICK_UNLINK_NOT_LINKED_YOURS, nick);
+        notice_lang(nickserv_service.nick, u, NICK_UNLINK_NOT_LINKED_YOURS, nick);
     } else {
         int msg;
         char *param1;
@@ -155,14 +155,14 @@ static void do_unlink(User *u)
             param1 = ngi_mainnick(ngi);  /* Not used, but for completeness */
         }
         if (force && WallAdminPrivs) {
-            wallops(s_NickServ, "\2%s\2 used UNLINK FORCE on \2%s\2",
+            wallops(nickserv_service.nick, "\2%s\2 used UNLINK FORCE on \2%s\2",
                     u->nick, nick);
         }
-        notice_lang(s_NickServ, u, msg, nick, param1);
+        notice_lang(nickserv_service.nick, u, msg, nick, param1);
         module_log("%s!%s@%s unlinked nick %s from %s", u->nick,
                    u->username, u->host, nick, param1);
         if (readonly)
-            notice_lang(s_NickServ, u, READ_ONLY_MODE);
+            notice_lang(nickserv_service.nick, u, READ_ONLY_MODE);
     }
     put_nickgroupinfo(ngi2);
 }
@@ -178,38 +178,38 @@ static void do_listlinks(User *u)
 
     if (nick) {
         if (!is_services_oper(u)) {
-            syntax_error(s_NickServ, u, "LISTLINKS", NICK_LISTLINKS_SYNTAX);
+            syntax_error(nickserv_service.nick, u, "LISTLINKS", NICK_LISTLINKS_SYNTAX);
             return;
         } else if (!(ni = get_nickinfo(nick))) {
-            notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+            notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
             return;
         } else if (ni->status & NS_VERBOTEN) {
-            notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, ni->nick);
+            notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, ni->nick);
             put_nickinfo(ni);
             return;
         } else if (!(ngi = get_ngi(ni))) {
-            notice_lang(s_NickServ, u, INTERNAL_ERROR);
+            notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
             put_nickinfo(ni);
             return;
         }
     } else {
         if (!(ni = u->ni) || !(ngi = u->ngi) || ngi == NICKGROUPINFO_INVALID) {
-            notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+            notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
             return;
         } else if (!user_identified(u)) {
-            notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
+            notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
             return;
         }
         hold_nickinfo(ni);
         hold_nickgroupinfo(ngi);
     }
 
-    notice_lang(s_NickServ, u, NICK_LISTLINKS_HEADER, ni->nick);
+    notice_lang(nickserv_service.nick, u, NICK_LISTLINKS_HEADER, ni->nick);
     ARRAY_FOREACH (i, ngi->nicks) {
-        notice(s_NickServ, u->nick, "    %c%s",
+        notice(nickserv_service.nick, u->nick, "    %c%s",
                i==ngi->mainnick ? '*' : ' ', ngi->nicks[i]);
     }
-    notice_lang(s_NickServ, u, NICK_LISTLINKS_FOOTER, ngi->nicks_count);
+    notice_lang(nickserv_service.nick, u, NICK_LISTLINKS_FOOTER, ngi->nicks_count);
     put_nickinfo(ni);
     put_nickgroupinfo(ngi);
 }
@@ -227,13 +227,13 @@ static int do_set_mainnick(User *u, NickInfo *ni, NickGroupInfo *ngi,
         return 0;
     ARRAY_SEARCH_PLAIN(ngi->nicks, param, irc_stricmp, i);
     if (i >= ngi->nicks_count) {
-        notice_lang(s_NickServ, u, NICK_SET_MAINNICK_NOT_FOUND, param);
+        notice_lang(nickserv_service.nick, u, NICK_SET_MAINNICK_NOT_FOUND, param);
     } else {
         module_log("%s!%s@%s set main nick of %s (group %u) to %s",
                    u->nick, u->username, u->host, ngi_mainnick(ngi),
                    ngi->id, ngi->nicks[i]);
         ngi->mainnick = i;
-        notice_lang(s_NickServ, u, NICK_SET_MAINNICK_CHANGED, param);
+        notice_lang(nickserv_service.nick, u, NICK_SET_MAINNICK_CHANGED, param);
     }
     return 1;
 }
@@ -242,7 +242,7 @@ static int do_set_mainnick(User *u, NickInfo *ni, NickGroupInfo *ngi,
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective link_config[] = {
     { "NSLinkMax",        { { CD_POSINT, CF_DIRREQ, &NSLinkMax } } },
     { NULL }
 };
@@ -252,7 +252,7 @@ static int old_NICK_X_DROPPED = -1;
 
 /*************************************************************************/
 
-int init_module(void)
+static int link_init(Module *module)
 {
     if (NSLinkMax > MAX_NICKCOUNT) {
         module_log("NSLinkMax upper-bounded at MAX_NICKCOUNT (%d)",
@@ -260,22 +260,15 @@ int init_module(void)
         NSLinkMax = MAX_NICKCOUNT;
     }
 
-    module_nickserv = find_module("nickserv/main");
-    if (!module_nickserv) {
-        module_log("Main NickServ module not loaded");
-        return 0;
-    }
-    use_module(module_nickserv);
+    module_nickserv = module_find("nickserv/main");
 
     if (!register_commands(module_nickserv, cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
 
-    if (!add_callback(module_nickserv, "SET", do_set_mainnick)) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+    if (!event_attach(module, NICKSERV_EVENT_SET, do_set_mainnick)) {
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
@@ -287,7 +280,7 @@ int init_module(void)
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int link_fini(Module *module, int shutdown)
 {
     if (old_NICK_DROPPED >= 0) {
         mapstring(NICK_DROPPED, old_NICK_DROPPED);
@@ -299,14 +292,23 @@ int exit_module(int shutdown_unused)
     }
 
     if (module_nickserv) {
-        remove_callback(module_nickserv, "SET", do_set_mainnick);
         unregister_commands(module_nickserv, cmds);
-        unuse_module(module_nickserv);
         module_nickserv = NULL;
     }
 
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "NickServ LINK: several nicks in one group",
+    .requires = MODULE_REQUIRES("nickserv/main"),
+    .config = link_config,
+    .init = link_init,
+    .fini = link_fini,
+};
 
 /*************************************************************************/
 

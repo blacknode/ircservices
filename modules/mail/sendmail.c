@@ -19,9 +19,6 @@
 
 static char *SendmailPath;
 
-static Module *module_mail_main;
-static typeof(low_send) *low_send_p;
-static typeof(low_abort) *low_abort_p;
 
 /*************************************************************************/
 /***************************** Mail sending ******************************/
@@ -97,7 +94,7 @@ static void abort_sendmail(MailMessage *msg)
 /*************************************************************************/
 
 static int do_SendmailPath(const char *filename, int linenum, char *param);
-ConfigDirective module_config[] = {
+static ConfigDirective sendmail_config[] = {
     { "SendmailPath",     { { CD_FUNC, CF_DIRREQ, do_SendmailPath } } },
     { NULL }
 };
@@ -140,71 +137,37 @@ static int do_SendmailPath(const char *filename, int linenum, char *param)
 
 /*************************************************************************/
 
-static int do_load_module(Module *mod, const char *modname)
+/* mail/main is required, so its hooks for the low-level sender are there
+ * to be set directly (mail-local.h). */
+
+static int sendmail_init(Module *module)
 {
-    if (strcmp(modname, "mail/main") == 0) {
-        module_mail_main = mod;
-        low_send_p = get_module_symbol(mod, "low_send");
-        if (low_send_p)
-            *low_send_p = send_sendmail;
-        else
-            module_log("Unable to find `low_send' symbol, cannot send mail");
-        low_abort_p = get_module_symbol(mod, "low_abort");
-        if (low_abort_p)
-            *low_abort_p = abort_sendmail;
-        else
-            module_log("Unable to find `low_abort' symbol, cannot send mail");
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-static int do_unload_module(Module *mod)
-{
-    if (mod == module_mail_main) {
-        if (low_send_p)
-            *low_send_p = NULL;
-        if (low_abort_p)
-            *low_abort_p = NULL;
-        low_send_p = NULL;
-        low_abort_p = NULL;
-        module_mail_main = NULL;
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-int init_module(void)
-{
-    Module *tmpmod;
-
-    if (!add_callback(NULL, "load module", do_load_module)
-     || !add_callback(NULL, "unload module", do_unload_module)
-    ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
-        return 0;
-    }
-
-    tmpmod = find_module("mail/main");
-    if (tmpmod)
-        do_load_module(tmpmod, "mail/main");
-
+    low_send = send_sendmail;
+    low_abort = abort_sendmail;
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int sendmail_fini(Module *module, int shutdown)
 {
-    if (module_mail_main)
-        do_unload_module(module_mail_main);
-    remove_callback(NULL, "unload module", do_unload_module);
-    remove_callback(NULL, "load module", do_load_module);
+    if (low_send == send_sendmail)
+        low_send = NULL;
+    if (low_abort == abort_sendmail)
+        low_abort = NULL;
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "Mail: send through the sendmail program",
+    .requires = MODULE_REQUIRES("mail/main"),
+    .config = sendmail_config,
+    .init = sendmail_init,
+    .fini = sendmail_fini,
+};
 
 /*************************************************************************/
 

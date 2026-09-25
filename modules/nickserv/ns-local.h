@@ -55,9 +55,8 @@ E void exit_collide(void);
 
 /**** main.c ****/
 
-E int cb_reglink_check;
+E Event *reglink_check_event;
 
-E char * s_NickServ;
 E int32  NSRegEmailMax;
 E int    NSRequireEmail;
 E int    NSRegDenyIfSuspended;
@@ -85,19 +84,16 @@ E time_t NSSuspendGrace;
 #define do_set do_set_ns
 #define do_unset do_unset_ns
 #define init_set init_set_ns
-#define exit_set exit_set_ns
 
 E void do_set(User *u);
 E void do_unset(User *u);
 E int init_set(void);
-E void exit_set(void);
 
 
 /**** util.c ****/
 
 /* Avoid conflicts with chanserv/util.c */
 #define init_util init_util_ns
-#define exit_util exit_util_ns
 
 E int reglink_check(User *u, const char *nick, char *password, char *email);
 E void update_userinfo(const User *u);
@@ -118,7 +114,6 @@ E int nick_check_password(User *u, NickInfo *ni, const char *password,
 E int count_nicks_with_email(const char *email);
 
 E int init_util(void);
-E void exit_util(void);
 
 
 /*************************************************************************/

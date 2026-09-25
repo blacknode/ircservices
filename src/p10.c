@@ -13,7 +13,7 @@
  *   3. inbound       p10_parse() and the P10-specific message handlers
  *   4. outbound      p10_send() and the rewrite rules per command
  *   5. protocol API  send_nick(), send_server(), wallops(), ... (send.h)
- *   6. callbacks     topic, G-lines, bookkeeping of users and servers
+ *   6. events        topic, G-lines, bookkeeping of users and servers
  *   7. setup         modes, p10_init(), p10_cleanup()
  */
 
@@ -22,6 +22,8 @@
 #include "messages.h"
 #include "modules.h"
 #include "services.h"
+#include "modules/operserv/akill.h"
+#include "modules/operserv/sline.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -153,7 +155,7 @@ static char local_nicks[LOCAL_CAPACITY][NICKMAX];
 static int local_next;
 
 /* The user a NICK line is introducing, while it is being introduced:
- * callbacks run inside do_nick() (AKILL checks, NickServ) may already
+ * event handlers run inside do_nick() (AKILL checks, NickServ) may already
  * address that user before it has a User structure. */
 static const char *pending_nick, *pending_numeric;
 
@@ -838,7 +840,7 @@ static void m_kill(char* source, int ac, char** av)
         strbcpy(savenick, nick);
         local_free(savenick);
         if (!readonly)
-            introduce_user(savenick);
+            service_introduce(savenick);
         return;
     }
     kav[0] = numeric_to_nick(av[0]);
@@ -1470,7 +1472,7 @@ void send_channel_cmd(const char* source, const char* fmt, ...)
 }
 
 /*************************************************************************/
-/***************************** 6. Callbacks ******************************/
+/****************************** 6. Events *******************************/
 /*************************************************************************/
 
 /* set_topic() calls this twice; the second call (setter == NULL) comes
@@ -1541,20 +1543,6 @@ static int do_cancel_szline(const char* mask)
     return do_cancel_akill("*", mask);
 }
 
-static int do_load_module(Module* mod, const char* modname)
-{
-    if (strcmp(modname, "operserv/akill") == 0) {
-        if (!add_callback(mod, "send_akill", do_send_akill) ||
-            !add_callback(mod, "cancel_akill", do_cancel_akill))
-            log("p10: unable to add AKILL callbacks");
-    }
-    else if (strcmp(modname, "operserv/sline") == 0) {
-        if (!add_callback(mod, "send_szline", do_send_szline) ||
-            !add_callback(mod, "cancel_szline", do_cancel_szline))
-            log("p10: unable to add SZLINE callbacks");
-    }
-    return 0;
-}
 
 /*************************************************************************/
 /******************************* 7. Setup ********************************/
@@ -1629,11 +1617,16 @@ int p10_init(void)
         log("p10: unable to register messages");
         return 0;
     }
-    if (!add_callback(NULL, "load module", do_load_module) ||
-        !add_callback(NULL, "set topic", do_set_topic) ||
-        !add_callback(NULL, "user delete", do_user_delete) ||
-        !add_callback(NULL, "server delete", do_server_delete)) {
-        log("p10: unable to add callbacks");
+    /* The G-line events are operserv/akill's and operserv/sline's: the
+     * handlers wait for those modules to be loaded (see events.h). */
+    if (!event_attach(NULL, EVENT_CHANNEL_SET_TOPIC, do_set_topic) ||
+        !event_attach(NULL, EVENT_USER_DELETE, do_user_delete) ||
+        !event_attach(NULL, EVENT_SERVER_DELETE, do_server_delete) ||
+        !event_attach(NULL, AKILL_EVENT_SEND_AKILL, do_send_akill) ||
+        !event_attach(NULL, AKILL_EVENT_CANCEL_AKILL, do_cancel_akill) ||
+        !event_attach(NULL, SLINE_EVENT_SEND_SZLINE, do_send_szline) ||
+        !event_attach(NULL, SLINE_EVENT_CANCEL_SZLINE, do_cancel_szline)) {
+        log("p10: unable to attach event handlers");
         return 0;
     }
     init_modes();
@@ -1645,10 +1638,13 @@ void p10_cleanup(void)
 {
     int i;
 
-    remove_callback(NULL, "server delete", do_server_delete);
-    remove_callback(NULL, "user delete", do_user_delete);
-    remove_callback(NULL, "set topic", do_set_topic);
-    remove_callback(NULL, "load module", do_load_module);
+    event_detach(NULL, SLINE_EVENT_CANCEL_SZLINE, do_cancel_szline);
+    event_detach(NULL, SLINE_EVENT_SEND_SZLINE, do_send_szline);
+    event_detach(NULL, AKILL_EVENT_CANCEL_AKILL, do_cancel_akill);
+    event_detach(NULL, AKILL_EVENT_SEND_AKILL, do_send_akill);
+    event_detach(NULL, EVENT_SERVER_DELETE, do_server_delete);
+    event_detach(NULL, EVENT_USER_DELETE, do_user_delete);
+    event_detach(NULL, EVENT_CHANNEL_SET_TOPIC, do_set_topic);
     unregister_messages(p10_messages);
     for (i = 0; i < lenof(numservers); i++) {
         if (numservers[i]) {

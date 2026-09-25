@@ -19,9 +19,9 @@
 /* Enable ignore code for PRIVMSGs? */
 int allow_ignore = 1;
 
-/* Callbacks for various messages */
-static int cb_privmsg = -1;
-static int cb_whois = -1;
+/* Events for various messages */
+static Event* privmsg_event;
+static Event* whois_event;
 
 /*************************************************************************/
 /************************ Basic message handling *************************/
@@ -32,7 +32,7 @@ static void m_nickcoll(char* source, int ac, char** av)
     if (ac < 1)
         return;
     if (!readonly)
-        introduce_user(av[0]);
+        service_introduce(av[0]);
 }
 
 /*************************************************************************/
@@ -107,10 +107,10 @@ static void m_kill(char* source, int ac, char** av)
     else if (ac != 2) {
         return;
     }
-    /* Recover if someone kills us.  If introduce_user() returns 0, then
-     * the user in question isn't a pseudoclient, so pass it on to the
+    /* Recover if someone kills us.  If service_introduce() returns 0,
+     * then the user in question isn't a pseudoclient, so pass it on to the
      * user handling code. */
-    if (!introduce_user(av[0]))
+    if (!service_introduce(av[0]))
         do_kill(source, ac, av);
 }
 
@@ -302,7 +302,8 @@ static void m_privmsg(char* source, int ac, char** av)
 
     /* Not ignored; actually execute the command, and update ignore data. */
     start = time_msec();
-    call_callback_3(cb_privmsg, source, av[0], av[1]);
+    if (event_emit(privmsg_event, source, av[0], av[1]) <= 0)
+        service_deliver_message(source, av[0], av[1]);
     stop = time_msec();
     if (stop > start && u && !is_oper(u))
         ignore_update(u, stop - start);
@@ -358,8 +359,8 @@ static void m_stats(char* source, int ac, char** av)
             send_cmd(NULL, "242 %s :Services up %d day%s, %02d:%02d:%02d",
                      source, uptime / 86400, (uptime / 86400 == 1) ? "" : "s",
                      (uptime / 3600) % 24, (uptime / 60) % 60, uptime % 60);
-            if ((module_operserv = find_module("operserv/main")) != NULL &&
-                (p_get_operserv_data = get_module_symbol(
+            if ((module_operserv = module_find("operserv/main")) != NULL &&
+                (p_get_operserv_data = module_symbol(
                      module_operserv, "get_operserv_data")) &&
                 p_get_operserv_data(OSDATA_MAXUSERCNT, &maxusercnt)) {
                 send_cmd(NULL,
@@ -462,7 +463,8 @@ static void m_whois(char* source, int ac, char** av)
         return;
     }
 
-    if (call_callback_3(cb_whois, source, av[0], ac > 1 ? av[1] : NULL) <= 0) {
+    if (event_emit(whois_event, source, av[0], ac > 1 ? av[1] : NULL) <= 0 &&
+        !service_answer_whois(source, av[0])) {
         send_cmd(ServerName, "401 %s %s :No such service.", source, av[0]);
     }
 }
@@ -644,10 +646,10 @@ int messages_init(int ac, char** av)
         log("messages_init: Unable to register base messages\n");
         return 0;
     }
-    cb_privmsg = register_callback("m_privmsg");
-    cb_whois = register_callback("m_whois");
-    if (cb_privmsg < 0 || cb_whois < 0) {
-        log("messages_init: register_callback() failed\n");
+    privmsg_event = event_declare(NULL, EVENT_MESSAGE_PRIVMSG);
+    whois_event = event_declare(NULL, EVENT_MESSAGE_WHOIS);
+    if (!privmsg_event || !whois_event) {
+        log("messages_init: event_declare() failed");
         return 0;
     }
     return 1;
@@ -657,8 +659,9 @@ int messages_init(int ac, char** av)
 
 void messages_cleanup(void)
 {
-    unregister_callback(cb_whois);
-    unregister_callback(cb_privmsg);
+    event_retract(whois_event);
+    event_retract(privmsg_event);
+    whois_event = privmsg_event = NULL;
     unregister_messages(base_messages);
 }
 

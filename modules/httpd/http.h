@@ -33,10 +33,10 @@
  * a worker thread, and nothing a handler is given outlives the call (copy
  * what an answer given later needs).
  *
- * A module that claims routes loads after httpd/main, calls use_module()
- * on it, and gives its routes up from exit_module() with
- * http_del_routes(THIS_MODULE) (httpd/main also drops them, and the
- * requests waiting on them, when the module is unloaded).
+ * A module that claims routes lists httpd/main in its
+ * ModuleInfo.requires, and gives its routes up from its `fini' with
+ * http_del_routes(module) (httpd/main also drops them, and the requests
+ * waiting on them, when the module is unloaded).
  *
  * This file does not include services.h, so that the server thread's own
  * source can include it.
@@ -82,7 +82,7 @@ typedef unsigned long http_req_t;
 #define HTTP_TIMEOUT_DEFAULT 5
 #define HTTP_TIMEOUT_MAX     30
 
-/* Return codes of the "auth" callback of httpd/main (see below). */
+/* Return codes of the "httpd.auth" event of httpd/main (see below). */
 #define HTTP_AUTH_UNDECIDED 0
 #define HTTP_AUTH_ALLOW     1
 #define HTTP_AUTH_DENY      2
@@ -169,13 +169,14 @@ typedef int (*HttpHandlerFn)(http_req_t id, const struct HttpRequest* req,
 
 /*************************************************************************/
 
-/* The "auth" callback of httpd/main: called for every request, before it
- * is routed, as
- *     int callback(const struct HttpRequest *req, struct HttpResponse *res)
- * and returns HTTP_AUTH_UNDECIDED to let the next callback (and then the
- * route) decide, HTTP_AUTH_ALLOW to let the request through without
+/* The "httpd.auth" event of httpd/main (see include/events.h): emitted
+ * for every request, before it is routed, as
+ *     int handler(const struct HttpRequest *req, struct HttpResponse *res)
+ * A handler returns HTTP_AUTH_UNDECIDED to let the next handler (and then
+ * the route) decide, HTTP_AUTH_ALLOW to let the request through without
  * asking the rest, or HTTP_AUTH_DENY after filling in `res' with the
  * refusal (a response left with status 0 is sent as 403). */
+#define HTTPD_EVENT_AUTH "httpd.auth"
 
 /*************************************************************************/
 

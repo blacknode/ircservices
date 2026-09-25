@@ -48,8 +48,8 @@ static void save_done(int ok);
 
 int database_init(int ac, char** av)
 {
-    if (!add_callback(NULL, "unload module", do_unload_module)) {
-        log("database_init: add_callback() failed");
+    if (!event_attach(NULL, EVENT_MODULE_UNLOADED, do_unload_module)) {
+        log("database_init: event_attach() failed");
         return 0;
     }
     if (!pg_store_open()) {
@@ -64,7 +64,7 @@ int database_init(int ac, char** av)
 
 void database_cleanup(void)
 {
-    remove_callback(NULL, "unload module", do_unload_module);
+    event_detach(NULL, EVENT_MODULE_UNLOADED, do_unload_module);
     pg_store_close();
 }
 
@@ -80,7 +80,7 @@ static int do_unload_module(const Module* module)
     {
         if (t->owner == module) {
             log("database: Module `%s' forgot to unregister table `%s'",
-                get_module_name(module), t->table->name);
+                module_name(module), t->table->name);
             unregister_dbtable(t->table);
         }
     }
@@ -174,7 +174,7 @@ void unregister_dbtable(DBTable* table)
 
 /* Save all registered database tables.  Returns 1 if the save was started
  * or queued, 0 if it could not be; the outcome is reported through the
- * "save data complete" callback.
+ * "core.save_complete" event (EVENT_SAVE_COMPLETE).
  */
 
 int save_all_dbtables(void)
@@ -201,7 +201,7 @@ int save_all_dbtables(void)
         save_running = 0;
         wallops(NULL, "\2Warning:\2 Databases could not be saved; see the"
                       " log for details.");
-        call_callback_1(cb_save_complete, 0);
+        event_emit(save_complete_event, 0);
         return 0;
     }
     return 1;
@@ -214,7 +214,7 @@ static void save_done(int ok)
     if (!ok)
         wallops(NULL, "\2Warning:\2 Databases could not be saved; see the"
                       " log for details.");
-    call_callback_1(cb_save_complete, ok);
+    event_emit(save_complete_event, ok);
     if (save_queued) {
         save_queued = 0;
         save_all_dbtables();

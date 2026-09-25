@@ -18,9 +18,9 @@
 
 /*************************************************************************/
 
-static int cb_set = -1;
-static int cb_set_email = -1;
-static int cb_unset = -1;
+static Event* set_event;
+static Event* set_email_event;
+static Event* unset_event;
 
 /*************************************************************************/
 
@@ -53,14 +53,14 @@ void do_set(User *u)
     int used_privs = 0;
 
     if (readonly) {
-        notice_lang(s_NickServ, u, NICK_SET_DISABLED);
+        notice_lang(nickserv_service.nick, u, NICK_SET_DISABLED);
         return;
     }
 
     if (is_servadmin && cmd && *cmd == '!') {
         ni = get_nickinfo(cmd+1);
         if (!ni) {
-            notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, cmd+1);
+            notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, cmd+1);
             return;
         }
         cmd = strtok(param, " ");
@@ -79,94 +79,94 @@ void do_set(User *u)
      || (stricmp(cmd,"HIDE")==0 ? extra==NULL : extra!=NULL)
     ) {
         if (is_oper(u))
-            syntax_error(s_NickServ, u, "SET", NICK_SET_OPER_SYNTAX);
+            syntax_error(nickserv_service.nick, u, "SET", NICK_SET_OPER_SYNTAX);
         else
-            syntax_error(s_NickServ, u, "SET", NICK_SET_SYNTAX);
+            syntax_error(nickserv_service.nick, u, "SET", NICK_SET_SYNTAX);
     } else if (!ni) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, ni->nick);
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (!is_servadmin && !user_identified(u)
                && !(stricmp(cmd,"EMAIL")==0 && user_ident_nomail(u))) {
-        notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
-    } else if (call_callback_5(cb_set, u, ni, ngi, cmd, param) > 0) {
+        notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
+    } else if (event_emit(set_event, u, ni, ngi, cmd, param) > 0) {
         /* nothing */
     } else if (stricmp(cmd, "PASSWORD") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET PASSWORD as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET PASSWORD as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_password(u, ngi, ni, param);
     } else if (stricmp(cmd, "LANGUAGE") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET LANGUAGE as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET LANGUAGE as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_language(u, ngi, param);
     } else if (stricmp(cmd, "URL") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET URL as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET URL as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_url(u, ngi, param);
     } else if (stricmp(cmd, "EMAIL") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET EMAIL as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET EMAIL as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_email(u, ngi, param);
     } else if (stricmp(cmd, "INFO") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET INFO as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET INFO as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_info(u, ngi, param);
     } else if (stricmp(cmd, "KILL") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET KILL as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET KILL as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_kill(u, ngi, param);
     } else if (stricmp(cmd, "SECURE") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET SECURE as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET SECURE as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_secure(u, ngi, param);
     } else if (stricmp(cmd, "PRIVATE") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET PRIVATE as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET PRIVATE as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_private(u, ngi, param);
     } else if (stricmp(cmd, "NOOP") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET NOOP as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET NOOP as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_noop(u, ngi, param);
     } else if (stricmp(cmd, "HIDE") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET HIDE as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET HIDE as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_hide(u, ngi, param, extra);
     } else if (stricmp(cmd, "TIMEZONE") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used SET TIMEZONE as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used SET TIMEZONE as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_timezone(u, ngi, param);
     } else if (stricmp(cmd, "NOEXPIRE") == 0) {
         if (WallAdminPrivs && is_servadmin) {
-            wallops(s_NickServ, "\2%s\2 used SET NOEXPIRE on \2%s\2",
+            wallops(nickserv_service.nick, "\2%s\2 used SET NOEXPIRE on \2%s\2",
                     u->nick, ni->nick);
         }
         do_set_noexpire(u, ni, param);
     } else {
-        notice_lang(s_NickServ, u, NICK_SET_UNKNOWN_OPTION, strupper(cmd));
+        notice_lang(nickserv_service.nick, u, NICK_SET_UNKNOWN_OPTION, strupper(cmd));
     }
     put_nickinfo(ni);
     put_nickgroupinfo(ngi);
@@ -185,7 +185,7 @@ void do_unset(User *u)
     int syntax_msg;
 
     if (readonly) {
-        notice_lang(s_NickServ, u, NICK_SET_DISABLED);
+        notice_lang(nickserv_service.nick, u, NICK_SET_DISABLED);
         return;
     }
 
@@ -199,7 +199,7 @@ void do_unset(User *u)
     if (is_servadmin && cmd && *cmd == '!') {
         ni = get_nickinfo(cmd+1);
         if (!ni) {
-            notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, cmd+1);
+            notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, cmd+1);
             return;
         }
         cmd = strtok(extra, " ");
@@ -211,44 +211,44 @@ void do_unset(User *u)
             hold_nickinfo(ni);
     }
     if (!cmd || extra) {
-        syntax_error(s_NickServ, u, "UNSET", syntax_msg);
+        syntax_error(nickserv_service.nick, u, "UNSET", syntax_msg);
     } else if (!ni) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, ni->nick);
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (!is_servadmin && !user_identified(u)) {
-        notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
-    } else if (call_callback_4(cb_unset, u, ni, ngi, cmd) > 0) {
+        notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
+    } else if (event_emit(unset_event, u, ni, ngi, cmd) > 0) {
         /* nothing */
     } else if (stricmp(cmd, "URL") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used UNSET URL as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used UNSET URL as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_url(u, ngi, NULL);
     } else if (stricmp(cmd, "EMAIL") == 0) {
         if (NSRequireEmail) {
             if (ni != u->ni)
-                notice_lang(s_NickServ, u, NICK_UNSET_EMAIL_OTHER_BAD);
+                notice_lang(nickserv_service.nick, u, NICK_UNSET_EMAIL_OTHER_BAD);
             else
-                notice_lang(s_NickServ, u, NICK_UNSET_EMAIL_BAD);
+                notice_lang(nickserv_service.nick, u, NICK_UNSET_EMAIL_BAD);
         } else {
             if (WallAdminPrivs && used_privs) {
-                wallops(s_NickServ, "\2%s\2 used UNSET EMAIL as Services admin"
+                wallops(nickserv_service.nick, "\2%s\2 used UNSET EMAIL as Services admin"
                         " on \2%s\2", u->nick, ni->nick);
             }
             do_set_email(u, ngi, NULL);
         }
     } else if (stricmp(cmd, "INFO") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_NickServ, "\2%s\2 used UNSET INFO as Services admin"
+            wallops(nickserv_service.nick, "\2%s\2 used UNSET INFO as Services admin"
                     " on \2%s\2", u->nick, ni->nick);
         }
         do_set_info(u, ngi, NULL);
     } else {
-        syntax_error(s_NickServ, u, "UNSET", syntax_msg);
+        syntax_error(nickserv_service.nick, u, "UNSET", syntax_msg);
     }
     put_nickinfo(ni);
     put_nickgroupinfo(ngi);
@@ -265,12 +265,12 @@ static void do_set_password(User *u, NickGroupInfo *ngi, NickInfo *ni,
     if (NSSecureAdmins && u->ni != ni && nick_is_services_admin(ni)
      && !is_services_root(u)
     ) {
-        notice_lang(s_NickServ, u, PERMISSION_DENIED);
+        notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
         return;
     } else if (!(NoAdminPasswordCheck && is_services_admin(u))
                && (stricmp(param, ni->nick) == 0
                 || (StrictPasswords && strlen(param) < 5))) {
-        notice_lang(s_NickServ, u, MORE_OBSCURE_PASSWORD);
+        notice_lang(nickserv_service.nick, u, MORE_OBSCURE_PASSWORD);
         return;
     }
 
@@ -281,15 +281,15 @@ static void do_set_password(User *u, NickGroupInfo *ngi, NickInfo *ni,
             return;  /* the command will be run again */
         memset(param, 0, strlen(param));
         module_log("Failed to encrypt password for %s (set)", ni->nick);
-        notice_lang(s_NickServ, u, NICK_SET_PASSWORD_FAILED);
+        notice_lang(nickserv_service.nick, u, NICK_SET_PASSWORD_FAILED);
         return;
     }
     copy_password(&ngi->pass, &passbuf);
     clear_password(&passbuf);
     if (NSShowPassword)
-        notice_lang(s_NickServ, u, NICK_SET_PASSWORD_CHANGED_TO, param);
+        notice_lang(nickserv_service.nick, u, NICK_SET_PASSWORD_CHANGED_TO, param);
     else
-        notice_lang(s_NickServ, u, NICK_SET_PASSWORD_CHANGED);
+        notice_lang(nickserv_service.nick, u, NICK_SET_PASSWORD_CHANGED);
     memset(param, 0, strlen(param));
 }
 
@@ -300,17 +300,17 @@ static void do_set_language(User *u, NickGroupInfo *ngi, char *param)
     int langnum;
 
     if (param[strspn(param, "0123456789")] != 0) {  /* i.e. not a number */
-        syntax_error(s_NickServ, u, "SET LANGUAGE", NICK_SET_LANGUAGE_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SET LANGUAGE", NICK_SET_LANGUAGE_SYNTAX);
         return;
     }
     langnum = atoi(param)-1;
     if (langnum < 0 || langnum >= NUM_LANGS || langlist[langnum] < 0) {
-        notice_lang(s_NickServ, u, NICK_SET_LANGUAGE_UNKNOWN,
-                    langnum+1, s_NickServ);
+        notice_lang(nickserv_service.nick, u, NICK_SET_LANGUAGE_UNKNOWN,
+                    langnum+1, nickserv_service.nick);
         return;
     }
     ngi->language = langlist[langnum];
-    notice_lang(s_NickServ, u, NICK_SET_LANGUAGE_CHANGED,
+    notice_lang(nickserv_service.nick, u, NICK_SET_LANGUAGE_CHANGED,
                 getstring(ngi,LANG_NAME));
 }
 
@@ -321,17 +321,17 @@ static void do_set_url(User *u, NickGroupInfo *ngi, char *param)
     const char *nick = ngi_mainnick(ngi);
 
     if (param && !valid_url(param)) {
-        notice_lang(s_NickServ, u, BAD_URL);
+        notice_lang(nickserv_service.nick, u, BAD_URL);
         return;
     }
 
     free(ngi->url);
     if (param) {
         ngi->url = sstrdup(param);
-        notice_lang(s_NickServ, u, NICK_SET_URL_CHANGED, nick, param);
+        notice_lang(nickserv_service.nick, u, NICK_SET_URL_CHANGED, nick, param);
     } else {
         ngi->url = NULL;
-        notice_lang(s_NickServ, u, NICK_UNSET_URL, nick);
+        notice_lang(nickserv_service.nick, u, NICK_UNSET_URL, nick);
     }
 }
 
@@ -343,11 +343,11 @@ static void do_set_email(User *u, NickGroupInfo *ngi, char *param)
     char oldemail[BUFSIZE];
 
     if (param && !valid_email(param)) {
-        notice_lang(s_NickServ, u, BAD_EMAIL);
+        notice_lang(nickserv_service.nick, u, BAD_EMAIL);
         return;
     }
     if (param && rejected_email(param)) {
-        notice_lang(s_NickServ, u, REJECTED_EMAIL);
+        notice_lang(nickserv_service.nick, u, REJECTED_EMAIL);
         return;
     }
 
@@ -355,15 +355,15 @@ static void do_set_email(User *u, NickGroupInfo *ngi, char *param)
         int n = count_nicks_with_email(param);
         time_t now = time(NULL);
         if (n < 0) {
-            notice_lang(s_NickServ, u, NICK_SET_EMAIL_UNAUTHED);
+            notice_lang(nickserv_service.nick, u, NICK_SET_EMAIL_UNAUTHED);
             return;
         } else if (NSRegEmailMax && n >= NSRegEmailMax) {
-            notice_lang(s_NickServ, u, NICK_SET_EMAIL_TOO_MANY_NICKS,
+            notice_lang(nickserv_service.nick, u, NICK_SET_EMAIL_TOO_MANY_NICKS,
                         param, n, NSRegEmailMax);
             return;
         } else if (now < u->last_nick_set_email + NSSetEmailDelay) {
             time_t left = (u->last_nick_set_email + NSSetEmailDelay) - now;
-            notice_lang(s_NickServ, u, NICK_SET_EMAIL_PLEASE_WAIT,
+            notice_lang(nickserv_service.nick, u, NICK_SET_EMAIL_PLEASE_WAIT,
                         maketime(u->ngi, left, MT_SECONDS));
             return;
         }
@@ -386,7 +386,7 @@ static void do_set_email(User *u, NickGroupInfo *ngi, char *param)
             module_log("%s E-mail address set to %s by %s!%s@%s",
                        nick, param, u->nick, u->username, u->host);
         }
-        notice_lang(s_NickServ, u, NICK_SET_EMAIL_CHANGED, nick, param);
+        notice_lang(nickserv_service.nick, u, NICK_SET_EMAIL_CHANGED, nick, param);
         /* If any nicknames belonging to this group were IDENT_NOMAIL,
          * set them IDENTIFIED */
         ARRAY_FOREACH (i, ngi->nicks) {
@@ -403,9 +403,9 @@ static void do_set_email(User *u, NickGroupInfo *ngi, char *param)
             module_log("%s E-mail address cleared by %s!%s@%s (was %s)",
                        nick, u->nick, u->username, u->host, oldemail);
         }
-        notice_lang(s_NickServ, u, NICK_UNSET_EMAIL, nick);
+        notice_lang(nickserv_service.nick, u, NICK_UNSET_EMAIL, nick);
     }
-    call_callback_3(cb_set_email, u, ngi, *oldemail ? oldemail : NULL);
+    event_emit(set_email_event, u, ngi, *oldemail ? oldemail : NULL);
 }
 
 /*************************************************************************/
@@ -417,10 +417,10 @@ static void do_set_info(User *u, NickGroupInfo *ngi, char *param)
     free(ngi->info);
     if (param) {
         ngi->info = sstrdup(param);
-        notice_lang(s_NickServ, u, NICK_SET_INFO_CHANGED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_SET_INFO_CHANGED, nick);
     } else {
         ngi->info = NULL;
-        notice_lang(s_NickServ, u, NICK_UNSET_INFO, nick);
+        notice_lang(nickserv_service.nick, u, NICK_UNSET_INFO, nick);
     }
 }
 
@@ -431,24 +431,24 @@ static void do_set_kill(User *u, NickGroupInfo *ngi, char *param)
     if (stricmp(param, "ON") == 0) {
         ngi->flags |= NF_KILLPROTECT;
         ngi->flags &= ~(NF_KILL_QUICK | NF_KILL_IMMED);
-        notice_lang(s_NickServ, u, NICK_SET_KILL_ON);
+        notice_lang(nickserv_service.nick, u, NICK_SET_KILL_ON);
     } else if (stricmp(param, "QUICK") == 0) {
         ngi->flags |= NF_KILLPROTECT | NF_KILL_QUICK;
         ngi->flags &= ~NF_KILL_IMMED;
-        notice_lang(s_NickServ, u, NICK_SET_KILL_QUICK);
+        notice_lang(nickserv_service.nick, u, NICK_SET_KILL_QUICK);
     } else if (stricmp(param, "IMMED") == 0) {
         if (NSAllowKillImmed) {
             ngi->flags |= NF_KILLPROTECT | NF_KILL_QUICK | NF_KILL_IMMED;
-            notice_lang(s_NickServ, u, NICK_SET_KILL_IMMED);
+            notice_lang(nickserv_service.nick, u, NICK_SET_KILL_IMMED);
         } else {
-            notice_lang(s_NickServ, u, NICK_SET_KILL_IMMED_DISABLED);
+            notice_lang(nickserv_service.nick, u, NICK_SET_KILL_IMMED_DISABLED);
             return;
         }
     } else if (stricmp(param, "OFF") == 0) {
         ngi->flags &= ~(NF_KILLPROTECT | NF_KILL_QUICK | NF_KILL_IMMED);
-        notice_lang(s_NickServ, u, NICK_SET_KILL_OFF);
+        notice_lang(nickserv_service.nick, u, NICK_SET_KILL_OFF);
     } else {
-        syntax_error(s_NickServ, u, "SET KILL",
+        syntax_error(nickserv_service.nick, u, "SET KILL",
                      NSAllowKillImmed ? NICK_SET_KILL_IMMED_SYNTAX
                                       : NICK_SET_KILL_SYNTAX);
         return;
@@ -461,12 +461,12 @@ static void do_set_secure(User *u, NickGroupInfo *ngi, char *param)
 {
     if (stricmp(param, "ON") == 0) {
         ngi->flags |= NF_SECURE;
-        notice_lang(s_NickServ, u, NICK_SET_SECURE_ON);
+        notice_lang(nickserv_service.nick, u, NICK_SET_SECURE_ON);
     } else if (stricmp(param, "OFF") == 0) {
         ngi->flags &= ~NF_SECURE;
-        notice_lang(s_NickServ, u, NICK_SET_SECURE_OFF);
+        notice_lang(nickserv_service.nick, u, NICK_SET_SECURE_OFF);
     } else {
-        syntax_error(s_NickServ, u, "SET SECURE", NICK_SET_SECURE_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SET SECURE", NICK_SET_SECURE_SYNTAX);
         return;
     }
 }
@@ -477,12 +477,12 @@ static void do_set_private(User *u, NickGroupInfo *ngi, char *param)
 {
     if (stricmp(param, "ON") == 0) {
         ngi->flags |= NF_PRIVATE;
-        notice_lang(s_NickServ, u, NICK_SET_PRIVATE_ON);
+        notice_lang(nickserv_service.nick, u, NICK_SET_PRIVATE_ON);
     } else if (stricmp(param, "OFF") == 0) {
         ngi->flags &= ~NF_PRIVATE;
-        notice_lang(s_NickServ, u, NICK_SET_PRIVATE_OFF);
+        notice_lang(nickserv_service.nick, u, NICK_SET_PRIVATE_OFF);
     } else {
-        syntax_error(s_NickServ, u, "SET PRIVATE", NICK_SET_PRIVATE_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SET PRIVATE", NICK_SET_PRIVATE_SYNTAX);
         return;
     }
 }
@@ -493,12 +493,12 @@ static void do_set_noop(User *u, NickGroupInfo *ngi, char *param)
 {
     if (stricmp(param, "ON") == 0) {
         ngi->flags |= NF_NOOP;
-        notice_lang(s_NickServ, u, NICK_SET_NOOP_ON);
+        notice_lang(nickserv_service.nick, u, NICK_SET_NOOP_ON);
     } else if (stricmp(param, "OFF") == 0) {
         ngi->flags &= ~NF_NOOP;
-        notice_lang(s_NickServ, u, NICK_SET_NOOP_OFF);
+        notice_lang(nickserv_service.nick, u, NICK_SET_NOOP_OFF);
     } else {
-        syntax_error(s_NickServ, u, "SET NOOP", NICK_SET_NOOP_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SET NOOP", NICK_SET_NOOP_SYNTAX);
         return;
     }
 }
@@ -523,17 +523,17 @@ static void do_set_hide(User *u, NickGroupInfo *ngi, char *param,
         onmsg = NICK_SET_HIDE_QUIT_ON;
         offmsg = NICK_SET_HIDE_QUIT_OFF;
     } else {
-        syntax_error(s_NickServ, u, "SET HIDE", NICK_SET_HIDE_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SET HIDE", NICK_SET_HIDE_SYNTAX);
         return;
     }
     if (stricmp(setting, "ON") == 0) {
         ngi->flags |= flag;
-        notice_lang(s_NickServ, u, onmsg, s_NickServ);
+        notice_lang(nickserv_service.nick, u, onmsg, nickserv_service.nick);
     } else if (stricmp(setting, "OFF") == 0) {
         ngi->flags &= ~flag;
-        notice_lang(s_NickServ, u, offmsg, s_NickServ);
+        notice_lang(nickserv_service.nick, u, offmsg, nickserv_service.nick);
     } else {
-        syntax_error(s_NickServ, u, "SET HIDE", NICK_SET_HIDE_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SET HIDE", NICK_SET_HIDE_SYNTAX);
         return;
     }
 }
@@ -582,7 +582,7 @@ static void do_set_timezone(User *u, NickGroupInfo *ngi, char *param)
 
     if (stricmp(param, "DEFAULT") == 0) {
         ngi->timezone = TIMEZONE_DEFAULT;
-        notice_lang(s_NickServ, u, NICK_SET_TIMEZONE_DEFAULT);
+        notice_lang(nickserv_service.nick, u, NICK_SET_TIMEZONE_DEFAULT);
         return;
     }
     if (strnicmp(param, "GMT+", 4) == 0 || strnicmp(param, "GMT-", 4) == 0
@@ -602,7 +602,7 @@ static void do_set_timezone(User *u, NickGroupInfo *ngi, char *param)
             j = 0;
         }
         if (i < 0 || i > 23 || j < 0 || j > 59 || *s) {
-            syntax_error(s_NickServ, u, "SET TIMEZONE",
+            syntax_error(nickserv_service.nick, u, "SET TIMEZONE",
                          NICK_SET_TIMEZONE_SYNTAX);
             return;
         }
@@ -615,7 +615,7 @@ static void do_set_timezone(User *u, NickGroupInfo *ngi, char *param)
                 break;
         }
         if (!timezones[i].name) {
-            syntax_error(s_NickServ, u, "SET TIMEZONE",
+            syntax_error(nickserv_service.nick, u, "SET TIMEZONE",
                          NICK_SET_TIMEZONE_SYNTAX);
             return;
         }
@@ -648,7 +648,7 @@ static void do_set_timezone(User *u, NickGroupInfo *ngi, char *param)
         i = -ngi->timezone;
     else
         i = ngi->timezone;
-    notice_lang(s_NickServ, u, NICK_SET_TIMEZONE_TO,
+    notice_lang(nickserv_service.nick, u, NICK_SET_TIMEZONE_TO,
                 ngi->timezone<0 ? '-' : '+', i/60, i%60, timebuf);
 }
 
@@ -657,17 +657,17 @@ static void do_set_timezone(User *u, NickGroupInfo *ngi, char *param)
 static void do_set_noexpire(User *u, NickInfo *ni, char *param)
 {
     if (!is_services_admin(u)) {
-        notice_lang(s_NickServ, u, PERMISSION_DENIED);
+        notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
         return;
     }
     if (stricmp(param, "ON") == 0) {
         ni->status |= NS_NOEXPIRE;
-        notice_lang(s_NickServ, u, NICK_SET_NOEXPIRE_ON, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_SET_NOEXPIRE_ON, ni->nick);
     } else if (stricmp(param, "OFF") == 0) {
         ni->status &= ~NS_NOEXPIRE;
-        notice_lang(s_NickServ, u, NICK_SET_NOEXPIRE_OFF, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_SET_NOEXPIRE_OFF, ni->nick);
     } else {
-        syntax_error(s_NickServ, u, "SET NOEXPIRE", NICK_SET_NOEXPIRE_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SET NOEXPIRE", NICK_SET_NOEXPIRE_SYNTAX);
         return;
     }
 }
@@ -677,24 +677,14 @@ static void do_set_noexpire(User *u, NickInfo *ni, char *param)
 
 int init_set(void)
 {
-    cb_set = register_callback("SET");
-    cb_set_email = register_callback("SET EMAIL");
-    cb_unset = register_callback("UNSET");
-    if (cb_set < 0 || cb_set_email < 0 || cb_unset < 0) {
-        module_log("set: Unable to register callbacks");
-        exit_set();
+    set_event = event_declare(THIS_MODULE, NICKSERV_EVENT_SET);
+    set_email_event = event_declare(THIS_MODULE, NICKSERV_EVENT_SET_EMAIL);
+    unset_event = event_declare(THIS_MODULE, NICKSERV_EVENT_UNSET);
+    if (!set_event || !set_email_event || !unset_event) {
+        module_log("set: Unable to declare events");
         return 0;
     }
     return 1;
-}
-
-/*************************************************************************/
-
-void exit_set()
-{
-    unregister_callback(cb_unset);
-    unregister_callback(cb_set_email);
-    unregister_callback(cb_set);
 }
 
 /*************************************************************************/

@@ -63,8 +63,24 @@ struct serverstats_ {
 
 /*************************************************************************/
 
+/* Events of statserv/main (see include/events.h).  "Stop" is what a
+ * handler returning nonzero does.
+ *
+ * statserv.command:       (User *u, char *command)  a command, before it
+ *                         runs; stop: it was handled
+ * statserv.help:          (User *u, char *topic)  stop: help was given
+ * statserv.help_commands: (User *u, int which)  append to the list of
+ *                         commands (which is 0)
+ */
+#define STATSERV_EVENT_COMMAND       "statserv.command"
+#define STATSERV_EVENT_HELP          "statserv.help"
+#define STATSERV_EVENT_HELP_COMMANDS "statserv.help_commands"
+
+/*************************************************************************/
+
 /* Exports: */
 
+E struct Service statserv_service;
 E ServerStats *add_serverstats(ServerStats *ss);
 E void del_serverstats(ServerStats *ss);
 E ServerStats *get_serverstats(const char *servername);

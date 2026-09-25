@@ -22,8 +22,8 @@ end of ircservices.conf):
     };
 
 - The whole configuration is parsed before the first module is loaded; a
-  module's block is bound to the module when it loads (before its
-  init_module() runs) and again on every REHASH.
+  module's block is bound to the module when it loads (before its `init'
+  runs) and again on every REHASH.
 - Setting names are case-insensitive; the module name in the label is not.
 - Several values are separated by commas.  Values with blanks or any of
   { } ; = , " # must be quoted.
@@ -80,6 +80,7 @@ Module list
     httpd/redirect          nickname/channel URL redirects
     httpd/top-page          top page (/) of the server
     misc/devnull            a pseudoclient that discards messages
+    misc/echoserv           EchoServ, an example pseudoclient to copy
     misc/helpserv           HelpServ, serving help files
 
 Modules must be loaded after the modules they use: encryption before
@@ -1478,6 +1479,26 @@ DevNullName = <nick>, <string>;  [REQUIRED]
 
     Example:
         DevNullName = "DevNull", "/dev/null -- message sink";
+
+### misc/echoserv
+
+    module "misc/echoserv" { ... };
+
+An example pseudoclient that repeats what it is told (ECHO <text>): a
+template for writing new ones, explained in readme.mod_api (section 9).
+
+EchoServName = <nick>, <string>;  [REQUIRED]
+    Specifies the nickname (first parameter) and "real" name (second
+    parameter) used by the EchoServ pseudoclient.
+
+    Example:
+        EchoServName = "EchoServ", "Echo Service";
+
+EchoMaxLength = <number>;  [OPTIONAL]
+    The longest text ECHO repeats; longer texts are cut.  Default 100.
+
+EchoGreet;  [OPTIONAL]
+    Greets every user who connects.
 
 ### misc/helpserv
 

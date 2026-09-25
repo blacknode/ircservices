@@ -62,7 +62,6 @@ void httpd_response_free(struct HttpResponse* res)
 
 /*************************************************************************/
 
-EXPORT_FUNC(http_response_write)
 void http_response_write(struct HttpResponse* res, const char* data,
                          size_t len)
 {
@@ -84,7 +83,6 @@ void http_response_write(struct HttpResponse* res, const char* data,
     res->hres_body[res->hres_bodylen] = 0;
 }
 
-EXPORT_FUNC(http_response_vprintf)
 void http_response_vprintf(struct HttpResponse* res, const char* fmt,
                            va_list args)
 {
@@ -108,7 +106,6 @@ void http_response_vprintf(struct HttpResponse* res, const char* fmt,
     }
 }
 
-EXPORT_FUNC(http_response_printf)
 void http_response_printf(struct HttpResponse* res, const char* fmt, ...)
 {
     va_list args;
@@ -120,7 +117,6 @@ void http_response_printf(struct HttpResponse* res, const char* fmt, ...)
 
 /*************************************************************************/
 
-EXPORT_FUNC(http_response_set)
 void http_response_set(struct HttpResponse* res, int status, const char* type,
                        const char* body, size_t bodylen)
 {
@@ -133,7 +129,6 @@ void http_response_set(struct HttpResponse* res, int status, const char* type,
         http_response_write(res, body, bodylen);
 }
 
-EXPORT_FUNC(http_response_header)
 int http_response_header(struct HttpResponse* res, const char* name,
                          const char* value)
 {
@@ -147,7 +142,6 @@ int http_response_header(struct HttpResponse* res, const char* name,
     return 1;
 }
 
-EXPORT_FUNC(http_response_error)
 void http_response_error(struct HttpResponse* res, int status, const char* fmt,
                          ...)
 {
@@ -168,7 +162,6 @@ void http_response_error(struct HttpResponse* res, int status, const char* fmt,
     }
 }
 
-EXPORT_FUNC(http_response_redirect)
 void http_response_redirect(struct HttpResponse* res, int status,
                             const char* location)
 {
@@ -176,7 +169,6 @@ void http_response_redirect(struct HttpResponse* res, int status,
     http_response_header(res, "Location", location);
 }
 
-EXPORT_FUNC(http_response_file)
 int http_response_file(struct HttpResponse* res, const struct HttpRequest* req,
                        const char* path, const char* type)
 {
@@ -205,7 +197,6 @@ int http_response_file(struct HttpResponse* res, const struct HttpRequest* req,
 
 /* Requests. */
 
-EXPORT_FUNC(http_request_header)
 const char* http_request_header(const struct HttpRequest* req,
                                 const char* name)
 {
@@ -254,7 +245,6 @@ static char* find_var(const char* data, size_t len, const char* name,
     return NULL;
 }
 
-EXPORT_FUNC(http_request_var)
 char* http_request_var(const struct HttpRequest* req, const char* name,
                        char* buf, size_t size)
 {
@@ -279,7 +269,6 @@ char* http_request_var(const struct HttpRequest* req, const char* name,
 
 /* Utilities. */
 
-EXPORT_FUNC(http_quote_html)
 char* http_quote_html(const char* str, char* outbuf, size_t outsize)
 {
     char* out = outbuf;
@@ -321,7 +310,6 @@ char* http_quote_html(const char* str, char* outbuf, size_t outsize)
     return outbuf;
 }
 
-EXPORT_FUNC(http_quote_url)
 char* http_quote_url(const char* str, char* outbuf, size_t outsize)
 {
     static const char hex[] = "0123456789ABCDEF";
@@ -362,7 +350,6 @@ static int hexval(char c)
     return -1;
 }
 
-EXPORT_FUNC(http_unquote_url)
 char* http_unquote_url(char* buf)
 {
     char *in = buf, *out = buf;

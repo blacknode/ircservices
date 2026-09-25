@@ -15,8 +15,8 @@
 
 /*************************************************************************/
 
-static int cb_clear_channel = -1;
-static int cb_set_topic = -1;
+static Event* channel_clear_event;
+static Event* channel_set_topic_event;
 
 /* Sender to be used with clear_channel() (empty string: use server name) */
 static char clear_channel_sender[NICKMAX] = {0};
@@ -26,10 +26,10 @@ static char clear_channel_sender[NICKMAX] = {0};
 
 int actions_init(int ac, char** av)
 {
-    cb_clear_channel = register_callback("clear channel");
-    cb_set_topic = register_callback("set topic");
-    if (cb_clear_channel < 0 || cb_set_topic < 0) {
-        log("actions_init: register_callback() failed\n");
+    channel_clear_event = event_declare(NULL, EVENT_CHANNEL_CLEAR);
+    channel_set_topic_event = event_declare(NULL, EVENT_CHANNEL_SET_TOPIC);
+    if (!channel_clear_event || !channel_set_topic_event) {
+        log("actions_init: event_declare() failed");
         return 0;
     }
     return 1;
@@ -39,8 +39,8 @@ int actions_init(int ac, char** av)
 
 void actions_cleanup(void)
 {
-    unregister_callback(cb_set_topic);
-    unregister_callback(cb_clear_channel);
+    event_retract(channel_set_topic_event);
+    event_retract(channel_clear_event);
 }
 
 /*************************************************************************/
@@ -106,7 +106,7 @@ void clear_channel(Channel* chan, int what, const void* param)
     const char* sender =
         *clear_channel_sender ? clear_channel_sender : ServerName;
 
-    if (call_callback_4(cb_clear_channel, sender, chan, what, param) > 0) {
+    if (event_emit(channel_clear_event, sender, chan, what, param) > 0) {
         set_cmode(NULL, chan);
         return;
     }
@@ -259,14 +259,14 @@ void set_topic(const char* source, Channel* c, const char* topic,
 {
     if (!source)
         source = ServerName;
-    call_callback_5(cb_set_topic, source, c, topic, setter, t);
+    event_emit(channel_set_topic_event, source, c, topic, setter, t);
     free(c->topic);
     if (topic && *topic)
         c->topic = sstrdup(topic);
     else
         c->topic = NULL;
     strbcpy(c->topic_setter, setter);
-    if (call_callback_5(cb_set_topic, source, c, NULL, NULL, t) > 0)
+    if (event_emit(channel_set_topic_event, source, c, NULL, NULL, t) > 0)
         return;
 }
 

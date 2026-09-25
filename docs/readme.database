@@ -292,7 +292,7 @@ Four rules for the caller, all about time passing:
   callbacks are dropped.  That is what lets a module be unloaded without
   waiting for the database.
 
-Queries may be sent from init_module(), before Services have gone into the
+Queries may be sent from a module's `init', before Services have gone into the
 background: they wait in the queue, and are run as soon as the connection
 threads start.
 

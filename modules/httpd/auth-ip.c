@@ -16,7 +16,6 @@
 
 /*************************************************************************/
 
-static Module *module_httpd;
 
 /* List of hosts to allow/deny */
 typedef struct {
@@ -79,7 +78,7 @@ static int do_AllowHost(const char *filename, int linenum, char *param);
 static int do_DenyHost(const char *filename, int linenum, char *param);
 static int do_AllowDenyHost(const char *filename, int linenum, char *param,
                             int allow);
-ConfigDirective module_config[] = {
+static ConfigDirective auth_ip_config[] = {
     { "AllowHost",        { { CD_FUNC, 0, do_prefix },
                             { CD_FUNC, 0, do_AllowHost } } },
     { "DenyHost",         { { CD_FUNC, 0, do_prefix },
@@ -244,37 +243,24 @@ static int do_AllowDenyHost(const char *filename, int linenum, char *param,
 /*************************************************************************/
 /*************************************************************************/
 
-int init_module(void)
+static int auth_ip_init(Module *module)
 {
-    module_httpd = find_module("httpd/main");
-    if (!module_httpd) {
-        module_log("Main httpd module not loaded");
-        exit_module(0);
+    if (!event_attach(module, HTTPD_EVENT_AUTH, do_auth)) {
+        module_log("Unable to attach to " HTTPD_EVENT_AUTH);
         return 0;
     }
-    use_module(module_httpd);
-
-    if (!add_callback(module_httpd, "auth", do_auth)) {
-        module_log("Unable to add callback");
-        exit_module(0);
-        return 0;
-    }
-
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
-{
-    if (module_httpd) {
-        remove_callback(module_httpd, "auth", do_auth);
-        unuse_module(module_httpd);
-        module_httpd = NULL;
-    }
-
-    return 1;
-}
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "HTTP: allow or deny requests by client address",
+    .requires = MODULE_REQUIRES("httpd/main"),
+    .config = auth_ip_config,
+    .init = auth_ip_init,
+};
 
 /*************************************************************************/
 

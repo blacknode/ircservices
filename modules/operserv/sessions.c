@@ -56,8 +56,7 @@
 
 /*************************************************************************/
 
-static Module *module_operserv;
-static Module *module_akill;
+static Module *module_akill;  /* Optional; NULL if not loaded */
 
 /* create_kill() imported from operserv/akill */
 static void (*p_create_akill)(char *mask, const char *reason, const char *who,
@@ -130,37 +129,37 @@ static void do_session(User *u)
 
     if (stricmp(cmd, "LIST") == 0) {
         if (!param1) {
-            syntax_error(s_OperServ, u, "SESSION", OPER_SESSION_LIST_SYNTAX);
+            syntax_error(operserv_service.nick, u, "SESSION", OPER_SESSION_LIST_SYNTAX);
 
         } else if ((mincount = atoi(param1)) <= 1) {
-            notice_lang(s_OperServ, u, OPER_SESSION_INVALID_THRESHOLD);
+            notice_lang(operserv_service.nick, u, OPER_SESSION_INVALID_THRESHOLD);
 
         } else {
-            notice_lang(s_OperServ, u, OPER_SESSION_LIST_HEADER, mincount);
-            notice_lang(s_OperServ, u, OPER_SESSION_LIST_COLHEAD);
+            notice_lang(operserv_service.nick, u, OPER_SESSION_LIST_HEADER, mincount);
+            notice_lang(operserv_service.nick, u, OPER_SESSION_LIST_COLHEAD);
             for (session = first_session(); session; session = next_session()){
                 if (session->count >= mincount)
-                    notice_lang(s_OperServ, u, OPER_SESSION_LIST_FORMAT,
+                    notice_lang(operserv_service.nick, u, OPER_SESSION_LIST_FORMAT,
                                 session->count, session->host);
             }
         }
     } else if (stricmp(cmd, "VIEW") == 0) {
         if (!param1) {
-            syntax_error(s_OperServ, u, "SESSION", OPER_SESSION_VIEW_SYNTAX);
+            syntax_error(operserv_service.nick, u, "SESSION", OPER_SESSION_VIEW_SYNTAX);
         } else {
             session = get_session(param1);
             if (!session) {
-                notice_lang(s_OperServ, u, OPER_SESSION_NOT_FOUND, param1);
+                notice_lang(operserv_service.nick, u, OPER_SESSION_NOT_FOUND, param1);
             } else {
                 exception = get_matching_maskdata(MD_EXCEPTION, param1);
-                notice_lang(s_OperServ, u, OPER_SESSION_VIEW_FORMAT,
+                notice_lang(operserv_service.nick, u, OPER_SESSION_VIEW_FORMAT,
                             param1, session->count,
                             exception ? exception->limit : DefSessionLimit);
                 put_maskdata(exception);
             }
         }
     } else {
-        syntax_error(s_OperServ, u, "SESSION", OPER_SESSION_SYNTAX);
+        syntax_error(operserv_service.nick, u, "SESSION", OPER_SESSION_SYNTAX);
     }
 }
 
@@ -202,9 +201,9 @@ static int add_session(const char *nick, const char *host)
 
         if (sessionlimit != 0 && session->count >= sessionlimit) {
             if (SessionLimitExceeded)
-                notice(s_OperServ, nick, SessionLimitExceeded, host);
+                notice(operserv_service.nick, nick, SessionLimitExceeded, host);
             if (SessionLimitDetailsLoc)
-                notice(s_OperServ, nick, SessionLimitDetailsLoc);
+                notice(operserv_service.nick, nick, SessionLimitDetailsLoc);
 
             if (SessionLimitAutokill && module_akill) {
                 if (now <= session->lastkill + SessionLimitMinKillTime) {
@@ -212,7 +211,7 @@ static int add_session(const char *nick, const char *host)
                     if (session->killcount >= SessionLimitMaxKillCount) {
                         snprintf(buf, sizeof(buf), "*@%s", host);
                         p_create_akill(buf,SessionLimitAutokillReason,
-                                       s_OperServ,
+                                       operserv_service.nick,
                                        now + SessionLimitAutokillExpiry);
                         session->killcount = 0;
                     }
@@ -224,8 +223,8 @@ static int add_session(const char *nick, const char *host)
 
             /* We don't use kill_user() because a user stucture has not yet
              * been created. Simply kill the user. -TheShadow */
-            send_cmd(s_OperServ, "KILL %s :%s (Session limit exceeded)",
-                     nick, s_OperServ);
+            send_cmd(operserv_service.nick, "KILL %s :%s (Session limit exceeded)",
+                     nick, operserv_service.nick);
             return 0;
         } else {
             session->count++;
@@ -255,7 +254,7 @@ static void del_session(const char *host)
 
     session = get_session(host);
     if (!session) {
-        wallops(s_OperServ,
+        wallops(operserv_service.nick,
                 "WARNING: Tried to delete non-existent session: \2%s", host);
         module_log("Tried to delete non-existent session: %s", host);
         return;
@@ -334,11 +333,11 @@ static void do_exception(User *u)
     } else if (stricmp(cmd, "COUNT") == 0) {
         int count = maskdata_count(MD_EXCEPTION);
         if (count)
-            notice_lang(s_OperServ, u, OPER_EXCEPTION_COUNT, count);
+            notice_lang(operserv_service.nick, u, OPER_EXCEPTION_COUNT, count);
         else
-            notice_lang(s_OperServ, u, OPER_EXCEPTION_EMPTY);
+            notice_lang(operserv_service.nick, u, OPER_EXCEPTION_EMPTY);
     } else {
-        syntax_error(s_OperServ, u, "EXCEPTION", OPER_EXCEPTION_SYNTAX);
+        syntax_error(operserv_service.nick, u, "EXCEPTION", OPER_EXCEPTION_SYNTAX);
     }
 }
 
@@ -353,7 +352,7 @@ static void do_exception_add(User *u)
     time_t now = time(NULL);
 
     if (maskdata_count(MD_EXCEPTION) >= MAX_MASKDATA) {
-        notice_lang(s_OperServ, u, OPER_EXCEPTION_TOO_MANY);
+        notice_lang(operserv_service.nick, u, OPER_EXCEPTION_TOO_MANY);
         return;
     }
 
@@ -368,13 +367,13 @@ static void do_exception_add(User *u)
     reason = strtok_remaining();
 
     if (!mask || !limitstr || !reason) {
-        syntax_error(s_OperServ, u, "EXCEPTION", OPER_EXCEPTION_ADD_SYNTAX);
+        syntax_error(operserv_service.nick, u, "EXCEPTION", OPER_EXCEPTION_ADD_SYNTAX);
         return;
     }
 
     expires = expiry ? dotime(expiry) : ExceptionExpiry;
     if (expires < 0) {
-        notice_lang(s_OperServ, u, BAD_EXPIRY_TIME);
+        notice_lang(operserv_service.nick, u, BAD_EXPIRY_TIME);
         return;
     } else if (expires > 0) {
         expires += now;
@@ -383,15 +382,15 @@ static void do_exception_add(User *u)
     limit = (limitstr && isdigit(*limitstr)) ? atoi(limitstr) : -1;
 
     if (limit < 0 || limit > MaxSessionLimit) {
-        notice_lang(s_OperServ, u, OPER_EXCEPTION_INVALID_LIMIT,
+        notice_lang(operserv_service.nick, u, OPER_EXCEPTION_INVALID_LIMIT,
                     MaxSessionLimit);
         return;
 
     } else if (strchr(mask, '!') || strchr(mask, '@')) {
-        notice_lang(s_OperServ, u, OPER_EXCEPTION_INVALID_HOSTMASK);
+        notice_lang(operserv_service.nick, u, OPER_EXCEPTION_INVALID_HOSTMASK);
         return;
     } else if (put_maskdata(get_maskdata(MD_EXCEPTION, strlower(mask)))) {
-        notice_lang(s_OperServ, u, OPER_EXCEPTION_ALREADY_PRESENT, mask);
+        notice_lang(operserv_service.nick, u, OPER_EXCEPTION_ALREADY_PRESENT, mask);
     } else {
         /* Get highest maskdata number */
         i = 0;
@@ -414,12 +413,12 @@ static void do_exception_add(User *u)
         if (WallOSException) {
             char buf[BUFSIZE];
             expires_in_lang(buf, sizeof(buf), NULL, expires);
-            wallops(s_OperServ, "%s added a session limit exception of"
+            wallops(operserv_service.nick, "%s added a session limit exception of"
                     " \2%d\2 for \2%s\2 (%s)", u->nick, limit, mask, buf);
         }
-        notice_lang(s_OperServ, u, OPER_EXCEPTION_ADDED, mask, limit);
+        notice_lang(operserv_service.nick, u, OPER_EXCEPTION_ADDED, mask, limit);
         if (readonly)
-            notice_lang(s_OperServ, u, READ_ONLY_MODE);
+            notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
     }
 }
 
@@ -433,7 +432,7 @@ static void do_exception_del(User *u)
 
     mask = strtok(NULL, " ");
     if (!mask) {
-        syntax_error(s_OperServ, u, "EXCEPTION", OPER_EXCEPTION_DEL_SYNTAX);
+        syntax_error(operserv_service.nick, u, "EXCEPTION", OPER_EXCEPTION_DEL_SYNTAX);
         return;
     }
     if (isdigit(*mask) && strspn(mask, "1234567890,-") == strlen(mask)) {
@@ -441,14 +440,14 @@ static void do_exception_del(User *u)
         deleted = process_numlist(mask, &count, exception_del_callback, &last);
         if (deleted == 0) {
             if (count == 1) {
-                notice_lang(s_OperServ, u, OPER_EXCEPTION_NO_SUCH_ENTRY, last);
+                notice_lang(operserv_service.nick, u, OPER_EXCEPTION_NO_SUCH_ENTRY, last);
             } else {
-                notice_lang(s_OperServ, u, OPER_EXCEPTION_NO_MATCH);
+                notice_lang(operserv_service.nick, u, OPER_EXCEPTION_NO_MATCH);
             }
         } else if (deleted == 1) {
-            notice_lang(s_OperServ, u, OPER_EXCEPTION_DELETED_ONE);
+            notice_lang(operserv_service.nick, u, OPER_EXCEPTION_DELETED_ONE);
         } else {
-            notice_lang(s_OperServ, u, OPER_EXCEPTION_DELETED_SEVERAL,
+            notice_lang(operserv_service.nick, u, OPER_EXCEPTION_DELETED_SEVERAL,
                         deleted);
         }
     } else {
@@ -457,16 +456,16 @@ static void do_exception_del(User *u)
         ) {
             if (stricmp(mask, except->mask) == 0) {
                 del_maskdata(MD_EXCEPTION, except);
-                notice_lang(s_OperServ, u, OPER_EXCEPTION_DELETED, mask);
+                notice_lang(operserv_service.nick, u, OPER_EXCEPTION_DELETED, mask);
                 deleted = 1;
                 break;
             }
         }
         if (deleted == 0)
-            notice_lang(s_OperServ, u, OPER_EXCEPTION_NOT_FOUND, mask);
+            notice_lang(operserv_service.nick, u, OPER_EXCEPTION_NOT_FOUND, mask);
     }
     if (deleted && readonly)
-        notice_lang(s_OperServ, u, READ_ONLY_MODE);
+        notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
 
     /* Renumber the exception list. I don't believe in having holes in
      * lists - it makes code more complex, harder to debug and we end up
@@ -505,7 +504,7 @@ static void do_exception_clear(User *u)
 
     mask = strtok(NULL, " ");
     if (!mask || stricmp(mask,"ALL") != 0) {
-        syntax_error(s_OperServ, u, "EXCEPTION", OPER_EXCEPTION_CLEAR_SYNTAX);
+        syntax_error(operserv_service.nick, u, "EXCEPTION", OPER_EXCEPTION_CLEAR_SYNTAX);
         return;
     }
     for (except = first_maskdata(MD_EXCEPTION); except;
@@ -513,9 +512,9 @@ static void do_exception_clear(User *u)
     ) {
         del_maskdata(MD_EXCEPTION, except);
     }
-    notice_lang(s_OperServ, u, OPER_EXCEPTION_CLEARED);
+    notice_lang(operserv_service.nick, u, OPER_EXCEPTION_CLEARED);
     if (readonly)
-        notice_lang(s_OperServ, u, READ_ONLY_MODE);
+        notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
 }
 
 /*************************************************************************/
@@ -528,25 +527,25 @@ static void do_exception_move(User *u)
     int n1, n2;
 
     if (!n1str || !n2str) {
-        syntax_error(s_OperServ, u, "EXCEPTION", OPER_EXCEPTION_MOVE_SYNTAX);
+        syntax_error(operserv_service.nick, u, "EXCEPTION", OPER_EXCEPTION_MOVE_SYNTAX);
         return;
     }
     n1 = atoi(n1str);
     n2 = atoi(n2str);
     if (n1 == n2 || n1 <= 0 || n2 <= 0) {
-        syntax_error(s_OperServ, u, "EXCEPTION", OPER_EXCEPTION_MOVE_SYNTAX);
+        syntax_error(operserv_service.nick, u, "EXCEPTION", OPER_EXCEPTION_MOVE_SYNTAX);
         return;
     }
     if (!(except = get_exception_by_num(n1))) {
-        notice_lang(s_OperServ, u, OPER_EXCEPTION_NO_SUCH_ENTRY, n1);
+        notice_lang(operserv_service.nick, u, OPER_EXCEPTION_NO_SUCH_ENTRY, n1);
         return;
     }
     except = move_exception(except, n2);
-    notice_lang(s_OperServ, u, OPER_EXCEPTION_MOVED,
+    notice_lang(operserv_service.nick, u, OPER_EXCEPTION_MOVED,
                 except->mask, n1, n2);
     put_maskdata(except);
     if (readonly)
-        notice_lang(s_OperServ, u, READ_ONLY_MODE);
+        notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
 }
 
 /*************************************************************************/
@@ -563,7 +562,7 @@ static void do_exception_list(User *u, int is_view)
     if (mask && *mask == '+') {
         skip = (int)atolsafe(mask+1, 0, INT_MAX);
         if (skip < 0) {
-            syntax_error(s_OperServ, u, "EXCEPTION",
+            syntax_error(operserv_service.nick, u, "EXCEPTION",
                          OPER_EXCEPTION_LIST_SYNTAX);
             return;
         }
@@ -578,7 +577,7 @@ static void do_exception_list(User *u, int is_view)
 
     if (mask && strspn(mask, "1234567890,-") == strlen(mask)) {
         if (skip) {
-            syntax_error(s_OperServ, u, "EXCEPTION",
+            syntax_error(operserv_service.nick, u, "EXCEPTION",
                          OPER_EXCEPTION_LIST_SYNTAX);
             return;
         }
@@ -594,7 +593,7 @@ static void do_exception_list(User *u, int is_view)
         }
     }
     if (!count)
-        notice_lang(s_OperServ, u,
+        notice_lang(operserv_service.nick, u,
                     mask ? OPER_EXCEPTION_NO_MATCH : OPER_EXCEPTION_EMPTY);
 }
 
@@ -603,9 +602,9 @@ static int exception_list(User *u, MaskData *except, int *count, int skip,
                           int is_view)
 {
     if (!*count) {
-        notice_lang(s_OperServ, u, OPER_EXCEPTION_LIST_HEADER);
+        notice_lang(operserv_service.nick, u, OPER_EXCEPTION_LIST_HEADER);
         if (!is_view)
-            notice_lang(s_OperServ, u, OPER_EXCEPTION_LIST_COLHEAD);
+            notice_lang(operserv_service.nick, u, OPER_EXCEPTION_LIST_COLHEAD);
     }
     (*count)++;
     if (*count > skip && *count <= skip+ListMax) {
@@ -615,12 +614,12 @@ static int exception_list(User *u, MaskData *except, int *count, int skip,
                           STRFTIME_SHORT_DATE_FORMAT, except->time);
             expires_in_lang(expirebuf, sizeof(expirebuf), u->ngi,
                             except->expires);
-            notice_lang(s_OperServ, u, OPER_EXCEPTION_VIEW_FORMAT,
+            notice_lang(operserv_service.nick, u, OPER_EXCEPTION_VIEW_FORMAT,
                         except->num, except->mask,
                         *except->who ? except->who : "<unknown>",
                         timebuf, expirebuf, except->limit, except->reason);
         } else { /* list */
-            notice_lang(s_OperServ, u, OPER_EXCEPTION_LIST_FORMAT,
+            notice_lang(operserv_service.nick, u, OPER_EXCEPTION_LIST_FORMAT,
                         except->num, except->limit, except->mask);
         }
     }
@@ -658,7 +657,7 @@ static void do_exception_check(User *u)
     if (host) {
         strlower(host);
     } else {
-        syntax_error(s_OperServ, u, "EXCEPTION", OPER_EXCEPTION_CHECK_SYNTAX);
+        syntax_error(operserv_service.nick, u, "EXCEPTION", OPER_EXCEPTION_CHECK_SYNTAX);
         return;
     }
     for (except = first_maskdata(MD_EXCEPTION); except;
@@ -666,17 +665,17 @@ static void do_exception_check(User *u)
     ) {
         if (match_wild(except->mask, host)) {
             if (!sent_header) {
-                notice_lang(s_OperServ, u, OPER_EXCEPTION_CHECK_HEADER, host);
+                notice_lang(operserv_service.nick, u, OPER_EXCEPTION_CHECK_HEADER, host);
                 sent_header = 1;
             }
-            notice(s_OperServ, u->nick, "    %s", except->mask);
+            notice(operserv_service.nick, u->nick, "    %s", except->mask);
             count++;
         }
     }
     if (sent_header) {
-        notice_lang(s_OperServ, u, OPER_EXCEPTION_CHECK_TRAILER, count);
+        notice_lang(operserv_service.nick, u, OPER_EXCEPTION_CHECK_TRAILER, count);
     } else {
-        notice_lang(s_OperServ, u, OPER_EXCEPTION_CHECK_NO_MATCH, host);
+        notice_lang(operserv_service.nick, u, OPER_EXCEPTION_CHECK_NO_MATCH, host);
     }
 }
 
@@ -703,13 +702,13 @@ static int remove_session(User *u, char *reason_unused)
 
 /*************************************************************************/
 
-/* Callback for exception expiration. */
+/* Handler for exception expiration. */
 
 static int do_expire_maskdata(uint32 type, MaskData *md)
 {
     if (type == MD_EXCEPTION) {
         if (WallExceptionExpire)
-            wallops(s_OperServ, "Session limit exception for %s has expired",
+            wallops(operserv_service.nick, "Session limit exception for %s has expired",
                     md->mask);
     }
     return 0;
@@ -717,7 +716,7 @@ static int do_expire_maskdata(uint32 type, MaskData *md)
 
 /*************************************************************************/
 
-/* Callback for OperServ STATS ALL command. */
+/* Handler for OperServ STATS ALL command. */
 
 static int do_stats_all(User *u)
 {
@@ -730,7 +729,7 @@ static int do_stats_all(User *u)
         count++;
         mem += sizeof(*session) + strlen(session->host)+1;
     }
-    notice_lang(s_OperServ, u, OPER_STATS_ALL_SESSION_MEM,
+    notice_lang(operserv_service.nick, u, OPER_STATS_ALL_SESSION_MEM,
                 count, (mem+512) / 1024);
 
     for (md = first_maskdata(MD_EXCEPTION); md;
@@ -743,7 +742,7 @@ static int do_stats_all(User *u)
         if (md->reason)
             mem += strlen(md->reason)+1;
     }
-    notice_lang(s_OperServ, u, OPER_STATS_ALL_EXCEPTION_MEM,
+    notice_lang(operserv_service.nick, u, OPER_STATS_ALL_EXCEPTION_MEM,
                 count, (mem+512) / 1024);
 
     return 0;
@@ -794,7 +793,7 @@ static DBTable exception_dbtable = {
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective sessions_config[] = {
     { "DefSessionLimit",  { { CD_INT, 0, &DefSessionLimit } } },
     { "ExceptionExpiry",  { { CD_TIME, 0, &ExceptionExpiry } } },
     { "MaxSessionLimit",  { { CD_POSINT, 0, &MaxSessionLimit } } },
@@ -812,10 +811,13 @@ ConfigDirective module_config[] = {
 
 /*************************************************************************/
 
-static int do_load_module(Module *mod, const char *name)
+/* operserv/akill is optional: sessions over the limit are autokilled
+ * while it is loaded. */
+
+static int do_module_loaded(Module *mod, const char *name)
 {
     if (strcmp(name, "operserv/akill") == 0) {
-        p_create_akill = get_module_symbol(mod, "create_akill");
+        p_create_akill = module_symbol(mod, "create_akill");
         if (p_create_akill)
             module_akill = mod;
         else
@@ -827,7 +829,7 @@ static int do_load_module(Module *mod, const char *name)
 
 /*************************************************************************/
 
-static int do_unload_module(Module *mod)
+static int do_module_unloaded(Module *mod)
 {
     if (mod == module_akill) {
         p_create_akill = NULL;
@@ -838,48 +840,40 @@ static int do_unload_module(Module *mod)
 
 /*************************************************************************/
 
-int init_module()
+/* SESSION and EXCEPTION go into OperServ's command list. */
+
+static int sessions_init(Module *module)
 {
+    Module *akill;
+
     if (!MaxSessionLimit)
         MaxSessionLimit = MAX_MASKDATA_LIMIT;
 
-    module_operserv = find_module("operserv/main");
-    if (!module_operserv) {
-        module_log("Main OperServ module not loaded");
-        return 0;
-    }
-    use_module(module_operserv);
-
-    if (!register_commands(module_operserv, cmds)) {
+    if (!register_commands(module_find("operserv/main"), cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
 
-    /* Add user check callback at priority -10 so it runs after all the
-     * autokill/S-line/whatever checks (otherwise we get users added to
-     * sessions and then killed by S-lines, leaving the session count
-     * jacked up).
-     */
-    if (!add_callback(NULL, "load module", do_load_module)
-     || !add_callback(NULL, "unload module", do_unload_module)
-     || !add_callback_pri(NULL, "user check", check_sessions, -10)
-     || !add_callback(NULL, "user delete", remove_session)
-     || !add_callback(module_operserv, "expire maskdata", do_expire_maskdata)
-     || !add_callback(module_operserv, "STATS ALL", do_stats_all)
+    /* The user check runs at priority -10, after all the autokill/S-line/
+     * whatever checks (otherwise we get users added to sessions and then
+     * killed by S-lines, leaving the session count jacked up). */
+    if (!event_attach(module, EVENT_MODULE_LOADED, do_module_loaded)
+     || !event_attach(module, EVENT_MODULE_UNLOADED, do_module_unloaded)
+     || !event_attach_priority(module, EVENT_USER_CHECK, check_sessions, -10)
+     || !event_attach(module, EVENT_USER_DELETE, remove_session)
+     || !event_attach(module, OPERSERV_EVENT_EXPIRE_MASKDATA,
+                      do_expire_maskdata)
+     || !event_attach(module, OPERSERV_EVENT_STATS_ALL, do_stats_all)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
-    module_akill = find_module("operserv/akill");
-    if (module_akill)
-        do_load_module(module_akill, "operserv/akill");
+    if ((akill = module_find("operserv/akill")) != NULL)
+        do_module_loaded(akill, "operserv/akill");
 
     if (!register_dbtable(&exception_dbtable)) {
         module_log("Unable to register database table");
-        exit_module(0);
         return 0;
     }
 
@@ -888,35 +882,31 @@ int init_module()
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int sessions_fini(Module *module, int shutdown)
 {
     Session *session;
 
     unregister_dbtable(&exception_dbtable);
-
-    if (module_akill)
-        do_unload_module(module_akill);
-
+    p_create_akill = NULL;
+    module_akill = NULL;
     for (session = first_session(); session; session = next_session()) {
         _del_session(session);
         free_session(session);
     }
-
-    remove_callback(NULL, "user delete", remove_session);
-    remove_callback(NULL, "user check", check_sessions);
-    remove_callback(NULL, "unload module", do_unload_module);
-    remove_callback(NULL, "load module", do_load_module);
-
-    if (module_operserv) {
-        remove_callback(module_operserv, "STATS ALL", do_stats_all);
-        remove_callback(module_operserv, "expire maskdata",do_expire_maskdata);
-        unregister_commands(module_operserv, cmds);
-        unuse_module(module_operserv);
-        module_operserv = NULL;
-    }
-
+    unregister_commands(module_find("operserv/main"), cmds);
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "OperServ SESSION and EXCEPTION: per-host session limits",
+    .requires = MODULE_REQUIRES("operserv/main"),
+    .config = sessions_config,
+    .init = sessions_init,
+    .fini = sessions_fini,
+};
 
 /*************************************************************************/
 

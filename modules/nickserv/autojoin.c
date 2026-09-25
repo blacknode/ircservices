@@ -25,7 +25,7 @@ static Module *module_nickserv;
 static Module *module_chanserv;
 static typeof(check_access_cmd) *check_access_cmd_p;
 
-static int cb_send_svsjoin = -1;
+static Event* send_svsjoin_event;
 
 static int NSAutojoinMax;
 
@@ -59,7 +59,7 @@ static int do_identified(User *u, int unused)
     ARRAY_FOREACH (i, ngi->ajoin) {
         struct u_chanlist *uc;
         if (!valid_chan(ngi->ajoin[i])) {
-            notice_lang(s_NickServ, u, NICK_AJOIN_AUTO_REMOVE, ngi->ajoin[i]);
+            notice_lang(nickserv_service.nick, u, NICK_AJOIN_AUTO_REMOVE, ngi->ajoin[i]);
             free(ngi->ajoin[i]);
             ARRAY_REMOVE(ngi->ajoin, i);
             i--;
@@ -72,9 +72,9 @@ static int do_identified(User *u, int unused)
              && c->ci && check_access_cmd_p
              && (*check_access_cmd_p)(u, c->ci, "INVITE", NULL) > 0
             ) {
-                send_cmd(s_NickServ, "INVITE %s %s", u->nick, ngi->ajoin[i]);
+                send_cmd(nickserv_service.nick, "INVITE %s %s", u->nick, ngi->ajoin[i]);
             }
-            call_callback_2(cb_send_svsjoin, u->nick, ngi->ajoin[i]);
+            event_emit(send_svsjoin_event, u->nick, ngi->ajoin[i]);
         }
     }
     return 0;
@@ -87,26 +87,15 @@ static int do_identified(User *u, int unused)
 static int do_help(User *u, const char *param)
 {
     if (stricmp(param, "AJOIN") == 0) {
-        Module *mod;
-        notice_help(s_NickServ, u, NICK_HELP_AJOIN);
-        if ((mod = find_module("chanserv/main")) != NULL) {
-            const char *my_s_ChanServ;
-            const char **ptr = get_module_symbol(mod, "s_ChanServ");
-            if (ptr) {
-                my_s_ChanServ = *ptr;
-            } else {
-                static int warned = 0;
-                if (!warned) {
-                    module_log("HELP AJOIN: cannot retrieve symbol"
-                               " `s_ChanServ' from module `chanserv/main'");
-                    warned = 1;
-                }
-                my_s_ChanServ = "ChanServ";
-            }
-            notice_help(s_NickServ, u, NICK_HELP_AJOIN_END_CHANSERV,
-                        my_s_ChanServ);
+        struct Service *chanserv = NULL;
+        notice_help(nickserv_service.nick, u, NICK_HELP_AJOIN);
+        if (module_chanserv)
+            chanserv = module_symbol(module_chanserv, "chanserv_service");
+        if (chanserv) {
+            notice_help(nickserv_service.nick, u, NICK_HELP_AJOIN_END_CHANSERV,
+                        chanserv->nick);
         } else {
-            notice_help(s_NickServ, u, NICK_HELP_AJOIN_END);
+            notice_help(nickserv_service.nick, u, NICK_HELP_AJOIN_END);
         }
         return 1;
     }
@@ -128,89 +117,89 @@ void do_ajoin(User *u)
         NickInfo *ni = get_nickinfo(chan);
         ngi = NULL;
         if (!ni) {
-            notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, chan);
+            notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, chan);
         } else if (ni->status & NS_VERBOTEN) {
-            notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, chan);
+            notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, chan);
         } else if (!(ngi = get_ngi(ni))) {
-            notice_lang(s_NickServ, u, INTERNAL_ERROR);
+            notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
         } else if (!ngi->ajoin_count) {
-            notice_lang(s_NickServ, u, NICK_AJOIN_LIST_X_EMPTY, chan);
+            notice_lang(nickserv_service.nick, u, NICK_AJOIN_LIST_X_EMPTY, chan);
         } else {
-            notice_lang(s_NickServ, u, NICK_AJOIN_LIST_X, chan);
+            notice_lang(nickserv_service.nick, u, NICK_AJOIN_LIST_X, chan);
             ARRAY_FOREACH (i, ngi->ajoin)
-                notice(s_NickServ, u->nick, "    %s", ngi->ajoin[i]);
+                notice(nickserv_service.nick, u->nick, "    %s", ngi->ajoin[i]);
         }
         put_nickinfo(ni);
         put_nickgroupinfo(ngi);
 
     } else if (!cmd || ((stricmp(cmd,"LIST")==0) && chan)) {
-        syntax_error(s_NickServ, u, "AJOIN", NICK_AJOIN_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "AJOIN", NICK_AJOIN_SYNTAX);
 
     } else if (!valid_ngi(u)) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
 
     } else if (!user_identified(u)) {
-        notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
+        notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
 
     } else if (stricmp(cmd, "ADD") == 0) {
         if (readonly) {
-            notice_lang(s_NickServ, u, NICK_AJOIN_DISABLED);
+            notice_lang(nickserv_service.nick, u, NICK_AJOIN_DISABLED);
             return;
         }
         if (!chan || *chan != '#') {
-            syntax_error(s_NickServ, u, "AJOIN", NICK_AJOIN_ADD_SYNTAX);
+            syntax_error(nickserv_service.nick, u, "AJOIN", NICK_AJOIN_ADD_SYNTAX);
             return;
         }
         if (!valid_chan(chan)) {
-            notice_lang(s_NickServ, u, CHAN_INVALID, chan);
+            notice_lang(nickserv_service.nick, u, CHAN_INVALID, chan);
             return;
         }
         if (ngi->ajoin_count + 1 > NSAutojoinMax) {
-            notice_lang(s_NickServ, u, NICK_AJOIN_LIST_FULL, NSAutojoinMax);
+            notice_lang(nickserv_service.nick, u, NICK_AJOIN_LIST_FULL, NSAutojoinMax);
             return;
         }
         ARRAY_FOREACH (i, ngi->ajoin) {
             if (stricmp(ngi->ajoin[i], chan) == 0) {
-                notice_lang(s_NickServ, u,
+                notice_lang(nickserv_service.nick, u,
                         NICK_AJOIN_ALREADY_PRESENT, ngi->ajoin[i]);
                 return;
             }
         }
         ARRAY_EXTEND(ngi->ajoin);
         ngi->ajoin[ngi->ajoin_count-1] = sstrdup(chan);
-        notice_lang(s_NickServ, u, NICK_AJOIN_ADDED, chan);
+        notice_lang(nickserv_service.nick, u, NICK_AJOIN_ADDED, chan);
 
    } else if (stricmp(cmd, "DEL") == 0) {
         if (readonly) {
-            notice_lang(s_NickServ, u, NICK_AJOIN_DISABLED);
+            notice_lang(nickserv_service.nick, u, NICK_AJOIN_DISABLED);
             return;
         }
         if (!chan || *chan != '#') {
-            syntax_error(s_NickServ, u, "AJOIN", NICK_AJOIN_DEL_SYNTAX);
+            syntax_error(nickserv_service.nick, u, "AJOIN", NICK_AJOIN_DEL_SYNTAX);
             return;
         }
         ARRAY_SEARCH_PLAIN(ngi->ajoin, chan, strcmp, i);
         if (i == ngi->ajoin_count)
             ARRAY_SEARCH_PLAIN(ngi->ajoin, chan, irc_stricmp, i);
         if (i == ngi->ajoin_count) {
-            notice_lang(s_NickServ, u, NICK_AJOIN_NOT_FOUND, chan);
+            notice_lang(nickserv_service.nick, u, NICK_AJOIN_NOT_FOUND, chan);
             return;
         }
         free(ngi->ajoin[i]);
         ARRAY_REMOVE(ngi->ajoin, i);
-        notice_lang(s_NickServ, u, NICK_AJOIN_DELETED, chan);
+        notice_lang(nickserv_service.nick, u, NICK_AJOIN_DELETED, chan);
 
     } else if (stricmp(cmd, "LIST") == 0) {
         if (!ngi->ajoin_count) {
-            notice_lang(s_NickServ, u, NICK_AJOIN_LIST_EMPTY);
+            notice_lang(nickserv_service.nick, u, NICK_AJOIN_LIST_EMPTY);
         } else {
-            notice_lang(s_NickServ, u, NICK_AJOIN_LIST);
+            notice_lang(nickserv_service.nick, u, NICK_AJOIN_LIST);
             ARRAY_FOREACH (i, ngi->ajoin)
-                notice(s_NickServ, u->nick, "    %s", ngi->ajoin[i]);
+                notice(nickserv_service.nick, u->nick, "    %s", ngi->ajoin[i]);
         }
 
     } else {
-        syntax_error(s_NickServ, u, "AJOIN", NICK_AJOIN_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "AJOIN", NICK_AJOIN_SYNTAX);
     }
 }
 
@@ -218,7 +207,7 @@ void do_ajoin(User *u)
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective autojoin_config[] = {
     { "NSAutojoinMax",   { { CD_POSINT, CF_DIRREQ, &NSAutojoinMax } } },
     { NULL }
 };
@@ -229,7 +218,7 @@ static int do_load_module(Module *mod, const char *name)
 {
     if (strcmp(name,"chanserv/main") == 0) {
         module_chanserv = mod;
-        if (!(check_access_cmd_p = get_module_symbol(mod,"check_access_cmd"))){
+        if (!(check_access_cmd_p = module_symbol(mod,"check_access_cmd"))){
             module_log("Symbol `check_access_cmd' not found, auto-inviting"
                        " disabled");
         }
@@ -250,10 +239,9 @@ static int do_unload_module(Module *mod)
 
 /*************************************************************************/
 
-int init_module()
+static int autojoin_init(Module *module)
 {
     Module *mod;
-
 
     if (!(protocol_features & PF_SVSJOIN)) {
         module_log("SVSJOIN not supported by this IRC server (%s)",
@@ -261,37 +249,29 @@ int init_module()
         return 0;
     }
 
-    module_nickserv = find_module("nickserv/main");
-    if (!module_nickserv) {
-        module_log("Main NickServ module not loaded");
-        return 0;
-    }
-    use_module(module_nickserv);
+    module_nickserv = module_find("nickserv/main");
 
     if (!register_commands(module_nickserv, cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
 
-    cb_send_svsjoin = register_callback("send_svsjoin");
-    if (cb_send_svsjoin < 0) {
-        module_log("Unable to register callback");
-        exit_module(0);
+    send_svsjoin_event = event_declare(module, AUTOJOIN_EVENT_SEND_SVSJOIN);
+    if (!send_svsjoin_event) {
+        module_log("Unable to declare events");
         return 0;
     }
 
-    if (!add_callback(NULL, "load module", do_load_module)
-     || !add_callback(NULL, "unload module", do_unload_module)
-     || !add_callback(module_nickserv, "identified", do_identified)
-     || !add_callback(module_nickserv, "HELP", do_help)
+    if (!event_attach(module, EVENT_MODULE_LOADED, do_load_module)
+     || !event_attach(module, EVENT_MODULE_UNLOADED, do_unload_module)
+     || !event_attach(module, NICKSERV_EVENT_IDENTIFIED, do_identified)
+     || !event_attach(module, NICKSERV_EVENT_HELP, do_help)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
-    mod = find_module("chanserv/main");
+    mod = module_find("chanserv/main");
     if (mod)
         do_load_module(mod, "chanserv/main");
 
@@ -300,26 +280,29 @@ int init_module()
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int autojoin_fini(Module *module, int shutdown)
 {
     if (module_chanserv)
         do_unload_module(module_chanserv);
 
     if (module_nickserv) {
-        remove_callback(module_nickserv, "HELP", do_help);
-        remove_callback(module_nickserv, "identified", do_identified);
         unregister_commands(module_nickserv, cmds);
-        unuse_module(module_nickserv);
         module_nickserv = NULL;
     }
 
-    remove_callback(NULL, "unload module", do_unload_module);
-    remove_callback(NULL, "load module", do_load_module);
-
-    unregister_callback(cb_send_svsjoin);
-
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "NickServ AJOIN: channels joined on identifying",
+    .requires = MODULE_REQUIRES("nickserv/main"),
+    .config = autojoin_config,
+    .init = autojoin_init,
+    .fini = autojoin_fini,
+};
 
 /*************************************************************************/
 

@@ -25,8 +25,8 @@ static Server* root_server; /* Entry for root server (Services) */
 static int16 servercnt = 0; /* Number of online servers */
 
 /* Callback IDs: */
-static int cb_create = -1;
-static int cb_delete = -1;
+static Event* server_create_event;
+static Event* server_delete_event;
 
 /*************************************************************************/
 /**************************** Internal functions *************************/
@@ -80,7 +80,7 @@ static void squit_server(Server* server, const char* reason)
 #undef prev
     }
     if (!server->fake)
-        call_callback_2(cb_delete, server, reason);
+        event_emit(server_delete_event, server, reason);
     delete_server(server);
 }
 
@@ -158,7 +158,7 @@ void do_server(const char* source, int ac, char** av)
     }
 
     if (ac > 0)
-        call_callback_1(cb_create, server);
+        event_emit(server_create_event, server);
     else
         server->fake = 1;
 
@@ -212,10 +212,10 @@ int server_init(int ac, char** av)
 {
     Server* server;
 
-    cb_create = register_callback("server create");
-    cb_delete = register_callback("server delete");
-    if (cb_create < 0 || cb_delete < 0) {
-        log("server_init: register_callback() failed\n");
+    server_create_event = event_declare(NULL, EVENT_SERVER_CREATE);
+    server_delete_event = event_declare(NULL, EVENT_SERVER_DELETE);
+    if (!server_create_event || !server_delete_event) {
+        log("server_init: event_declare() failed");
         return 0;
     }
     server = new_server("");
@@ -238,8 +238,8 @@ void server_cleanup(void)
     protocol_features |= PF_NOQUIT;
     squit_server(root_server, "server_cleanup");
     protocol_features = pf;
-    unregister_callback(cb_delete);
-    unregister_callback(cb_create);
+    event_retract(server_delete_event);
+    event_retract(server_create_event);
 }
 
 /*************************************************************************/

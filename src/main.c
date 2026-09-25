@@ -78,9 +78,9 @@ time_t start_time;
 /* Were we unable to open the log? (and the error that occurred) */
 int openlog_failed, openlog_errno;
 
-/* Module callbacks (global so init.c can set them): */
-int cb_connect = -1;
-int cb_save_complete = -1;
+/* Events announced here and in databases.c (declared by init.c): */
+Event* uplink_linked_event;
+Event* save_complete_event;
 
 /*************************************************************************/
 /*************************************************************************/
@@ -163,10 +163,10 @@ void readfirstline_callback(Socket* s, void* param_unused)
     }
 
     /* Bring in our pseudo-clients */
-    introduce_user(NULL);
+    service_introduce(NULL);
 
     /* Let modules do their startup stuff */
-    call_callback(cb_connect);
+    event_emit(uplink_linked_event);
 
     /* Process the line we read in above */
     process();
@@ -186,8 +186,8 @@ void readline_callback(Socket* s, void* param_unused)
 /*************************************************************************/
 
 /* Subroutine to save databases.  The tables are snapshotted now and
- * written to the database in the background; the "save data complete"
- * callback reports the outcome when it is known (see databases.h). */
+ * written to the database in the background; the "core.save_complete"
+ * event reports the outcome when it is known (see databases.h). */
 
 void save_data_now(void)
 {

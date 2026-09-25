@@ -23,8 +23,6 @@
 #ifdef STANDALONE_NICKSERV
 
 # define STANDALONE_STATIC static
-# undef EXPORT_FUNC
-# define EXPORT_FUNC(x) /*nothing*/
 
 #else
 
@@ -44,11 +42,11 @@
 
 #ifndef STANDALONE_NICKSERV
 
-static int cb_set_identified   = -1;
-static int cb_cancel_user      = -1;
-static int cb_check_recognized = -1;
-static int cb_delete           = -1;
-static int cb_groupdelete      = -1;
+static Event* set_identified_event;
+static Event* cancel_user_event;
+static Event* check_recognized_event;
+static Event* delete_event;
+static Event* groupdelete_event;
 
 #endif
 
@@ -58,7 +56,6 @@ static int cb_groupdelete      = -1;
 
 /* Allocate and initialize a new NickInfo structure. */
 
-EXPORT_FUNC(new_nickinfo)
 STANDALONE_STATIC NickInfo *new_nickinfo(void)
 {
     NickInfo *ni = scalloc(sizeof(*ni), 1);
@@ -69,7 +66,6 @@ STANDALONE_STATIC NickInfo *new_nickinfo(void)
 
 /* Free a NickInfo structure and all associated data. */
 
-EXPORT_FUNC(free_nickinfo)
 STANDALONE_STATIC void free_nickinfo(NickInfo *ni)
 {
     if (ni) {
@@ -90,7 +86,6 @@ STANDALONE_STATIC void free_nickinfo(NickInfo *ni)
  * is left at zero.
  */
 
-EXPORT_FUNC(new_nickgroupinfo)
 STANDALONE_STATIC NickGroupInfo *new_nickgroupinfo(const char *seed)
 {
     NickGroupInfo *ngi = scalloc(sizeof(*ngi), 1);
@@ -134,7 +129,6 @@ STANDALONE_STATIC NickGroupInfo *new_nickgroupinfo(const char *seed)
 
 /* Free a NickGroupInfo structure and all associated data. */
 
-EXPORT_FUNC(free_nickgroupinfo)
 STANDALONE_STATIC void free_nickgroupinfo(NickGroupInfo *ngi)
 {
     int i;
@@ -192,7 +186,6 @@ STANDALONE_STATIC void free_nickgroupinfo(NickGroupInfo *ngi)
  *       the current source file and line number in the log message.
  */
 
-EXPORT_FUNC(_get_ngi)
 NickGroupInfo *_get_ngi(const NickInfo *ni, const char *file, int line)
 {
     NickGroupInfo *ngi;
@@ -209,7 +202,6 @@ NickGroupInfo *_get_ngi(const NickInfo *ni, const char *file, int line)
     return ngi;
 }
 
-EXPORT_FUNC(_get_ngi_id)
 NickGroupInfo *_get_ngi_id(uint32 id, const char *file, int line)
 {
     NickGroupInfo *ngi = get_nickgroupinfo(id);
@@ -226,7 +218,6 @@ NickGroupInfo *_get_ngi_id(uint32 id, const char *file, int line)
  * not-authenticated state, this function will always return 0.
  */
 
-EXPORT_FUNC(has_identified_nick)
 int has_identified_nick(const User *u, uint32 group)
 {
     int i, unauthed;
@@ -247,15 +238,15 @@ int has_identified_nick(const User *u, uint32 group)
 
 /* Check whether the given nickname is allowed to be registered (with the
  * given password and E-mail address) or linked (password/email NULL).
- * Returns nonzero if allowed, 0 if not.  A wrapper for the "REGISTER/LINK
- * check" callback.
+ * Returns nonzero if allowed, 0 if not.  A wrapper for the
+ * "nickserv.register_check" event.
  */
 
 int reglink_check(User *u, const char *nick, char *password, char *email)
 {
-    int res = call_callback_4(cb_reglink_check, u, nick, password, email);
+    int res = event_emit(reglink_check_event, u, nick, password, email);
     if (res < 0)
-        module_log("REGISTER/LINK callback returned an error");
+        module_log("nickserv.register_check handler returned an error");
     return res == 0;
 }
 
@@ -332,11 +323,11 @@ int validate_user(User *u)
 
     if ((ni->status & NS_VERBOTEN) || (ngi->flags & NF_SUSPENDED)) {
         if (usermode_reg) {
-            send_cmd(s_NickServ, "SVSMODE %s :-%s", u->nick,
+            send_cmd(nickserv_service.nick, "SVSMODE %s :-%s", u->nick,
                      mode_flags_to_string(usermode_reg, MODE_USER));
         }
-        notice_lang(s_NickServ, u, NICK_MAY_NOT_BE_USED);
-        notice_lang(s_NickServ, u, DISCONNECT_IN_1_MINUTE);
+        notice_lang(nickserv_service.nick, u, NICK_MAY_NOT_BE_USED);
+        notice_lang(nickserv_service.nick, u, DISCONNECT_IN_1_MINUTE);
         add_ns_timeout(ni, TO_SEND_433, 40);
         add_ns_timeout(ni, TO_COLLIDE, 60);
         return 0;
@@ -404,11 +395,11 @@ int validate_user(User *u)
     /* From here on down, the user is known to be not identified.  Clear
      * any "registered nick" mode from them. */
     if (usermode_reg) {
-        send_cmd(s_NickServ, "SVSMODE %s :-%s", u->nick,
+        send_cmd(nickserv_service.nick, "SVSMODE %s :-%s", u->nick,
                  mode_flags_to_string(usermode_reg, MODE_USER));
     }
 
-    is_recognized = (call_callback_1(cb_check_recognized, u) == 1);
+    is_recognized = (event_emit(check_recognized_event, u) == 1);
 
     if (!(ngi->flags & NF_SECURE) && !ngi_unauthed(ngi) && is_recognized) {
         ni->authstat |= NA_RECOGNIZED;
@@ -420,9 +411,9 @@ int validate_user(User *u)
      || !(ngi->flags & NF_KILL_IMMED)
     ) {
         if (ngi->flags & NF_SECURE)
-            notice_lang(s_NickServ, u, NICK_IS_SECURE, s_NickServ);
+            notice_lang(nickserv_service.nick, u, NICK_IS_SECURE, nickserv_service.nick);
         else
-            notice_lang(s_NickServ, u, NICK_IS_REGISTERED, s_NickServ);
+            notice_lang(nickserv_service.nick, u, NICK_IS_REGISTERED, nickserv_service.nick);
     }
 
     if ((ngi->flags & NF_KILLPROTECT) && !is_recognized) {
@@ -432,11 +423,11 @@ int validate_user(User *u)
         ) {
             collide_nick(ni, 0);
         } else if (!ngi_unauthed(ngi) && (ngi->flags & NF_KILL_QUICK)) {
-            notice_lang(s_NickServ, u, DISCONNECT_IN_20_SECONDS);
+            notice_lang(nickserv_service.nick, u, DISCONNECT_IN_20_SECONDS);
             add_ns_timeout(ni, TO_COLLIDE, 20);
             add_ns_timeout(ni, TO_SEND_433, 10);
         } else {
-            notice_lang(s_NickServ, u, DISCONNECT_IN_1_MINUTE);
+            notice_lang(nickserv_service.nick, u, DISCONNECT_IN_1_MINUTE);
             add_ns_timeout(ni, TO_COLLIDE, 60);
             add_ns_timeout(ni, TO_SEND_433, 40);
         }
@@ -447,8 +438,8 @@ int validate_user(User *u)
     ) {
         int time_left = NSExpire - (time(NULL) - ni->last_seen);
         if (time_left <= NSExpireWarning) {
-            notice_lang(s_NickServ, u, NICK_EXPIRES_SOON,
-                        maketime(ngi,time_left,0), s_NickServ, s_NickServ);
+            notice_lang(nickserv_service.nick, u, NICK_EXPIRES_SOON,
+                        maketime(ngi,time_left,0), nickserv_service.nick, nickserv_service.nick);
         }
     }
 
@@ -477,7 +468,7 @@ void cancel_user(User *u)
         ni->authstat = 0;
         if (old_status & NS_GUESTED)
             introduce_enforcer(ni);
-        call_callback_3(cb_cancel_user, u, old_status, old_authstat);
+        event_emit(cancel_user_event, u, old_status, old_authstat);
         rem_ns_timeout(ni, TO_COLLIDE, 1);
         put_nickinfo(u->ni);
         put_nickgroupinfo(u->ngi);
@@ -518,10 +509,10 @@ void set_identified(User *u)
         hold_nickgroupinfo(ngi);
     }
     if (usermode_reg) {
-        send_cmd(s_NickServ, "SVSMODE %s :+%s", u->nick,
+        send_cmd(nickserv_service.nick, "SVSMODE %s :+%s", u->nick,
                  mode_flags_to_string(usermode_reg, MODE_USER));
     }
-    call_callback_2(cb_set_identified, u, old_authstat);
+    event_emit(set_identified_event, u, old_authstat);
 }
 
 /*************************************************************************/
@@ -589,7 +580,7 @@ int delnick(NickInfo *ni)
         release_nick(ni, 0);
     if (ni->user) {
         if (usermode_reg)
-            send_cmd(s_NickServ, "SVSMODE %s :-%s", ni->nick,
+            send_cmd(nickserv_service.nick, "SVSMODE %s :-%s", ni->nick,
                      mode_flags_to_string(usermode_reg, MODE_USER));
         ni->user->ni = NULL;
         ni->user->ngi = NULL;
@@ -610,10 +601,10 @@ int delnick(NickInfo *ni)
                 ngi->mainnick--;
         }
     }
-    call_callback_1(cb_delete, ni);
+    event_emit(delete_event, ni);
     if (ngi) {
         if (ngi->nicks_count == 0) {
-            call_callback_2(cb_groupdelete, ngi, ni->nick);
+            event_emit(groupdelete_event, ngi, ni->nick);
             del_nickgroupinfo(ngi);
         } else {
             put_nickgroupinfo(ngi);
@@ -646,15 +637,15 @@ int delgroup(NickGroupInfo *ngi)
         }
         if (ni->user) {
             if (usermode_reg)
-                send_cmd(s_NickServ, "SVSMODE %s :-%s", ni->nick,
+                send_cmd(nickserv_service.nick, "SVSMODE %s :-%s", ni->nick,
                          mode_flags_to_string(usermode_reg, MODE_USER));
             ni->user->ni = NULL;
             ni->user->ngi = NULL;
         }
-        call_callback_1(cb_delete, ni);
+        event_emit(delete_event, ni);
         del_nickinfo(ni);
     }
-    call_callback_2(cb_groupdelete, ngi, ngi_mainnick(ngi));
+    event_emit(groupdelete_event, ngi, ngi_mainnick(ngi));
     del_nickgroupinfo(ngi);
     return 1;
 }
@@ -769,7 +760,7 @@ int nick_check_password(User *u, NickInfo *ni, const char *password,
     if (!ngi) {
         module_log("%s: no nickgroup for %s, aborting password check",
                    command, ni->nick);
-        notice_lang(s_NickServ, u, failure_msg);
+        notice_lang(nickserv_service.nick, u, failure_msg);
         return 0;
     }
 
@@ -780,17 +771,17 @@ int nick_check_password(User *u, NickInfo *ni, const char *password,
     } else if (res == 0) {
         module_log("%s: bad password for %s from %s!%s@%s",
                    command, ni->nick, u->nick, u->username, u->host);
-        bad_password(s_NickServ, u, ni->nick);
+        bad_password(nickserv_service.nick, u, ni->nick);
         ni->bad_passwords++;
         if (BadPassWarning && ni->bad_passwords == BadPassWarning) {
-            wallops(s_NickServ, "\2Warning:\2 Repeated bad password attempts"
+            wallops(nickserv_service.nick, "\2Warning:\2 Repeated bad password attempts"
                     " for nick %s", ni->nick);
         }
         return 0;
     } else if (res == -1) {
         module_log("%s: check_password failed for %s",
                    command, ni->nick);
-        notice_lang(s_NickServ, u, failure_msg);
+        notice_lang(nickserv_service.nick, u, failure_msg);
         return 0;
     } else {
         ni->bad_passwords = 0;
@@ -837,29 +828,18 @@ int count_nicks_with_email(const char *email)
 
 int init_util(void)
 {
-    cb_set_identified   = register_callback("set identified");
-    cb_cancel_user      = register_callback("cancel user");
-    cb_check_recognized = register_callback("check recognized");
-    cb_delete           = register_callback("nick delete");
-    cb_groupdelete      = register_callback("nickgroup delete");
-    if (cb_cancel_user < 0 || cb_check_recognized < 0 || cb_delete < 0
-     || cb_groupdelete < 0
+    set_identified_event = event_declare(THIS_MODULE, NICKSERV_EVENT_SET_IDENTIFIED);
+    cancel_user_event = event_declare(THIS_MODULE, NICKSERV_EVENT_CANCEL_USER);
+    check_recognized_event = event_declare(THIS_MODULE, NICKSERV_EVENT_CHECK_RECOGNIZED);
+    delete_event = event_declare(THIS_MODULE, NICKSERV_EVENT_NICK_DELETE);
+    groupdelete_event = event_declare(THIS_MODULE, NICKSERV_EVENT_NICKGROUP_DELETE);
+    if (!set_identified_event || !cancel_user_event
+     || !check_recognized_event || !delete_event || !groupdelete_event
     ) {
-        module_log("Unable to register callbacks (util.c)");
+        module_log("Unable to declare events (util.c)");
         return 0;
     }
     return 1;
-}
-
-/*************************************************************************/
-
-void exit_util()
-{
-    unregister_callback(cb_groupdelete);
-    unregister_callback(cb_delete);
-    unregister_callback(cb_check_recognized);
-    unregister_callback(cb_cancel_user);
-    unregister_callback(cb_set_identified);
 }
 
 /*************************************************************************/

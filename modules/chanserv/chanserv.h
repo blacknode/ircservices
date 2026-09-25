@@ -198,9 +198,54 @@ struct channelinfo_ {
 
 /*************************************************************************/
 
+/* Events of chanserv/main (see include/events.h).  "Stop" is what a
+ * handler returning nonzero does.
+ *
+ * chanserv.command:       (User *u, char *command)  a command, before it
+ *                         runs; stop: it was handled
+ * chanserv.help:          (User *u, char *topic)  stop: help was given
+ * chanserv.help_commands: (User *u, int which)  append to the list of
+ *                         commands: 0 = all users, 1 = operators
+ * chanserv.set:           (User *u, ChannelInfo *ci, char *option,
+ *                         char *param)  SET; stop: the option was handled
+ * chanserv.unset:         (User *u, ChannelInfo *ci, char *option)  UNSET;
+ *                         stop: handled
+ * chanserv.set_mlock:     (User *u, ChannelInfo *ci, int mode, int add,
+ *                         char **av)  one mode of SET MLOCK, then once with
+ *                         mode 0 to check the result; stop: handled (for
+ *                         mode 0: the lock is refused)
+ * chanserv.check_modes:   (Channel *c, ChannelInfo *ci, int add, int32 flag)
+ *                         a mode lock being enforced; stop: handled
+ * chanserv.check_chan_user_modes: (const char *source, User *user,
+ *                         Channel *c, int32 modes)  stop: handled
+ * chanserv.check_kick:    (User *user, const char *chan, ChannelInfo *ci,
+ *                         char **mask_ret, const char **reason_ret)
+ *                         a user joining; return 1 to kick (filling in the
+ *                         mask and reason), 2 to allow without further checks
+ * chanserv.invite:        (User *u, Channel *c, ChannelInfo *ci)
+ *                         stop: the INVITE was handled
+ * chanserv.unban:         (User *u, Channel *c, ChannelInfo *ci)  stop: handled
+ * chanserv.clear:         (User *u, Channel *c, const char *what)
+ *                         stop: the CLEAR was handled
+ */
+#define CHANSERV_EVENT_COMMAND               "chanserv.command"
+#define CHANSERV_EVENT_HELP                  "chanserv.help"
+#define CHANSERV_EVENT_HELP_COMMANDS         "chanserv.help_commands"
+#define CHANSERV_EVENT_SET                   "chanserv.set"
+#define CHANSERV_EVENT_UNSET                 "chanserv.unset"
+#define CHANSERV_EVENT_SET_MLOCK             "chanserv.set_mlock"
+#define CHANSERV_EVENT_CHECK_MODES           "chanserv.check_modes"
+#define CHANSERV_EVENT_CHECK_CHAN_USER_MODES "chanserv.check_chan_user_modes"
+#define CHANSERV_EVENT_CHECK_KICK            "chanserv.check_kick"
+#define CHANSERV_EVENT_INVITE                "chanserv.invite"
+#define CHANSERV_EVENT_UNBAN                 "chanserv.unban"
+#define CHANSERV_EVENT_CLEAR                 "chanserv.clear"
+
+/*************************************************************************/
+
 /* Prototypes for exported variables and functions. */
 
-E char *s_ChanServ;
+E struct Service chanserv_service;
 E int32 CSMaxReg;
 
 E ChannelInfo *add_channelinfo(ChannelInfo *ci);

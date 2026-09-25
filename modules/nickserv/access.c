@@ -60,58 +60,58 @@ static void do_access(User *u)
         ni = get_nickinfo(mask);
         ngi = NULL;
         if (!ni) {
-            notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, mask);
+            notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, mask);
         } else if (ni->status & NS_VERBOTEN) {
-            notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, mask);
+            notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, mask);
         } else if (!(ngi = get_ngi(ni))) {
-            notice_lang(s_NickServ, u, INTERNAL_ERROR);
+            notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
         } else if (ngi->access_count == 0) {
-            notice_lang(s_NickServ, u, NICK_ACCESS_LIST_X_EMPTY, mask);
+            notice_lang(nickserv_service.nick, u, NICK_ACCESS_LIST_X_EMPTY, mask);
         } else {
-            notice_lang(s_NickServ, u, NICK_ACCESS_LIST_X, mask);
+            notice_lang(nickserv_service.nick, u, NICK_ACCESS_LIST_X, mask);
             ARRAY_FOREACH (i, ngi->access)
-                notice(s_NickServ, u->nick, "    %s", ngi->access[i]);
+                notice(nickserv_service.nick, u->nick, "    %s", ngi->access[i]);
         }
         put_nickinfo(ni);
         put_nickgroupinfo(ngi);
 
     } else if (!cmd || ((stricmp(cmd,"LIST")==0) ? mask!=NULL : mask==NULL)) {
-        syntax_error(s_NickServ, u, "ACCESS", NICK_ACCESS_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "ACCESS", NICK_ACCESS_SYNTAX);
 
     } else if (mask && !strchr(mask, '@')) {
-        notice_lang(s_NickServ, u, BAD_USERHOST_MASK);
-        notice_lang(s_NickServ, u, MORE_INFO, s_NickServ, "ACCESS");
+        notice_lang(nickserv_service.nick, u, BAD_USERHOST_MASK);
+        notice_lang(nickserv_service.nick, u, MORE_INFO, nickserv_service.nick, "ACCESS");
 
     } else if (ngi = u->ngi, !(ni = u->ni)) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
 
     } else if (!user_identified(u)) {
-        notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
+        notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
 
     } else if (stricmp(cmd, "ADD") == 0) {
         if (readonly) {
-            notice_lang(s_NickServ, u, NICK_ACCESS_DISABLED);
+            notice_lang(nickserv_service.nick, u, NICK_ACCESS_DISABLED);
             return;
         }
         if (ngi->access_count >= NSAccessMax) {
-            notice_lang(s_NickServ, u, NICK_ACCESS_REACHED_LIMIT, NSAccessMax);
+            notice_lang(nickserv_service.nick, u, NICK_ACCESS_REACHED_LIMIT, NSAccessMax);
             return;
         }
         ARRAY_FOREACH (i, ngi->access) {
             if (stricmp(ngi->access[i], mask) == 0) {
-                notice_lang(s_NickServ, u, NICK_ACCESS_ALREADY_PRESENT, mask);
+                notice_lang(nickserv_service.nick, u, NICK_ACCESS_ALREADY_PRESENT, mask);
                 return;
             }
         }
         if (strchr(mask, '!'))
-            notice_lang(s_NickServ, u, NICK_ACCESS_NO_NICKS);
+            notice_lang(nickserv_service.nick, u, NICK_ACCESS_NO_NICKS);
         ARRAY_EXTEND(ngi->access);
         ngi->access[ngi->access_count-1] = sstrdup(mask);
-        notice_lang(s_NickServ, u, NICK_ACCESS_ADDED, mask);
+        notice_lang(nickserv_service.nick, u, NICK_ACCESS_ADDED, mask);
 
     } else if (stricmp(cmd, "DEL") == 0) {
         if (readonly) {
-            notice_lang(s_NickServ, u, NICK_ACCESS_DISABLED);
+            notice_lang(nickserv_service.nick, u, NICK_ACCESS_DISABLED);
             return;
         }
         /* First try for an exact match; then, a case-insensitive one. */
@@ -119,24 +119,24 @@ static void do_access(User *u)
         if (i == ngi->access_count)
             ARRAY_SEARCH_PLAIN(ngi->access, mask, stricmp, i);
         if (i == ngi->access_count) {
-            notice_lang(s_NickServ, u, NICK_ACCESS_NOT_FOUND, mask);
+            notice_lang(nickserv_service.nick, u, NICK_ACCESS_NOT_FOUND, mask);
             return;
         }
-        notice_lang(s_NickServ, u, NICK_ACCESS_DELETED, ngi->access[i]);
+        notice_lang(nickserv_service.nick, u, NICK_ACCESS_DELETED, ngi->access[i]);
         free(ngi->access[i]);
         ARRAY_REMOVE(ngi->access, i);
 
     } else if (stricmp(cmd, "LIST") == 0) {
         if (ngi->access_count == 0) {
-            notice_lang(s_NickServ, u, NICK_ACCESS_LIST_EMPTY);
+            notice_lang(nickserv_service.nick, u, NICK_ACCESS_LIST_EMPTY);
         } else {
-            notice_lang(s_NickServ, u, NICK_ACCESS_LIST);
+            notice_lang(nickserv_service.nick, u, NICK_ACCESS_LIST);
             ARRAY_FOREACH (i, ngi->access)
-                notice(s_NickServ, u->nick, "    %s", ngi->access[i]);
+                notice(nickserv_service.nick, u->nick, "    %s", ngi->access[i]);
         }
 
     } else {
-        syntax_error(s_NickServ, u, "ACCESS", NICK_ACCESS_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "ACCESS", NICK_ACCESS_SYNTAX);
 
     }
 }
@@ -145,7 +145,7 @@ static void do_access(User *u)
 /*************************** Callback routines ***************************/
 /*************************************************************************/
 
-/* Nick-registration callback (initializes access list). */
+/* Nick-registration handler (initializes access list). */
 
 static int do_registered(User *u, NickInfo *ni, NickGroupInfo *ngi,
                          int *replied)
@@ -193,7 +193,7 @@ static int check_on_access(User *u)
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective access_config[] = {
     { "NSAccessMax",      { { CD_POSINT, CF_DIRREQ, &NSAccessMax } } },
     { "NSFirstAccessEnable",{{CD_SET, 0, &NSFirstAccessEnable } } },
     { "NSFirstAccessWild",{ { CD_SET, 0, &NSFirstAccessWild } } },
@@ -202,7 +202,7 @@ ConfigDirective module_config[] = {
 
 /*************************************************************************/
 
-int init_module()
+static int access_init(Module *module)
 {
     if (NSAccessMax > MAX_NICK_ACCESS) {
         module_log("NSAccessMax upper-bounded at MAX_NICK_ACCESS (%d)",
@@ -210,24 +210,17 @@ int init_module()
         NSAccessMax = MAX_NICK_ACCESS;
     }
 
-    module_nickserv = find_module("nickserv/main");
-    if (!module_nickserv) {
-        module_log("Main NickServ module not loaded");
-        return 0;
-    }
-    use_module(module_nickserv);
+    module_nickserv = module_find("nickserv/main");
 
     if (!register_commands(module_nickserv, cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
 
-    if (!add_callback(module_nickserv, "check recognized", check_on_access)
-     || !add_callback(module_nickserv, "registered", do_registered)
+    if (!event_attach(module, NICKSERV_EVENT_CHECK_RECOGNIZED, check_on_access)
+     || !event_attach(module, NICKSERV_EVENT_REGISTERED, do_registered)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
@@ -236,19 +229,26 @@ int init_module()
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int access_fini(Module *module, int shutdown)
 {
-
     if (module_nickserv) {
-        remove_callback(module_nickserv, "registered", do_registered);
-        remove_callback(module_nickserv, "check recognized", check_on_access);
         unregister_commands(module_nickserv, cmds);
-        unuse_module(module_nickserv);
         module_nickserv = NULL;
     }
 
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "NickServ ACCESS: address lists that recognize a user",
+    .requires = MODULE_REQUIRES("nickserv/main"),
+    .config = access_config,
+    .init = access_init,
+    .fini = access_fini,
+};
 
 /*************************************************************************/
 

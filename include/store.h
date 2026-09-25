@@ -124,9 +124,9 @@ struct StoreType_ {
 
 /*************************************************************************/
 
-/* Types.  A module registers its types from init_module() (after its
+/* Types.  A module registers its types from its `init' (after its
  * migrations, which create the tables, have been applied) and unregisters
- * them from exit_module(), which writes whatever changed and drops the
+ * them from its `fini', which writes whatever changed and drops the
  * working set of those types.  Returns nonzero on success. */
 extern int store_register(StoreType* type);
 extern void store_unregister(StoreType* type);

@@ -19,8 +19,6 @@
 #ifdef STANDALONE_CHANSERV
 
 # define STANDALONE_STATIC static
-# undef EXPORT_FUNC
-# define EXPORT_FUNC(x) /*nothing*/
 
 #else
 
@@ -42,7 +40,6 @@
 
 /* Allocate and initialize a new ChannelInfo structure. */
 
-EXPORT_FUNC(new_channelinfo)
 STANDALONE_STATIC ChannelInfo *new_channelinfo(void)
 {
     ChannelInfo *ci = scalloc(sizeof(ChannelInfo), 1);
@@ -54,7 +51,6 @@ STANDALONE_STATIC ChannelInfo *new_channelinfo(void)
 
 /* Free a ChannelInfo structure and all associated data. */
 
-EXPORT_FUNC(free_channelinfo)
 STANDALONE_STATIC void free_channelinfo(ChannelInfo *ci)
 {
     int i;
@@ -84,7 +80,6 @@ STANDALONE_STATIC void free_channelinfo(ChannelInfo *ci)
 
 /* Reset channel access level values to their default state. */
 
-EXPORT_FUNC(reset_levels)
 STANDALONE_STATIC void reset_levels(ChannelInfo *ci)
 {
     int i;
@@ -104,7 +99,6 @@ STANDALONE_STATIC void reset_levels(ChannelInfo *ci)
  * limit there.
  */
 
-EXPORT_FUNC(check_channel_limit)
 int check_channel_limit(NickGroupInfo *ngi, int *max_ret)
 {
     register int max, count;
@@ -161,7 +155,7 @@ int delchan(ChannelInfo *ci)
         if (chanmode_reg) {
             c->mode &= ~chanmode_reg;
             /* Send this out immediately, no set_cmode() delay */
-            send_cmode_cmd(s_ChanServ, ci->name, "-%s",
+            send_cmode_cmd(chanserv_service.nick, ci->name, "-%s",
                            mode_flags_to_string(chanmode_reg, MODE_CHANNEL));
         }
     }
@@ -248,8 +242,8 @@ void restore_topic(Channel *c)
     ChannelInfo *ci = c->ci;
 
     if (ci && (ci->flags & CF_KEEPTOPIC) && ci->last_topic && *ci->last_topic){
-        set_topic(s_ChanServ, c, ci->last_topic,
-                  *ci->last_topic_setter ? ci->last_topic_setter : s_ChanServ,
+        set_topic(chanserv_service.nick, c, ci->last_topic,
+                  *ci->last_topic_setter ? ci->last_topic_setter : chanserv_service.nick,
                   ci->last_topic_time);
     }
 }
@@ -324,10 +318,10 @@ void unsuspend_channel(ChannelInfo *ci, int set_time)
 
 void chan_bad_password(User *u, ChannelInfo *ci)
 {
-    bad_password(s_ChanServ, u, ci->name);
+    bad_password(chanserv_service.nick, u, ci->name);
     ci->bad_passwords++;
     if (BadPassWarning && ci->bad_passwords == BadPassWarning) {
-        wallops(s_ChanServ, "\2Warning:\2 Repeated bad password attempts"
+        wallops(chanserv_service.nick, "\2Warning:\2 Repeated bad password attempts"
                             " for channel %s (last attempt by user %s)",
                 ci->name, u->nick);
     }

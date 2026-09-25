@@ -19,9 +19,9 @@
 
 /*************************************************************************/
 
-static int cb_check_modes = -1;
-static int cb_check_chan_user_modes = -1;
-static int cb_check_kick = -1;
+static Event* check_modes_event;
+static Event* check_chan_user_modes_event;
+static Event* check_kick_event;
 
 /*************************************************************************/
 /*************************************************************************/
@@ -65,7 +65,7 @@ void check_modes(Channel *c)
             char buf[BUFSIZE];
             snprintf(buf, sizeof(buf), "-%s",
                              mode_flags_to_string(chanmode_reg, MODE_CHANNEL));
-            set_cmode(s_ChanServ, c, buf);
+            set_cmode(chanserv_service.nick, c, buf);
             /* Flush it out immediately.  Note that this won't cause
              * infinite recursion because we're clearing the mode that
              * got us here in the first place. */
@@ -90,28 +90,28 @@ void check_modes(Channel *c)
             add = 0;
         else
             continue;
-        if (call_callback_4(cb_check_modes, c, ci, add, flag) > 0) {
+        if (event_emit(check_modes_event, c, ci, add, flag) > 0) {
             continue;
         } else if (flag == CMODE_k) {
             if (c->key && (!add || (add && c->key && ci->mlock.key
                                     && strcmp(c->key, ci->mlock.key) != 0))) {
-                set_cmode(s_ChanServ, c, "-k", c->key);
+                set_cmode(chanserv_service.nick, c, "-k", c->key);
                 set_cmode(NULL, c);  /* flush it out */
             }
             if (add && !c->key)
-                set_cmode(s_ChanServ, c, "+k", ci->mlock.key);
+                set_cmode(chanserv_service.nick, c, "+k", ci->mlock.key);
         } else if (flag == CMODE_l) {
             if (add && ci->mlock.limit != c->limit) {
                 char limitbuf[16];
                 snprintf(limitbuf, sizeof(limitbuf), "%d", ci->mlock.limit);
-                set_cmode(s_ChanServ, c, "+l", limitbuf);
+                set_cmode(chanserv_service.nick, c, "+l", limitbuf);
             } else if (!add && c->limit != 0) {
-                set_cmode(s_ChanServ, c, "-l");
+                set_cmode(chanserv_service.nick, c, "-l");
             }
         } else if (add ^ !!(c->mode & flag)) {
             newmode[0] = add ? '+' : '-';
             newmode[1] = mode_flag_to_char(flag, MODE_CHANNEL);
-            set_cmode(s_ChanServ, c, newmode);
+            set_cmode(chanserv_service.nick, c, newmode);
         }
     }
 
@@ -154,8 +154,8 @@ void check_chan_user_modes(const char *source, struct c_userlist *u,
      * prevent people from doing improper mode changes via Services, so
      * anything that gets here must be okay). */
     if (source && (irc_stricmp(source, ServerName) == 0
-                   || irc_stricmp(source, s_ChanServ) == 0
-                   || irc_stricmp(source, s_OperServ) == 0))
+                   || irc_stricmp(source, chanserv_service.nick) == 0
+                   || irc_stricmp(source, operserv_service.nick) == 0))
         return;
 
     /* Also don't reverse mode changes by the user themselves, unless the
@@ -191,9 +191,9 @@ void check_chan_user_modes(const char *source, struct c_userlist *u,
              || !check_access_if_idented(user, ci, CA_AUTOOP))
          && !check_access(user, ci, CA_AUTOOP)
         ) {
-            notice_lang(s_ChanServ, user, CHAN_IS_REGISTERED, s_ChanServ);
+            notice_lang(chanserv_service.nick, user, CHAN_IS_REGISTERED, chanserv_service.nick);
             u->flags |= CUFLAG_DEOPPED;
-            set_cmode(s_ChanServ, c, "-o", user->nick);
+            set_cmode(chanserv_service.nick, c, "-o", user->nick);
             modes &= ~CUMODE_o;
         } else if (check_access(user, ci, CA_AUTOOP)) {
             /* The user's an autoop user; update the last-used time here,
@@ -203,7 +203,7 @@ void check_chan_user_modes(const char *source, struct c_userlist *u,
     }
 
     /* Let the protocol module have a hack at it */
-    if (call_callback_4(cb_check_chan_user_modes, source, user, c, modes) > 0)
+    if (event_emit(check_chan_user_modes_event, source, user, c, modes) > 0)
         return;
 
     /* Adjust modes based on channel access */
@@ -251,7 +251,7 @@ static void local_set_cumodes(Channel *c, char plusminus, int32 modes,
     s = modestr;
     while (*s) {
         buf[1] = *s++;
-        set_cmode(s_ChanServ, c, buf, cu->user->nick);
+        set_cmode(chanserv_service.nick, c, buf, cu->user->nick);
     }
     /* Set user's modes now, so check_chan_user_modes() can properly
      * determine whether subsequent modes should be set or not */
@@ -277,7 +277,7 @@ static CSInhabitData *inhabit_list = NULL;
 static void timeout_leave(Timeout *to)
 {
     CSInhabitData *data = to->data;
-    send_cmd(s_ChanServ, "PART %s", data->chan);
+    send_cmd(chanserv_service.nick, "PART %s", data->chan);
     LIST_REMOVE(data, inhabit_list);
     free(data);
 }
@@ -322,7 +322,7 @@ int check_kick(User *user, const char *chan, int on_join)
         return 0;
     }
 
-    i = call_callback_5(cb_check_kick, user, chan, ci, &mask, &reason);
+    i = event_emit(check_kick_event, user, chan, ci, &mask, &reason);
     if (i == 2) {
         put_channelinfo(ci);
         return 0;
@@ -433,7 +433,7 @@ int check_kick(User *user, const char *chan, int on_join)
         LIST_SEARCH(inhabit_list, chan, chan, irc_stricmp, data);
         if (!data) {
             Timeout *to;
-            send_cmd(s_ChanServ, "JOIN %s", chan);
+            send_cmd(chanserv_service.nick, "JOIN %s", chan);
             to = add_timeout(CSInhabit, timeout_leave, 0);
             to->data = data = smalloc(sizeof(*data));
             LIST_INSERT(data, inhabit_list);
@@ -455,24 +455,24 @@ int check_kick(User *user, const char *chan, int on_join)
         clear_channel(c, CLEAR_EXCEPTS, user);
     /* Apparently invites can get around bans, so check for ban before adding*/
     if (!chan_has_ban(chan, mask)) {
-        send_cmode_cmd(s_ChanServ, chan, "+b %s", mask);
+        send_cmode_cmd(chanserv_service.nick, chan, "+b %s", mask);
         if (c) {
             char *av[3];
             av[0] = (char *)chan;
             av[1] = (char *)"+b";
             av[2] = mask;
-            do_cmode(s_ChanServ, 3, av);
+            do_cmode(chanserv_service.nick, 3, av);
         }
     }
     free(mask);
-    send_channel_cmd(s_ChanServ, "KICK %s %s :%s", chan, user->nick, reason);
+    send_channel_cmd(chanserv_service.nick, "KICK %s %s :%s", chan, user->nick, reason);
     if (!on_join) {
         /* The user is already in the channel userlist, so get them out */
         char *av[3];
         av[0] = (char *)chan;
         av[1] = user->nick;
         av[2] = (char *)"check_kick";  /* dummy value */
-        do_kick(s_ChanServ, 3, av);
+        do_kick(chanserv_service.nick, 3, av);
     }
     put_channelinfo(ci);
     return 1;
@@ -490,8 +490,8 @@ int check_topiclock(Channel *c, time_t topic_time)
     if (!ci || !(ci->flags & CF_TOPICLOCK))
         return 0;
     c->topic_time = topic_time;  /* because set_topic() may need it */
-    set_topic(s_ChanServ, c, ci->last_topic,
-              *ci->last_topic_setter ? ci->last_topic_setter : s_ChanServ,
+    set_topic(chanserv_service.nick, c, ci->last_topic,
+              *ci->last_topic_setter ? ci->last_topic_setter : chanserv_service.nick,
               ci->last_topic_time);
     return 1;
 }
@@ -501,13 +501,13 @@ int check_topiclock(Channel *c, time_t topic_time)
 
 int init_check(void)
 {
-    cb_check_modes           = register_callback("check_modes");
-    cb_check_chan_user_modes = register_callback("check_chan_user_modes");
-    cb_check_kick            = register_callback("check_kick");
-    if (cb_check_modes < 0 || cb_check_chan_user_modes < 0
-     || cb_check_kick < 0
+    check_modes_event = event_declare(THIS_MODULE, CHANSERV_EVENT_CHECK_MODES);
+    check_chan_user_modes_event = event_declare(THIS_MODULE, CHANSERV_EVENT_CHECK_CHAN_USER_MODES);
+    check_kick_event = event_declare(THIS_MODULE, CHANSERV_EVENT_CHECK_KICK);
+    if (!check_modes_event || !check_chan_user_modes_event
+     || !check_kick_event
     ) {
-        module_log("check: Unable to register callbacks");
+        module_log("check: Unable to declare events");
         exit_check();
         return 0;
     }
@@ -525,9 +525,6 @@ void exit_check()
         LIST_REMOVE(inhabit, inhabit_list);
         free(inhabit);
     }
-    unregister_callback(cb_check_kick);
-    unregister_callback(cb_check_chan_user_modes);
-    unregister_callback(cb_check_modes);
 }
 
 /*************************************************************************/

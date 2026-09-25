@@ -30,9 +30,8 @@
 
 /*************************************************************************/
 
-/* Callbacks used in this file: */
-static int cb_introduce_user = -1;
-static int cb_cmdline = -1;
+/* Events announced in this file: */
+static Event* command_line_event;
 
 /*************************************************************************/
 /************************* Configuration options *************************/
@@ -898,44 +897,13 @@ static int do_Umask(const char* filename, int linenum, char* param)
 /*********************** Introducing pseudoclients ***********************/
 /*************************************************************************/
 
-/* If `user' is the name of a Services pseudo-client, send a NICK command
- * for that given pseudo-client.  If `user' is NULL, send NICK commands for
- * all the pseudo-clients.  Return 1 if we sent a NICK command, else 0.
- */
-
-int introduce_user(const char* user)
-{
-    int retval;
-
-    retval = call_callback_1(cb_introduce_user, user);
-    if (user == NULL) {
-        if (retval > 0)
-            log("introduce_user(): callback returned nonzero for user==NULL");
-        retval = 1;
-    }
-
-    /* Watch out for infinite loops... */
-    if (retval) {
-#define LTSIZE 20
-        static int lasttimes[LTSIZE];
-        if (lasttimes[0] >= time(NULL) - 3)
-            fatal("introduce_user() loop detected");
-        memmove(lasttimes, lasttimes + 1,
-                sizeof(lasttimes) - sizeof(*lasttimes));
-        lasttimes[LTSIZE - 1] = time(NULL);
-#undef LTSIZE
-    }
-
-    return retval;
-}
-
 /*************************************************************************/
 /************************* Command-line parsing **************************/
 /*************************************************************************/
 
 /* Parse command-line options.  If `call_modules' is zero, parse main
  * options and ignore unrecognized ones; if nonzero, ignore main options,
- * call "command line" callback to check module options, and fail on
+ * emit the "core.command_line" event to check module options, and fail on
  * unrecognized ones.  Return 0 if all went well, -1 for an error with an
  * option, or 1 if Services should exit successfully.  Calls exit(0) if
  * "-help", "--help", or "-h" is present.
@@ -1066,7 +1034,7 @@ static int parse_options(int ac, char** av, int call_modules)
                 t = strchr(s, '=');
                 if (t)
                     *t++ = 0;
-                res = call_callback_2(cb_cmdline, s, t);
+                res = event_emit(command_line_event, s, t);
                 switch (res) {
                     case 0:
                         fprintf(stderr,
@@ -1229,24 +1197,21 @@ int init(int ac, char** av)
     sock_set_buflimits(NetBufferSize, TotalNetBufferSize);
     sock_set_rto(ReadTimeout);
 
-    /* Initialize module system.  This should be called before any
-     * callbacks are registered. */
-    if (!modules_init(ac, av))
+    /* Initialize the module system. */
+    if (!module_system_init())
         return -1;
 
-    /* Register our (and main.c's) callbacks. */
-    cb_cmdline = register_callback("command line");
-    cb_introduce_user = register_callback("introduce_user");
-    cb_connect = register_callback("connect");
-    cb_save_complete = register_callback("save data complete");
-    if (cb_cmdline < 0 || cb_introduce_user < 0 || cb_connect < 0 ||
-        cb_save_complete < 0) {
-        log("init(): Unable to register callbacks");
+    /* Declare our (and main.c's and databases.c's) events. */
+    command_line_event = event_declare(NULL, EVENT_COMMAND_LINE);
+    uplink_linked_event = event_declare(NULL, EVENT_UPLINK_LINKED);
+    save_complete_event = event_declare(NULL, EVENT_SAVE_COMPLETE);
+    if (!command_line_event || !uplink_linked_event || !save_complete_event) {
+        log("init(): Unable to declare events");
         return -1;
     }
 
     /* Switch on the database and cache drivers, so that modules can use
-     * db.h and cache.h from their init_module() on.  Their connection
+     * db.h and cache.h from their `init' on.  Their connection
      * threads only start once Services have forked (see below). */
     if (!pg_driver_init() || !redis_driver_init()) {
         log("init(): Unable to register the database drivers");
@@ -1285,12 +1250,13 @@ int init(int ac, char** av)
     /* Load modules. */
     ARRAY_FOREACH(i, LoadModules)
     {
-        if (!load_module(LoadModules[i])) {
+        if (!module_load(LoadModules[i])) {
             log("Error loading modules, aborting");
             return -1;
         }
     }
     log_debug(1, "Loaded modules");
+    event_report_undeclared();
     check_encryption();
 
     /* Load external language files (now that modules have had a chance to
@@ -1511,20 +1477,23 @@ int reconfigure(void)
      *          dependency problems;
      *    - next reconfigure any still-loaded modules (because newly-loaded
      *          modules in the next step may depend on the new settings);
-     *    - finally load any modules which weren't loaded before but have
-     *          loadmodule entries now.
+     *    - finally load every module that has a loadmodule entry and is
+     *          not loaded (new entries, and any a previous REHASH could
+     *          not load).
+     * A module that cannot be unloaded (another one requires it) does
+     * not stop the other two steps.
      */
     LoadModules_insert = LoadModules_count;
     for (i = old_LoadModules_count - 1; i >= 0; i--) {
         ARRAY_SEARCH_PLAIN(LoadModules, old_LoadModules[i], strcmp, j);
         if (j >= LoadModules_count) {
-            Module* mod = find_module(old_LoadModules[i]);
+            Module* mod = module_find(old_LoadModules[i]);
             if (!mod) {
                 log("BUG: reconfigure: module `%s' not available",
                     old_LoadModules[i]);
                 retval = 0;
             }
-            else if (!unload_module(mod)) {
+            else if (!module_unload(mod)) {
                 log("warning: reconfigure: module `%s' could not be unloaded",
                     old_LoadModules[i]);
                 ARRAY_INSERT(LoadModules, LoadModules_insert);
@@ -1533,24 +1502,20 @@ int reconfigure(void)
             }
         }
     }
-    if (retval && !reconfigure_modules()) {
+    if (!module_reconfigure_all()) {
         log("warning: reconfigure: module reconfiguration failed");
         retval = 0;
     }
-    if (retval) {
-        ARRAY_FOREACH(i, LoadModules)
-        {
-            ARRAY_SEARCH_PLAIN(old_LoadModules, LoadModules[i], strcmp, j);
-            if (j >= old_LoadModules_count) {
-                if (!load_module(LoadModules[i])) {
-                    log("warning: reconfigure: new module `%s' could not"
-                        " be loaded",
-                        LoadModules[i]);
-                    ARRAY_REMOVE(LoadModules, i);
-                    i--;
-                    retval = 0;
-                }
-            }
+    ARRAY_FOREACH(i, LoadModules)
+    {
+        if (module_find(LoadModules[i]))
+            continue;
+        if (!module_load(LoadModules[i])) {
+            log("warning: reconfigure: module `%s' could not be loaded",
+                LoadModules[i]);
+            ARRAY_REMOVE(LoadModules, i);
+            i--;
+            retval = 0;
         }
     }
 
@@ -1589,7 +1554,7 @@ void cleanup(void)
     store_collect();
     store_flush_all();
     store_wait(db_conf_save_timeout());
-    unload_all_modules();
+    module_unload_all();
     store_collect();
     store_wait(db_conf_save_timeout());
     if (servsock) {
@@ -1616,11 +1581,12 @@ void cleanup(void)
     server_cleanup();
     channel_cleanup();
     user_cleanup();
-    unregister_callback(cb_save_complete);
-    unregister_callback(cb_connect);
-    unregister_callback(cb_introduce_user);
-    unregister_callback(cb_cmdline);
-    modules_cleanup();
+    event_retract(save_complete_event);
+    event_retract(uplink_linked_event);
+    event_retract(command_line_event);
+    save_complete_event = uplink_linked_event = command_line_event = NULL;
+    module_system_cleanup();
+    event_system_cleanup();
     conf_cleanup();
     close_log();
 }

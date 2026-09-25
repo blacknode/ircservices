@@ -31,15 +31,9 @@
 
 /*************************************************************************/
 
+/* Optional modules, looked at while they are loaded (NULL otherwise). */
 static Module *module_akill;
 static Module *module_nickserv;
-
-       char *s_OperServ;
-static char *desc_OperServ;
-       char *s_GlobalNoticer;
-static char *desc_GlobalNoticer;
-EXPORT_VAR(char *,s_OperServ)
-EXPORT_VAR(char *,s_GlobalNoticer)
 
        char * ServicesRoot;
 static int    WallOper;
@@ -49,14 +43,13 @@ static int    WallSU;
 static int    KillClonesAutokill;
 static time_t KillClonesAutokillExpire;
 static int    AllowRaw;
-EXPORT_VAR(char *,ServicesRoot)
 
-static int cb_command   = -1;
-static int cb_help      = -1;
-static int cb_help_cmds = -1;
-static int cb_set       = -1;
-static int cb_stats     = -1;
-static int cb_stats_all = -1;
+static Event* command_event;
+static Event* help_event;
+static Event* help_cmds_event;
+static Event* set_event;
+static Event* stats_event;
+static Event* stats_all_event;
 
 /* Non-volatile data (saved to OperServ database) */
 static struct {
@@ -190,7 +183,6 @@ static void *next_operserv_data(void)          { return NULL;           }
 
 /* Routines to allow external access to OperServ data (for httpd/dbaccess) */
 
-EXPORT_FUNC(get_operserv_data)
 int get_operserv_data(int what, void *ret)
 {
     switch (what) {
@@ -211,7 +203,6 @@ int get_operserv_data(int what, void *ret)
 }
 
 
-EXPORT_FUNC(put_operserv_data)
 int put_operserv_data(int what, void *ptr)
 {
     switch (what) {
@@ -287,7 +278,7 @@ static NickInfo *local_get_nickinfo(const char *nick)
 
     if (!module_nickserv)
         return NULL;
-    p_get_nickinfo = get_module_symbol(module_nickserv, "get_nickinfo");
+    p_get_nickinfo = module_symbol(module_nickserv, "get_nickinfo");
     if (!p_get_nickinfo)
         return NULL;
     return p_get_nickinfo(nick);
@@ -299,7 +290,7 @@ static NickInfo *local_put_nickinfo(NickInfo *ni)
 
     if (!module_nickserv)
         return NULL;
-    p_put_nickinfo = get_module_symbol(module_nickserv, "put_nickinfo");
+    p_put_nickinfo = module_symbol(module_nickserv, "put_nickinfo");
     if (!p_put_nickinfo)
         return NULL;
     return p_put_nickinfo(ni);
@@ -312,8 +303,8 @@ static NickGroupInfo *local__get_ngi(const NickInfo *ni, const char *file,
 
     if (!module_nickserv)
         return NULL;
-    if (!check_module_symbol(module_nickserv, "_get_ngi",
-                             (void **)&p__get_ngi, NULL)) {
+    if (!module_has_symbol(module_nickserv, "_get_ngi",
+                           (void **)&p__get_ngi)) {
         module_log("Unable to find symbol `_get_ngi' in module"
                    " `nickserv/main' (called from %s:%d)", file, line);
         return NULL;
@@ -328,7 +319,7 @@ static NickGroupInfo *local_put_nickgroupinfo(NickGroupInfo *ngi)
     if (!module_nickserv)
         return NULL;
     p_put_nickgroupinfo =
-        get_module_symbol(module_nickserv, "put_nickgroupinfo");
+        module_symbol(module_nickserv, "put_nickgroupinfo");
     if (!p_put_nickgroupinfo)
         return NULL;
     return p_put_nickgroupinfo(ngi);
@@ -344,7 +335,7 @@ static int local_foreach_nickgroupinfo(const char *where,
     if (!module_nickserv)
         return -1;
     p_foreach_nickgroupinfo =
-        get_module_symbol(module_nickserv, "foreach_nickgroupinfo");
+        module_symbol(module_nickserv, "foreach_nickgroupinfo");
     if (!p_foreach_nickgroupinfo)
         return -1;
     return p_foreach_nickgroupinfo(where, params, nparams, fn, arg);
@@ -355,7 +346,7 @@ static int privlist_show(NickGroupInfo *ngi, void *arg)
 {
     User *u = arg;
 
-    notice(s_OperServ, u->nick, "%s", ngi_mainnick(ngi));
+    notice(operserv_service.nick, u->nick, "%s", ngi_mainnick(ngi));
     return 0;
 }
 
@@ -363,65 +354,33 @@ static int privlist_show(NickGroupInfo *ngi, void *arg)
 /***************************** Main routines *****************************/
 /*************************************************************************/
 
-/* Introduce the OperServ pseudoclient and related clients. */
-
-static int introduce_operserv(const char *nick)
-{
-    if (!nick || irc_stricmp(nick, s_OperServ) == 0) {
-        send_pseudo_nick(s_OperServ, desc_OperServ, PSEUDO_OPER|PSEUDO_INVIS);
-        if (nick)
-            return 1;
-    }
-    if (!nick || irc_stricmp(nick, s_GlobalNoticer) == 0) {
-        send_pseudo_nick(s_GlobalNoticer, desc_GlobalNoticer,
-                         PSEUDO_OPER|PSEUDO_INVIS);
-        if (nick)
-            return 1;
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-static int operserv(const char *source, const char *target, char *buf);
+static void operserv_message(struct Service *service, User *u, char *buf);
 
 /* Run a command again once its password is ready (see encrypt.h). */
 
 static void operserv_replay(User *u, char *line)
 {
-    operserv(u->nick, s_OperServ, line);
+    operserv_message(&operserv_service, u, line);
 }
 
 /*************************************************************************/
 
-/* Main OperServ routine. */
+/* Main OperServ routine: a PRIVMSG to OperServ. */
 
-static int operserv(const char *source, const char *target, char *buf)
+static void operserv_message(struct Service *service, User *u, char *buf)
 {
+    const char *source = u->nick;
     char *cmd;
     const char *s;
-    User *u = get_user(source);
-
-    if (irc_stricmp(target, s_OperServ) != 0)
-        return 0;
-
-    if (!u) {
-        module_log("user record for %s not found", source);
-        notice(s_OperServ, source, "Access denied.");
-        if (WallBadOS)
-            wallops(s_OperServ, "Denied access to %s from %s (user record"
-                                " missing)", s_OperServ, source);
-        return 1;
-    }
 
     if (!is_oper(u)) {
-        notice_lang(s_OperServ, u, ACCESS_DENIED);
+        notice_lang(operserv_service.nick, u, ACCESS_DENIED);
         if (WallBadOS)
-            wallops(s_OperServ, "Denied access to %s from %s (non-oper)",
-                    s_OperServ, source);
+            wallops(operserv_service.nick, "Denied access to %s from %s (non-oper)",
+                    operserv_service.nick, source);
         module_log("Non-oper %s!%s@%s sent: %s",
                    u->nick, u->username, u->host, buf);
-        return 1;
+        return;
     }
 
     /* Don't log stuff that might be passwords, and don't log a command
@@ -443,41 +402,9 @@ static int operserv(const char *source, const char *target, char *buf)
 
     password_command_begin(THIS_MODULE, u, operserv_replay, buf);
     cmd = strtok(buf, " ");
-    if (!cmd) {
-        /* nothing */
-    } else if (stricmp(cmd, "\1PING") == 0) {
-        if (!(s = strtok_remaining()))
-            s = "\1";
-        notice(s_OperServ, source, "\1PING %s", s);
-    } else {
-        if (call_callback_2(cb_command, u, cmd) <= 0)
-            run_cmd(s_OperServ, u, THIS_MODULE, cmd);
-    }
+    if (cmd && event_emit(command_event, u, cmd) <= 0)
+        run_cmd(operserv_service.nick, u, THIS_MODULE, cmd);
     password_command_end();
-
-    return 1;
-}
-
-/*************************************************************************/
-
-/* Return a /WHOIS response for OperServ or the global noticer. */
-
-static int operserv_whois(const char *source, char *who, char *extra)
-{
-    if (irc_stricmp(who, s_OperServ) == 0) {
-        send_cmd(ServerName, "311 %s %s %s %s * :%s", source, who,
-                 ServiceUser, ServiceHost, desc_OperServ);
-    } else if (irc_stricmp(who, s_GlobalNoticer) == 0) {
-        send_cmd(ServerName, "311 %s %s %s %s * :%s", source, who,
-                 ServiceUser, ServiceHost, desc_GlobalNoticer);
-    } else {
-        return 0;
-    }
-    send_cmd(ServerName, "312 %s %s %s :%s", source, who,
-             ServerName, ServerDesc);
-    send_cmd(ServerName, "313 %s %s :is a network service", source, who);
-    send_cmd(ServerName, "318 %s %s End of /WHOIS response.", source, who);
-    return 1;
 }
 
 /*************************************************************************/
@@ -486,7 +413,6 @@ static int operserv_whois(const char *source, char *who, char *extra)
 
 /* Does the given user have Services super-user privileges? */
 
-EXPORT_FUNC(is_services_root)
 int is_services_root(const User *u)
 {
     NickInfo *ni;
@@ -497,7 +423,7 @@ int is_services_root(const User *u)
         return 1;
     if (!(ni = get_nickinfo(ServicesRoot))) {
         if (!warned_ni) {
-            wallops(s_OperServ, "Warning: Services super-user nickname %s"
+            wallops(operserv_service.nick, "Warning: Services super-user nickname %s"
                     " is not registered", ServicesRoot);
             warned_ni = 1;
         }
@@ -509,7 +435,7 @@ int is_services_root(const User *u)
     put_nickinfo(ni);
     if (!rootid) {
         if (!warned_id) {
-            wallops(s_OperServ, "Warning: Services super-user nickname %s"
+            wallops(operserv_service.nick, "Warning: Services super-user nickname %s"
                     " is forbidden or not properly registered", ServicesRoot);
             warned_id = 1;
         }
@@ -528,7 +454,6 @@ int is_services_root(const User *u)
 
 /* Does the given user have Services admin privileges? */
 
-EXPORT_FUNC(is_services_admin)
 int is_services_admin(const User *u)
 {
     if (!is_oper(u) || !user_identified(u))
@@ -543,7 +468,6 @@ int is_services_admin(const User *u)
 
 /* Does the given user have Services oper privileges? */
 
-EXPORT_FUNC(is_services_oper)
 int is_services_oper(const User *u)
 {
     if (!is_oper(u) || !user_identified(u))
@@ -562,7 +486,6 @@ int is_services_oper(const User *u)
  * admin or root. This function only checks if a user has the ABILITY to be
  * a services admin. Rather use is_services_admin(User *u). -TheShadow */
 
-EXPORT_FUNC(nick_is_services_admin)
 int nick_is_services_admin(const NickInfo *ni)
 {
     NickGroupInfo *ngi;
@@ -626,29 +549,29 @@ static void privlist_add(User *u, int listid, const char *nick)
     NickGroupInfo *ngi;
 
     if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_OperServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(operserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
         return;
     }
     ngi = get_ngi(ni);
     put_nickinfo(ni);
     if (!ngi) {
-        notice_lang(s_OperServ, u, INTERNAL_ERROR);
+        notice_lang(operserv_service.nick, u, INTERNAL_ERROR);
         return;
     }
     if (nextlevel && ngi->os_priv >= nextlevel) {
-        notice_lang(s_OperServ, u, msgs[MSG_EXISTS_NEXT], nick);
+        notice_lang(operserv_service.nick, u, msgs[MSG_EXISTS_NEXT], nick);
         put_nickgroupinfo(ngi);
         return;
     } else if (ngi->os_priv >= level) {
-        notice_lang(s_OperServ, u, msgs[MSG_EXISTS], nick);
+        notice_lang(operserv_service.nick, u, msgs[MSG_EXISTS], nick);
         put_nickgroupinfo(ngi);
         return;
     }
     ngi->os_priv = level;
     put_nickgroupinfo(ngi);
-    notice_lang(s_OperServ, u, msgs[MSG_ADDED], nick);
+    notice_lang(operserv_service.nick, u, msgs[MSG_ADDED], nick);
     if (readonly)
-        notice_lang(s_OperServ, u, READ_ONLY_MODE);
+        notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
 }
 
 /*************************************************************************/
@@ -664,25 +587,25 @@ static void privlist_rem(User *u, int listid, const char *nick)
     NickGroupInfo *ngi;
 
     if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_OperServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(operserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
         return;
     }
     ngi = get_ngi(ni);
     put_nickinfo(ni);
     if (!ngi) {
-        notice_lang(s_OperServ, u, INTERNAL_ERROR);
+        notice_lang(operserv_service.nick, u, INTERNAL_ERROR);
         return;
     }
     if (ngi->os_priv < level || (nextlevel && ngi->os_priv >= nextlevel)) {
-        notice_lang(s_OperServ, u, msgs[MSG_NOTFOUND], nick);
+        notice_lang(operserv_service.nick, u, msgs[MSG_NOTFOUND], nick);
         put_nickgroupinfo(ngi);
         return;
     }
     ngi->os_priv = 0;
     put_nickgroupinfo(ngi);
-    notice_lang(s_OperServ, u, msgs[MSG_REMOVED], nick);
+    notice_lang(operserv_service.nick, u, msgs[MSG_REMOVED], nick);
     if (readonly)
-        notice_lang(s_OperServ, u, READ_ONLY_MODE);
+        notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
 }
 
 /*************************************************************************/
@@ -697,35 +620,35 @@ static void do_help(User *u)
     Module *mod;
 
     if (!cmd) {
-        notice_help(s_OperServ, u, OPER_HELP);
-    } else if (call_callback_2(cb_help, u, cmd) > 0) {
+        notice_help(operserv_service.nick, u, OPER_HELP);
+    } else if (event_emit(help_event, u, cmd) > 0) {
         return;
     } else if (stricmp(cmd, "COMMANDS") == 0) {
-        notice_help(s_OperServ, u, OPER_HELP_COMMANDS);
-        call_callback_2(cb_help_cmds, u, 0);
-        notice_help(s_OperServ, u, OPER_HELP_COMMANDS_SERVOPER);
-        if ((mod = find_module("operserv/akill"))) {
+        notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS);
+        event_emit(help_cmds_event, u, 0);
+        notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS_SERVOPER);
+        if ((mod = module_find("operserv/akill"))) {
             int *p_EnableExclude;
-            notice_help(s_OperServ, u, OPER_HELP_COMMANDS_AKILL);
-            p_EnableExclude = get_module_symbol(mod, "EnableExclude");
+            notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS_AKILL);
+            p_EnableExclude = module_symbol(mod, "EnableExclude");
             if (p_EnableExclude && *p_EnableExclude)
-                notice_help(s_OperServ, u, OPER_HELP_COMMANDS_EXCLUDE);
+                notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS_EXCLUDE);
         }
-        if (find_module("operserv/sline"))
-            notice_help(s_OperServ, u, OPER_HELP_COMMANDS_SLINE);
-        if (find_module("operserv/sessions"))
-            notice_help(s_OperServ, u, OPER_HELP_COMMANDS_SESSION);
-        if (find_module("operserv/news"))
-            notice_help(s_OperServ, u, OPER_HELP_COMMANDS_NEWS);
-        call_callback_2(cb_help_cmds, u, 1);
-        notice_help(s_OperServ, u, OPER_HELP_COMMANDS_SERVADMIN);
-        call_callback_2(cb_help_cmds, u, 2);
-        notice_help(s_OperServ, u, OPER_HELP_COMMANDS_SERVROOT);
+        if (module_find("operserv/sline"))
+            notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS_SLINE);
+        if (module_find("operserv/sessions"))
+            notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS_SESSION);
+        if (module_find("operserv/news"))
+            notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS_NEWS);
+        event_emit(help_cmds_event, u, 1);
+        notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS_SERVADMIN);
+        event_emit(help_cmds_event, u, 2);
+        notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS_SERVROOT);
         if (AllowRaw)
-            notice_help(s_OperServ, u, OPER_HELP_COMMANDS_RAW);
-        call_callback_2(cb_help_cmds, u, 3);
+            notice_help(operserv_service.nick, u, OPER_HELP_COMMANDS_RAW);
+        event_emit(help_cmds_event, u, 3);
     } else {
-        help_cmd(s_OperServ, u, THIS_MODULE, cmd);
+        help_cmd(operserv_service.nick, u, THIS_MODULE, cmd);
     }
 }
 
@@ -738,10 +661,10 @@ static void do_global(User *u)
     char *msg = strtok_remaining();
 
     if (!msg) {
-        syntax_error(s_OperServ, u, "GLOBAL", OPER_GLOBAL_SYNTAX);
+        syntax_error(operserv_service.nick, u, "GLOBAL", OPER_GLOBAL_SYNTAX);
         return;
     }
-    notice_all(s_GlobalNoticer, "%s", msg);
+    notice_all(global_noticer_service.nick, "%s", msg);
 }
 
 /*************************************************************************/
@@ -763,8 +686,8 @@ static void do_stats(User *u)
         if (stricmp(extra, "RESET") == 0) {
             operserv_data.maxusercnt = usercnt;
             operserv_data.maxusertime = time(NULL);
-            notice_lang(s_OperServ, u, OPER_STATS_RESET_USER_COUNT);
-        } else if (call_callback_2(cb_stats, u, extra) > 0) {
+            notice_lang(operserv_service.nick, u, OPER_STATS_RESET_USER_COUNT);
+        } else if (event_emit(stats_event, u, extra) > 0) {
             /* nothing */
         } else if (stricmp(extra, "NETWORK") == 0) {
             uint64 read, written;
@@ -774,38 +697,38 @@ static void do_stats(User *u)
             sock_bufstat(servsock, &socksize, &totalsize, &ratio1, &ratio2);
             socksize /= 1024;
             totalsize /= 1024;
-            notice_lang(s_OperServ, u, OPER_STATS_KBYTES_READ,
+            notice_lang(operserv_service.nick, u, OPER_STATS_KBYTES_READ,
                         (unsigned int)(read/1024));
-            notice_lang(s_OperServ, u, OPER_STATS_KBYTES_WRITTEN,
+            notice_lang(operserv_service.nick, u, OPER_STATS_KBYTES_WRITTEN,
                         (unsigned int)(written/1024));
             if (ratio1)
-                notice_lang(s_OperServ, u, OPER_STATS_NETBUF_SOCK_PERCENT,
+                notice_lang(operserv_service.nick, u, OPER_STATS_NETBUF_SOCK_PERCENT,
                             socksize, ratio1);
             else
-                notice_lang(s_OperServ, u, OPER_STATS_NETBUF_SOCK, socksize);
+                notice_lang(operserv_service.nick, u, OPER_STATS_NETBUF_SOCK, socksize);
             if (ratio2)
-                notice_lang(s_OperServ, u, OPER_STATS_NETBUF_TOTAL_PERCENT,
+                notice_lang(operserv_service.nick, u, OPER_STATS_NETBUF_TOTAL_PERCENT,
                             totalsize, ratio2);
             else
-                notice_lang(s_OperServ, u, OPER_STATS_NETBUF_TOTAL, totalsize);
+                notice_lang(operserv_service.nick, u, OPER_STATS_NETBUF_TOTAL, totalsize);
         } else {
-            notice_lang(s_OperServ, u, OPER_STATS_UNKNOWN_OPTION,
+            notice_lang(operserv_service.nick, u, OPER_STATS_UNKNOWN_OPTION,
                         strupper(extra));
         }
         return;
     }
 
-    notice_lang(s_OperServ, u, OPER_STATS_CURRENT_USERS, usercnt, opcnt);
+    notice_lang(operserv_service.nick, u, OPER_STATS_CURRENT_USERS, usercnt, opcnt);
     strftime_lang(timebuf, sizeof(timebuf), u->ngi,
                   STRFTIME_DATE_TIME_FORMAT, operserv_data.maxusertime);
-    notice_lang(s_OperServ, u, OPER_STATS_MAX_USERS, operserv_data.maxusercnt,
+    notice_lang(operserv_service.nick, u, OPER_STATS_MAX_USERS, operserv_data.maxusercnt,
                 timebuf);
     if (days >= 1) {
         const char *str = getstring(u->ngi, days!=1 ? STR_DAYS : STR_DAY);
-        notice_lang(s_OperServ, u, OPER_STATS_UPTIME_DHM,
+        notice_lang(operserv_service.nick, u, OPER_STATS_UPTIME_DHM,
                 days, str, hours, mins);
     } else {
-        notice_lang(s_OperServ, u, OPER_STATS_UPTIME_HM_MS,
+        notice_lang(operserv_service.nick, u, OPER_STATS_UPTIME_HM_MS,
                     maketime(u->ngi, uptime, MT_DUALUNIT|MT_SECONDS));
     }
 
@@ -813,15 +736,15 @@ static void do_stats(User *u)
         long count, mem;
 
         get_user_stats(&count, &mem);
-        notice_lang(s_OperServ, u, OPER_STATS_ALL_USER_MEM,
+        notice_lang(operserv_service.nick, u, OPER_STATS_ALL_USER_MEM,
                     (int)count, (int)((mem+512) / 1024));
         get_channel_stats(&count, &mem);
-        notice_lang(s_OperServ, u, OPER_STATS_ALL_CHANNEL_MEM,
+        notice_lang(operserv_service.nick, u, OPER_STATS_ALL_CHANNEL_MEM,
                     (int)count, (int)((mem+512) / 1024));
         get_server_stats(&count, &mem);
-        notice_lang(s_OperServ, u, OPER_STATS_ALL_SERVER_MEM,
+        notice_lang(operserv_service.nick, u, OPER_STATS_ALL_SERVER_MEM,
                     (int)count, (int)((mem+512) / 1024));
-        call_callback_2(cb_stats_all, u, s_OperServ);
+        event_emit(stats_all_event, u, operserv_service.nick);
 
     }
 }
@@ -837,7 +760,7 @@ static void do_servermap(User *u)
     Server *root = get_server("");
     if (!root) {
         module_log("BUG: root server not found for SERVERMAP");
-        notice_lang(s_OperServ, u, INTERNAL_ERROR);
+        notice_lang(operserv_service.nick, u, INTERNAL_ERROR);
         return;
     }
     map_server(u, root, 0);
@@ -869,7 +792,7 @@ static void map_server(User *u, Server *s, int level)
     }
     if (level)
         ptr += snprintf(ptr, sizeof(buf)-(ptr-buf), "%s", indentstr);
-    notice(s_OperServ, u->nick, "%s%s%s", buf,
+    notice(operserv_service.nick, u->nick, "%s%s%s", buf,
            s ? (*s->name ? s->name : ServerName) : "...",
            (s && s->fake) ? "(*)" : "");
     if (s && s->child) {
@@ -896,18 +819,18 @@ static void do_getkey(User *u)
     Channel *c;
 
     if (!chan || strtok_remaining()) {
-        syntax_error(s_OperServ, u, "GETKEY", OPER_GETKEY_SYNTAX);
+        syntax_error(operserv_service.nick, u, "GETKEY", OPER_GETKEY_SYNTAX);
         return;
     }
     if (!(c = get_channel(chan))) {
-        notice_lang(s_OperServ, u, CHAN_X_NOT_IN_USE, chan);
+        notice_lang(operserv_service.nick, u, CHAN_X_NOT_IN_USE, chan);
     } else {
         if (WallOSChannel)
-            wallops(s_OperServ, "%s used GETKEY on %s", u->nick, chan);
+            wallops(operserv_service.nick, "%s used GETKEY on %s", u->nick, chan);
         if (c->key)
-            notice_lang(s_OperServ, u, OPER_GETKEY_KEY_IS, c->name, c->key);
+            notice_lang(operserv_service.nick, u, OPER_GETKEY_KEY_IS, c->name, c->key);
         else
-            notice_lang(s_OperServ, u, OPER_GETKEY_NO_KEY, c->name);
+            notice_lang(operserv_service.nick, u, OPER_GETKEY_NO_KEY, c->name);
     }
 }
 
@@ -924,33 +847,33 @@ static void do_os_mode(User *u)
     Channel *c;
 
     if (!s) {
-        syntax_error(s_OperServ, u, "MODE", OPER_MODE_SYNTAX);
+        syntax_error(operserv_service.nick, u, "MODE", OPER_MODE_SYNTAX);
         return;
     }
     chan = s;
     s += strcspn(s, " ");
     if (!*s) {
-        syntax_error(s_OperServ, u, "MODE", OPER_MODE_SYNTAX);
+        syntax_error(operserv_service.nick, u, "MODE", OPER_MODE_SYNTAX);
         return;
     }
     *s = 0;
     modes = (s+1) + strspn(s+1, " ");
     if (!*modes) {
-        syntax_error(s_OperServ, u, "MODE", OPER_MODE_SYNTAX);
+        syntax_error(operserv_service.nick, u, "MODE", OPER_MODE_SYNTAX);
         return;
     }
     if (!(c = get_channel(chan))) {
-        notice_lang(s_OperServ, u, CHAN_X_NOT_IN_USE, chan);
+        notice_lang(operserv_service.nick, u, CHAN_X_NOT_IN_USE, chan);
     } else if (c->bouncy_modes) {
-        notice_lang(s_OperServ, u, OPER_BOUNCY_MODES);
+        notice_lang(operserv_service.nick, u, OPER_BOUNCY_MODES);
         return;
     } else {
-        send_cmd(s_OperServ, "MODE %s %s", chan, modes);
+        send_cmd(operserv_service.nick, "MODE %s %s", chan, modes);
         if (WallOSChannel)
-            wallops(s_OperServ, "%s used MODE %s on %s", u->nick, modes, chan);
+            wallops(operserv_service.nick, "%s used MODE %s on %s", u->nick, modes, chan);
         *s = ' ';
         argc = split_buf(chan, &argv, 1);
-        do_cmode(s_OperServ, argc, argv);
+        do_cmode(operserv_service.nick, argc, argv);
     }
 }
 
@@ -966,11 +889,11 @@ static void do_clearmodes(User *u)
     int all = 0;
 
     if (!chan) {
-        syntax_error(s_OperServ, u, "CLEARMODES", OPER_CLEARMODES_SYNTAX);
+        syntax_error(operserv_service.nick, u, "CLEARMODES", OPER_CLEARMODES_SYNTAX);
     } else if (!(c = get_channel(chan))) {
-        notice_lang(s_OperServ, u, CHAN_X_NOT_IN_USE, chan);
+        notice_lang(operserv_service.nick, u, CHAN_X_NOT_IN_USE, chan);
     } else if (c->bouncy_modes) {
-        notice_lang(s_OperServ, u, OPER_BOUNCY_MODES);
+        notice_lang(operserv_service.nick, u, OPER_BOUNCY_MODES);
         return;
     } else {
         s = strtok(NULL, " ");
@@ -978,20 +901,20 @@ static void do_clearmodes(User *u)
             if (stricmp(s, "ALL") == 0) {
                 all = 1;
             } else {
-                syntax_error(s_OperServ,u,"CLEARMODES",OPER_CLEARMODES_SYNTAX);
+                syntax_error(operserv_service.nick,u,"CLEARMODES",OPER_CLEARMODES_SYNTAX);
                 return;
             }
         }
         if (WallOSChannel)
-            wallops(s_OperServ, "%s used CLEARMODES%s on %s",
+            wallops(operserv_service.nick, "%s used CLEARMODES%s on %s",
                         u->nick, all ? " ALL" : "", chan);
         if (all) {
             clear_channel(c, CLEAR_UMODES, (void *)MODE_ALL);
             clear_channel(c, CLEAR_CMODES, NULL);
-            notice_lang(s_OperServ, u, OPER_CLEARMODES_ALL_DONE, chan);
+            notice_lang(operserv_service.nick, u, OPER_CLEARMODES_ALL_DONE, chan);
         } else {
             clear_channel(c, CLEAR_CMODES, NULL);
-            notice_lang(s_OperServ, u, OPER_CLEARMODES_DONE, chan);
+            notice_lang(operserv_service.nick, u, OPER_CLEARMODES_DONE, chan);
         }
     }
 }
@@ -1007,18 +930,18 @@ static void do_clearchan(User *u)
     char buf[BUFSIZE];
 
     if (!chan) {
-        syntax_error(s_OperServ, u, "CLEARCHAN", OPER_CLEARCHAN_SYNTAX);
+        syntax_error(operserv_service.nick, u, "CLEARCHAN", OPER_CLEARCHAN_SYNTAX);
     } else if (!(c = get_channel(chan))) {
-        notice_lang(s_OperServ, u, CHAN_X_NOT_IN_USE, chan);
+        notice_lang(operserv_service.nick, u, CHAN_X_NOT_IN_USE, chan);
     } else if (c->bouncy_modes) {
-        notice_lang(s_OperServ, u, OPER_BOUNCY_MODES);
+        notice_lang(operserv_service.nick, u, OPER_BOUNCY_MODES);
         return;
     } else {
         if (WallOSChannel)
-            wallops(s_OperServ, "%s used CLEARCHAN on %s", u->nick, chan);
+            wallops(operserv_service.nick, "%s used CLEARCHAN on %s", u->nick, chan);
         snprintf(buf, sizeof(buf), "CLEARCHAN by %s", u->nick);
         clear_channel(c, CLEAR_USERS, buf);
-        notice_lang(s_OperServ, u, OPER_CLEARCHAN_DONE, chan);
+        notice_lang(operserv_service.nick, u, OPER_CLEARCHAN_DONE, chan);
     }
 }
 
@@ -1036,22 +959,22 @@ static void do_os_kick(User *u)
     nick = strtok(NULL, " ");
     s = strtok_remaining();
     if (!chan || !nick || !s) {
-        syntax_error(s_OperServ, u, "KICK", OPER_KICK_SYNTAX);
+        syntax_error(operserv_service.nick, u, "KICK", OPER_KICK_SYNTAX);
         return;
     }
     if (!(c = get_channel(chan))) {
-        notice_lang(s_OperServ, u, CHAN_X_NOT_IN_USE, chan);
+        notice_lang(operserv_service.nick, u, CHAN_X_NOT_IN_USE, chan);
     } else if (c->bouncy_modes) {
-        notice_lang(s_OperServ, u, OPER_BOUNCY_MODES);
+        notice_lang(operserv_service.nick, u, OPER_BOUNCY_MODES);
         return;
     }
-    send_cmd(s_OperServ, "KICK %s %s :%s (%s)", chan, nick, u->nick, s);
+    send_cmd(operserv_service.nick, "KICK %s %s :%s (%s)", chan, nick, u->nick, s);
     if (WallOSChannel)
-        wallops(s_OperServ, "%s used KICK on %s/%s", u->nick, nick, chan);
+        wallops(operserv_service.nick, "%s used KICK on %s/%s", u->nick, nick, chan);
     argv[0] = chan;
     argv[1] = nick;
     argv[2] = s;
-    do_kick(s_OperServ, 3, argv);
+    do_kick(operserv_service.nick, 3, argv);
 }
 
 /*************************************************************************/
@@ -1063,7 +986,7 @@ static void do_admin(User *u)
     const char *cmd, *nick;
 
     if (!module_nickserv) {
-        notice_lang(s_OperServ, u, OPER_ADMIN_NO_NICKSERV);
+        notice_lang(operserv_service.nick, u, OPER_ADMIN_NO_NICKSERV);
         return;
     }
     cmd = strtok(NULL, " ");
@@ -1072,37 +995,37 @@ static void do_admin(User *u)
 
     if (stricmp(cmd, "ADD") == 0) {
         if (!is_services_root(u)) {
-            notice_lang(s_OperServ, u, PERMISSION_DENIED);
+            notice_lang(operserv_service.nick, u, PERMISSION_DENIED);
             return;
         }
         nick = strtok(NULL, " ");
         if (nick)
             privlist_add(u, LIST_ADMIN, nick);
         else
-            syntax_error(s_OperServ, u, "ADMIN", OPER_ADMIN_ADD_SYNTAX);
+            syntax_error(operserv_service.nick, u, "ADMIN", OPER_ADMIN_ADD_SYNTAX);
 
     } else if (stricmp(cmd, "DEL") == 0) {
         if (!is_services_root(u)) {
-            notice_lang(s_OperServ, u, PERMISSION_DENIED);
+            notice_lang(operserv_service.nick, u, PERMISSION_DENIED);
             return;
         }
         nick = strtok(NULL, " ");
         if (nick)
             privlist_rem(u, LIST_ADMIN, nick);
         else
-            syntax_error(s_OperServ, u, "ADMIN", OPER_ADMIN_DEL_SYNTAX);
+            syntax_error(operserv_service.nick, u, "ADMIN", OPER_ADMIN_DEL_SYNTAX);
 
     } else if (stricmp(cmd, "LIST") == 0) {
         char priv[16];
         const char *params[1];
-        notice_lang(s_OperServ, u, OPER_ADMIN_LIST_HEADER);
+        notice_lang(operserv_service.nick, u, OPER_ADMIN_LIST_HEADER);
         snprintf(priv, sizeof(priv), "%d", NP_SERVADMIN);
         params[0] = priv;
         foreach_nickgroupinfo("t.os_priv >= $2::smallint", params, 1,
                               privlist_show, u);
 
     } else {
-        syntax_error(s_OperServ, u, "ADMIN", OPER_ADMIN_SYNTAX);
+        syntax_error(operserv_service.nick, u, "ADMIN", OPER_ADMIN_SYNTAX);
     }
 }
 
@@ -1115,7 +1038,7 @@ static void do_oper(User *u)
     const char *cmd, *nick;
 
     if (!module_nickserv) {
-        notice_lang(s_OperServ, u, OPER_OPER_NO_NICKSERV);
+        notice_lang(operserv_service.nick, u, OPER_OPER_NO_NICKSERV);
         return;
     }
     cmd = strtok(NULL, " ");
@@ -1124,30 +1047,30 @@ static void do_oper(User *u)
 
     if (stricmp(cmd, "ADD") == 0) {
         if (!is_services_admin(u)) {
-            notice_lang(s_OperServ, u, PERMISSION_DENIED);
+            notice_lang(operserv_service.nick, u, PERMISSION_DENIED);
             return;
         }
         nick = strtok(NULL, " ");
         if (nick)
             privlist_add(u, LIST_OPER, nick);
         else
-            syntax_error(s_OperServ, u, "OPER", OPER_OPER_ADD_SYNTAX);
+            syntax_error(operserv_service.nick, u, "OPER", OPER_OPER_ADD_SYNTAX);
 
     } else if (stricmp(cmd, "DEL") == 0) {
         if (!is_services_admin(u)) {
-            notice_lang(s_OperServ, u, PERMISSION_DENIED);
+            notice_lang(operserv_service.nick, u, PERMISSION_DENIED);
             return;
         }
         nick = strtok(NULL, " ");
         if (nick)
             privlist_rem(u, LIST_OPER, nick);
         else
-            syntax_error(s_OperServ, u, "OPER", OPER_OPER_DEL_SYNTAX);
+            syntax_error(operserv_service.nick, u, "OPER", OPER_OPER_DEL_SYNTAX);
 
     } else if (stricmp(cmd, "LIST") == 0) {
         char lo[16], hi[16];
         const char *params[2];
-        notice_lang(s_OperServ, u, OPER_OPER_LIST_HEADER);
+        notice_lang(operserv_service.nick, u, OPER_OPER_LIST_HEADER);
         snprintf(lo, sizeof(lo), "%d", NP_SERVOPER);
         snprintf(hi, sizeof(hi), "%d", NP_SERVADMIN);
         params[0] = lo;
@@ -1156,7 +1079,7 @@ static void do_oper(User *u)
                               " $3::smallint", params, 2, privlist_show, u);
 
     } else {
-        syntax_error(s_OperServ, u, "OPER", OPER_OPER_SYNTAX);
+        syntax_error(operserv_service.nick, u, "OPER", OPER_OPER_SYNTAX);
     }
 }
 
@@ -1174,34 +1097,34 @@ static void do_su(User *u)
     int res;
 
     if (module_nickserv && !is_services_admin(u)) {
-        wallops(s_OperServ, "\2NOTICE:\2 %s!%s@%s attempted to use SU "
+        wallops(operserv_service.nick, "\2NOTICE:\2 %s!%s@%s attempted to use SU "
                 "command (not Services admin)",
                 u->nick, u->username, u->host);
-        notice_lang(s_OperServ, u, PERMISSION_DENIED);
+        notice_lang(operserv_service.nick, u, PERMISSION_DENIED);
         return;
     }
 
     if (!password || strtok_remaining()) {
-        syntax_error(s_OperServ, u, "SU", OPER_SU_SYNTAX);
+        syntax_error(operserv_service.nick, u, "SU", OPER_SU_SYNTAX);
     } else if (operserv_data.no_supass) {
-        notice_lang(s_OperServ, u, OPER_SU_NO_PASSWORD);
+        notice_lang(operserv_service.nick, u, OPER_SU_NO_PASSWORD);
     } else if ((res = check_password(password, &operserv_data.supass))
                == PASSWORD_PENDING) {
         /* the command will be run again */
     } else if (res < 0) {
-        notice_lang(s_OperServ, u, OPER_SU_FAILED);
+        notice_lang(operserv_service.nick, u, OPER_SU_FAILED);
     } else if (res == 0) {
         module_log("Failed SU by %s!%s@%s", u->nick, u->username, u->host);
-        wallops(s_OperServ, "\2NOTICE:\2 Failed SU by %s!%s@%s",
+        wallops(operserv_service.nick, "\2NOTICE:\2 Failed SU by %s!%s@%s",
                 u->nick, u->username, u->host);
-        bad_password(s_OperServ, u, "Services root");
+        bad_password(operserv_service.nick, u, "Services root");
     } else {
         u->flags |= UF_SERVROOT;
         if (WallSU)
-            wallops(s_OperServ,
+            wallops(operserv_service.nick,
                     "%s!%s@%s obtained Services super-user privileges",
                     u->nick, u->username, u->host);
-        notice_lang(s_OperServ, u, OPER_SU_SUCCEEDED);
+        notice_lang(operserv_service.nick, u, OPER_SU_SUCCEEDED);
     }
 }
 
@@ -1217,22 +1140,22 @@ static void do_set(User *u)
     if (!option || (!setting && stricmp(option, "SUPASS") != 0)
      || strtok_remaining()
     ) {
-        syntax_error(s_OperServ, u, "SET", OPER_SET_SYNTAX);
+        syntax_error(operserv_service.nick, u, "SET", OPER_SET_SYNTAX);
         return;
     }
 
-    if (call_callback_3(cb_set, u, option, setting) > 0)
+    if (event_emit(set_event, u, option, setting) > 0)
         return;
 
     if (stricmp(option, "IGNORE") == 0) {
         if (stricmp(setting, "on") == 0) {
             allow_ignore = 1;
-            notice_lang(s_OperServ, u, OPER_SET_IGNORE_ON);
+            notice_lang(operserv_service.nick, u, OPER_SET_IGNORE_ON);
         } else if (stricmp(setting, "off") == 0) {
             allow_ignore = 0;
-            notice_lang(s_OperServ, u, OPER_SET_IGNORE_OFF);
+            notice_lang(operserv_service.nick, u, OPER_SET_IGNORE_OFF);
         } else {
-            notice_lang(s_OperServ, u, OPER_SET_IGNORE_ERROR);
+            notice_lang(operserv_service.nick, u, OPER_SET_IGNORE_ERROR);
         }
 
     } else if (stricmp(option, "READONLY") == 0) {
@@ -1240,32 +1163,32 @@ static void do_set(User *u)
             readonly = 1;
             log("Read-only mode activated");
             close_log();
-            notice_lang(s_OperServ, u, OPER_SET_READONLY_ON);
+            notice_lang(operserv_service.nick, u, OPER_SET_READONLY_ON);
         } else if (stricmp(setting, "off") == 0) {
             readonly = 0;
             open_log();
             log("Read-only mode deactivated");
-            notice_lang(s_OperServ, u, OPER_SET_READONLY_OFF);
+            notice_lang(operserv_service.nick, u, OPER_SET_READONLY_OFF);
         } else {
-            notice_lang(s_OperServ, u, OPER_SET_READONLY_ERROR);
+            notice_lang(operserv_service.nick, u, OPER_SET_READONLY_ERROR);
         }
 
     } else if (stricmp(option, "DEBUG") == 0) {
         if (stricmp(setting, "on") == 0) {
             debug = 1;
             log("Debug mode activated");
-            notice_lang(s_OperServ, u, OPER_SET_DEBUG_ON);
+            notice_lang(operserv_service.nick, u, OPER_SET_DEBUG_ON);
         } else if (stricmp(setting, "off") == 0 ||
                                 (*setting == '0' && atoi(setting) == 0)) {
             log("Debug mode deactivated");
             debug = 0;
-            notice_lang(s_OperServ, u, OPER_SET_DEBUG_OFF);
+            notice_lang(operserv_service.nick, u, OPER_SET_DEBUG_OFF);
         } else if (isdigit(*setting) && atoi(setting) > 0) {
             debug = atoi(setting);
             log("Debug mode activated (level %d)", debug);
-            notice_lang(s_OperServ, u, OPER_SET_DEBUG_LEVEL, debug);
+            notice_lang(operserv_service.nick, u, OPER_SET_DEBUG_LEVEL, debug);
         } else {
-            notice_lang(s_OperServ, u, OPER_SET_DEBUG_ERROR);
+            notice_lang(operserv_service.nick, u, OPER_SET_DEBUG_ERROR);
         }
 
     } else if (stricmp(option, "SUPASS") == 0) {
@@ -1273,7 +1196,7 @@ static void do_set(User *u)
         int res;
 
         if (!is_services_root(u)) {
-            notice_lang(s_OperServ, u, PERMISSION_DENIED);
+            notice_lang(operserv_service.nick, u, PERMISSION_DENIED);
             return;
         }
         init_password(&newpass);
@@ -1281,7 +1204,7 @@ static void do_set(User *u)
             clear_password(&operserv_data.supass);
             operserv_data.no_supass = 1;
             put_operserv_data(OSDATA_SUPASS, NULL);
-            notice_lang(s_OperServ, u, OPER_SET_SUPASS_NONE);
+            notice_lang(operserv_service.nick, u, OPER_SET_SUPASS_NONE);
             return;
         }
         res = encrypt_password(setting, strlen(setting), &newpass);
@@ -1289,16 +1212,16 @@ static void do_set(User *u)
         if (res == PASSWORD_PENDING) {
             /* the command will be run again */
         } else if (res != 0) {
-            notice_lang(s_OperServ, u, OPER_SET_SUPASS_FAILED);
+            notice_lang(operserv_service.nick, u, OPER_SET_SUPASS_FAILED);
         } else {
             operserv_data.no_supass = 0;
             copy_password(&operserv_data.supass, &newpass);
             clear_password(&newpass);
-            notice_lang(s_OperServ, u, OPER_SET_SUPASS_OK);
+            notice_lang(operserv_service.nick, u, OPER_SET_SUPASS_OK);
         }
 
     } else {
-        notice_lang(s_OperServ, u, OPER_SET_UNKNOWN_OPTION, option);
+        notice_lang(operserv_service.nick, u, OPER_SET_UNKNOWN_OPTION, option);
     }
 }
 
@@ -1312,13 +1235,13 @@ static void do_jupe(User *u)
     Server *server;
 
     if (!jserver) {
-        syntax_error(s_OperServ, u, "JUPE", OPER_JUPE_SYNTAX);
+        syntax_error(operserv_service.nick, u, "JUPE", OPER_JUPE_SYNTAX);
     } else if (!strchr(jserver, '.')) {
-        notice_lang(s_OperServ, u, OPER_JUPE_INVALID_NAME);
+        notice_lang(operserv_service.nick, u, OPER_JUPE_INVALID_NAME);
     } else if ((server = get_server(jserver)) != NULL && server->fake) {
-        notice_lang(s_OperServ, u, OPER_JUPE_ALREADY_JUPED, jserver);
+        notice_lang(operserv_service.nick, u, OPER_JUPE_ALREADY_JUPED, jserver);
     } else {
-        wallops(s_OperServ, "\2Juping\2 %s by request of \2%s\2.",
+        wallops(operserv_service.nick, "\2Juping\2 %s by request of \2%s\2.",
                 jserver, u->nick);
         if (reason)
             snprintf(buf, sizeof(buf), "%s (%s)", reason, u->nick);
@@ -1343,7 +1266,7 @@ static void do_raw(User *u)
     char *text = strtok_remaining();
 
     if (!text)
-        syntax_error(s_OperServ, u, "RAW", OPER_RAW_SYNTAX);
+        syntax_error(operserv_service.nick, u, "RAW", OPER_RAW_SYNTAX);
     else
         send_cmd(NULL, "%s", text);
 }
@@ -1365,17 +1288,17 @@ static void do_update(User *u)
     /* FORCE used to remove a stale lock file; the database needs no lock
      * file, and the option is accepted and ignored. */
     if (param && *param && stricmp(param, "FORCE") != 0) {
-        syntax_error(s_OperServ, u, "UPDATE", OPER_UPDATE_SYNTAX);
+        syntax_error(operserv_service.nick, u, "UPDATE", OPER_UPDATE_SYNTAX);
         return;
     }
-    notice_lang(s_OperServ, u, OPER_UPDATING);
+    notice_lang(operserv_service.nick, u, OPER_UPDATING);
     save_data = 1;
     ARRAY_FOREACH (i, update_senders) {
         if (irc_stricmp(update_senders[i], u->nick) == 0)
             return;
     }
     if (!update_senders_count)
-        add_callback(NULL, "save data complete", do_update_complete);
+        event_attach(THIS_MODULE, EVENT_SAVE_COMPLETE, do_update_complete);
     ARRAY_EXTEND(update_senders);
     update_senders[update_senders_count-1] = sstrdup(u->nick);
 }
@@ -1387,7 +1310,7 @@ static int do_update_complete(int successful)
     ARRAY_FOREACH (i, update_senders) {
         User *u = get_user(update_senders[i]);
         if (u) {
-            notice_lang(s_OperServ, u, successful ? OPER_UPDATE_COMPLETE
+            notice_lang(operserv_service.nick, u, successful ? OPER_UPDATE_COMPLETE
                                                   : OPER_UPDATE_FAILED);
         }
         free(update_senders[i]);
@@ -1395,7 +1318,7 @@ static int do_update_complete(int successful)
     free(update_senders);
     update_senders = NULL;
     update_senders_count = 0;
-    remove_callback(NULL, "save data complete", do_update_complete);
+    event_detach(THIS_MODULE, EVENT_SAVE_COMPLETE, do_update_complete);
     return 0;
 }
 
@@ -1411,7 +1334,7 @@ static void migration_reply(const char *nick, const char *text)
     User *u = get_user(nick);
 
     if (u)
-        notice(s_OperServ, u->nick, "%s", text);
+        notice(operserv_service.nick, u->nick, "%s", text);
 }
 
 static void do_migration(User *u)
@@ -1427,22 +1350,22 @@ static void do_migration(User *u)
             version++;
         bound = strtoul(version, &end, 10);
         if (!*version || *end || bound == 0 || bound > MIGRATION_MAX) {
-            syntax_error(s_OperServ, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
+            syntax_error(operserv_service.nick, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
             return;
         }
     }
     if (!cmd) {
-        syntax_error(s_OperServ, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
+        syntax_error(operserv_service.nick, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
     } else if (stricmp(cmd, "LIST") == 0) {
         migration_cmd_list(THIS_MODULE, migration_reply, u->nick);
     } else if (!module) {
-        syntax_error(s_OperServ, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
+        syntax_error(operserv_service.nick, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
     } else if (stricmp(cmd, "STATUS") == 0) {
         migration_cmd_status(THIS_MODULE, migration_reply, u->nick, module);
     } else if (stricmp(cmd, "APPLY") == 0 || stricmp(cmd, "REVERT") == 0) {
         /* A schema change is the super-user's to make. */
         if (!is_services_root(u)) {
-            notice_lang(s_OperServ, u, PERMISSION_DENIED);
+            notice_lang(operserv_service.nick, u, PERMISSION_DENIED);
             return;
         }
         module_log("MIGRATION %s %s%s%s by %s", cmd, module,
@@ -1454,7 +1377,7 @@ static void do_migration(User *u)
             migration_cmd_revert(THIS_MODULE, migration_reply, u->nick,
                                  module, (unsigned int)bound);
     } else {
-        syntax_error(s_OperServ, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
+        syntax_error(operserv_service.nick, u, "MIGRATION", OPER_MIGRATION_SYNTAX);
     }
 }
 
@@ -1495,12 +1418,12 @@ static void do_rehash(User *u)
     /* Don't let ourselves be unloaded */
     in_rehash = 1;
 
-    notice_lang(s_OperServ, u, OPER_REHASHING);
+    notice_lang(operserv_service.nick, u, OPER_REHASHING);
     wallops(NULL, "Rehashing configuration files (REHASH from %s)", u->nick);
     if (reconfigure())
-        notice_lang(s_OperServ, u, OPER_REHASHED);
+        notice_lang(operserv_service.nick, u, OPER_REHASHED);
     else
-        notice_lang(s_OperServ, u, OPER_REHASH_ERROR);
+        notice_lang(operserv_service.nick, u, OPER_REHASH_ERROR);
 
     /* Restore normal module behavior */
     in_rehash = 0;
@@ -1526,13 +1449,13 @@ static void do_killclones(User *u)
     char *clonenick = strtok(NULL, " ");
     User *cloneuser;
     typeof(create_akill) *p_create_akill =
-        module_akill ? get_module_symbol(module_akill,"create_akill") : NULL;
+        module_akill ? module_symbol(module_akill,"create_akill") : NULL;
 
     if (!clonenick) {
-        notice_lang(s_OperServ, u, OPER_KILLCLONES_SYNTAX);
+        notice_lang(operserv_service.nick, u, OPER_KILLCLONES_SYNTAX);
 
     } else if (!(cloneuser = get_user(clonenick))) {
-        notice_lang(s_OperServ, u, OPER_KILLCLONES_UNKNOWN_NICK, clonenick);
+        notice_lang(operserv_service.nick, u, OPER_KILLCLONES_UNKNOWN_NICK, clonenick);
 
     } else {
         char clonemask[BUFSIZE];
@@ -1560,17 +1483,17 @@ static void do_killclones(User *u)
                 const char akillreason[] = "Temporary KILLCLONES akill.";
                 p_create_akill(clonemask+2, akillreason, u->nick,
                                time(NULL) + KillClonesAutokillExpire);
-                wallops(s_OperServ,
+                wallops(operserv_service.nick,
                         getstring(NULL,OPER_KILLCLONES_KILLED_AKILL),
                         u->nick, clonemask, count, clonemask+2);
             } else {
                 /* There's already a matching mask, so don't add a new one. */
-                wallops(s_OperServ, getstring(NULL,OPER_KILLCLONES_KILLED),
+                wallops(operserv_service.nick, getstring(NULL,OPER_KILLCLONES_KILLED),
                         u->nick, clonemask, count);
             }
         } else {
             /* Autokill option not set or module not available. */
-            wallops(s_OperServ, getstring(NULL,OPER_KILLCLONES_KILLED),
+            wallops(operserv_service.nick, getstring(NULL,OPER_KILLCLONES_KILLED),
                     u->nick, clonemask, count);
         }
 
@@ -1593,7 +1516,7 @@ void send_server_list(User *user)
     Server *server;
 
     for (server = first_server(); server; server = next_server()) {
-        notice(s_OperServ, user->nick, "%s fake:%d hub:%s child:%s sibling:%s",
+        notice(operserv_service.nick, user->nick, "%s fake:%d hub:%s child:%s sibling:%s",
                server->name, server->fake,
                server->hub ? server->hub->name : "-",
                server->child ? server->child->name : "-",
@@ -1614,13 +1537,13 @@ static void send_channel_list(User *user)
     const char *source = user->nick;
 
     for (c = first_channel(); c; c = next_channel()) {
-        notice(s_OperServ, source, "%s %ld +%s %d %s %s %s %d %d %d",
+        notice(operserv_service.nick, source, "%s %ld +%s %d %s %s %s %d %d %d",
                c->name, (long)c->creation_time,
                mode_flags_to_string(c->mode, MODE_CHANNEL),
                c->limit, c->key ? c->key : "-", c->link ? c->link : "-",
                c->flood ? c->flood : "-", c->joindelay, c->joinrate1,
                c->joinrate2);
-        notice(s_OperServ, source, "%s TOPIC %s %ld :%s", c->name,
+        notice(operserv_service.nick, source, "%s TOPIC %s %ld :%s", c->name,
                c->topic_setter, (long)c->topic_time, c->topic ? c->topic : "");
         end = buf;
         end += snprintf(end, sizeof(buf)-(end-buf), "%s", c->name);
@@ -1629,7 +1552,7 @@ static void send_channel_list(User *user)
                             mode_flags_to_string(u->mode,MODE_CHANUSER),
                             u->user->nick);
         }
-        notice(s_OperServ, source, buf);
+        notice(operserv_service.nick, source, buf);
     }
 }
 
@@ -1645,13 +1568,13 @@ static void send_channel_users(User *user)
     const char *source = user->nick;
 
     if (!c) {
-        notice(s_OperServ, source, "Channel %s not found!",
+        notice(operserv_service.nick, source, "Channel %s not found!",
                 chan ? chan : "(null)");
         return;
     }
-    notice(s_OperServ, source, "Channel %s users:", chan);
+    notice(operserv_service.nick, source, "Channel %s users:", chan);
     LIST_FOREACH (u, c->users)
-        notice(s_OperServ, source, "%x/%s", u->mode, u->user->nick);
+        notice(operserv_service.nick, source, "%x/%s", u->mode, u->user->nick);
 }
 
 /*************************************************************************/
@@ -1669,7 +1592,7 @@ static void send_user_list(User *user)
             snprintf(buf, sizeof(buf), "%04X", u->ni->status & 0xFFFF);
         else
             strcpy(buf, "-");
-        notice(s_OperServ, source, "%s!%s@%s %s %s +%s %ld %u %s %s %.6f :%s",
+        notice(operserv_service.nick, source, "%s!%s@%s %s %s +%s %ld %u %s %s %.6f :%s",
                u->nick, u->username, u->host, u->fakehost ? u->fakehost : "-",
                u->ipaddr ? u->ipaddr : "-",
                mode_flags_to_string(u->mode, MODE_USER), (long)u->signon,
@@ -1692,7 +1615,7 @@ static void send_user_info(User *user)
     const char *source = user->nick;
 
     if (!u) {
-        notice(s_OperServ, source, "User %s not found!",
+        notice(operserv_service.nick, source, "User %s not found!",
                 nick ? nick : "(null)");
         return;
     }
@@ -1700,7 +1623,7 @@ static void send_user_info(User *user)
         snprintf(buf, sizeof(buf), "%04X", u->ni->status & 0xFFFF);
     else
         strcpy(buf, "-");
-    notice(s_OperServ, source, "%s!%s@%s %s %s +%s %ld %u %s %s %.6f :%s",
+    notice(operserv_service.nick, source, "%s!%s@%s %s %s +%s %ld %u %s %s %.6f :%s",
            u->nick, u->username, u->host, u->fakehost ? u->fakehost : "-",
            u->ipaddr ? u->ipaddr : "-",
            mode_flags_to_string(u->mode, MODE_USER), (long)u->signon,
@@ -1709,12 +1632,12 @@ static void send_user_info(User *user)
     s = buf;
     LIST_FOREACH (c, u->chans)
         s += snprintf(s, sizeof(buf)-(s-buf), " %s", c->chan->name);
-    notice(s_OperServ, source, "%s%s", u->nick, buf);
+    notice(operserv_service.nick, source, "%s%s", u->nick, buf);
     buf[0] = 0;
     s = buf;
     LIST_FOREACH (ci, u->id_chans)
         s += snprintf(s, sizeof(buf)-(s-buf), " %s", ci->chan);
-    notice(s_OperServ, source, "%s%s", u->nick, buf);
+    notice(operserv_service.nick, source, "%s%s", u->nick, buf);
 }
 
 /*************************************************************************/
@@ -1727,9 +1650,9 @@ static void do_matchwild(User *u)
     char *pat = strtok(NULL, " ");
     char *str = strtok(NULL, " ");
     if (pat && str)
-        notice(s_OperServ, u->nick, "%d", match_wild(pat, str));
+        notice(operserv_service.nick, u->nick, "%d", match_wild(pat, str));
     else
-        notice(s_OperServ, u->nick, "Syntax error.");
+        notice(operserv_service.nick, u->nick, "Syntax error.");
 }
 
 /*************************************************************************/
@@ -1749,7 +1672,7 @@ static void do_setcmode(User *u)
     for (i = 0; i < SETCMODE_NPARAMS; i++)
         params[i] = strtok(NULL, " ");
     if (!channame) {
-        notice(s_OperServ, u->nick, "SETCMODE: not enough parameters");
+        notice(operserv_service.nick, u->nick, "SETCMODE: not enough parameters");
         return;
     }
     if (strcmp(channame, "-") == 0) {
@@ -1757,7 +1680,7 @@ static void do_setcmode(User *u)
     } else {
         channel = get_channel(channame);
         if (!channel) {
-            notice(s_OperServ, u->nick, "SETCMODE: channel not found (%s)",
+            notice(operserv_service.nick, u->nick, "SETCMODE: channel not found (%s)",
                    channame);
             return;
         }
@@ -1765,7 +1688,7 @@ static void do_setcmode(User *u)
     set_cmode(channel ? ServerName : NULL, channel,
               params[0], params[1], params[2], params[3], params[4],
               params[5], params[6], params[7], params[8], params[9]);
-    notice(s_OperServ, u->nick, "SETCMODE: done");
+    notice(operserv_service.nick, u->nick, "SETCMODE: done");
 }
 
 /*************************************************************************/
@@ -1795,7 +1718,7 @@ static void do_monitor_ignore(User *u)
     if (nick) {
         User *u = get_user(nick);
         if (!u) {
-            notice(s_OperServ, u->nick,
+            notice(operserv_service.nick, u->nick,
                    "MONITOR-IGNORE: user %s not found!", nick);
             return;
         }
@@ -1803,22 +1726,22 @@ static void do_monitor_ignore(User *u)
             del_timeout(log_timeout);
         log_timeout = add_timeout_ms(100, log_monitor_ignore, 1);
         if (!log_timeout) {
-            notice(s_OperServ, u->nick,
+            notice(operserv_service.nick, u->nick,
                    "MONITOR-IGNORE: unable to add timeout!");
             return;
         }
         log_timeout->data = u;
         TimeoutCheck = 10;  /* 0.01s */
         sock_set_rto(ReadTimeout = 10);
-        notice(s_OperServ, u->nick, "MONITOR-IGNORE: monitoring %s", u->nick);
+        notice(operserv_service.nick, u->nick, "MONITOR-IGNORE: monitoring %s", u->nick);
     } else {  /* !nick */
         if (log_timeout) {
             del_timeout(log_timeout);
             log_timeout = NULL;
-            notice(s_OperServ, u->nick,
+            notice(operserv_service.nick, u->nick,
                    "MONITOR-IGNORE: cancelled monitoring");
         } else {
-            notice(s_OperServ, u->nick,
+            notice(operserv_service.nick, u->nick,
                    "MONITOR-IGNORE: wasn't monitoring anything");
         }
     }
@@ -1837,29 +1760,29 @@ static void do_getstring(User *u)
 
     s = strtok(NULL, " ");
     if (!s) {
-        notice(s_OperServ, u->nick,
+        notice(operserv_service.nick, u->nick,
                "[ERROR] Syntax: \2GETSTRING \037language\037 \037index\037\2");
         return;
     }
     lang = strtol(s, &s, 0);
     if ((lang < 0 || *s) && ((lang = lookup_language(s)) < 0)) {
-        notice(s_OperServ, u->nick, "[ERROR] Invalid language number/name");
+        notice(operserv_service.nick, u->nick, "[ERROR] Invalid language number/name");
         return;
     }
 
     s = strtok(NULL, " ");
     if (!s) {
-        notice(s_OperServ, u->nick,
+        notice(operserv_service.nick, u->nick,
                "[ERROR] Syntax: \2GETSTRING \037language\037 \037index\037\2");
         return;
     }
     index = strtol(s, &s, 0);
     if ((index < 0 || *s) && ((index = lookup_string(s)) < 0)) {
-        notice(s_OperServ, u->nick, "[ERROR] Invalid string number/name");
+        notice(operserv_service.nick, u->nick, "[ERROR] Invalid string number/name");
         return;
     }
 
-    notice(s_OperServ, u->nick, "%s", getstring_lang(lang,index));
+    notice(operserv_service.nick, u->nick, "%s", getstring_lang(lang,index));
 }
 
 /*************************************************************************/
@@ -1873,36 +1796,36 @@ static void do_setstring(User *u)
 
     s = strtok(NULL, " ");
     if (!s) {
-        notice(s_OperServ, u->nick,
+        notice(operserv_service.nick, u->nick,
                "[ERROR] Syntax: \2SETSTRING \037language\037 \037index\037"
                " [\037text\037]\2");
         return;
     }
     lang = strtol(s, &s, 0);
     if ((lang < 0 || *s) && ((lang = lookup_language(s)) < 0)) {
-        notice(s_OperServ, u->nick, "[ERROR] Invalid language number/name");
+        notice(operserv_service.nick, u->nick, "[ERROR] Invalid language number/name");
         return;
     }
 
     s = strtok(NULL, " ");
     if (!s) {
-        notice(s_OperServ, u->nick,
+        notice(operserv_service.nick, u->nick,
                "[ERROR] Syntax: \2SETSTRING \037language\037 \037index\037"
                " [\037text\037]\2");
         return;
     }
     index = strtol(s, &s, 0);
     if ((index < 0 || *s) && ((index = lookup_string(s)) < 0)) {
-        notice(s_OperServ, u->nick, "[ERROR] Invalid string number/name");
+        notice(operserv_service.nick, u->nick, "[ERROR] Invalid string number/name");
         return;
     }
 
     s = strtok_remaining();
     if (setstring(lang, index, s ? s : "")) {
-        notice(s_OperServ, u->nick, "setstring(%ld,%ld) succeeded",
+        notice(operserv_service.nick, u->nick, "setstring(%ld,%ld) succeeded",
                lang, index);
     } else {
-        notice(s_OperServ, u->nick, "[ERROR] setstring(%ld,%ld) failed",
+        notice(operserv_service.nick, u->nick, "[ERROR] setstring(%ld,%ld) failed",
                lang, index);
     }
 }
@@ -1919,34 +1842,34 @@ static void do_mapstring(User *u)
 
     s = strtok(NULL, " ");
     if (!s) {
-        notice(s_OperServ, u->nick,
+        notice(operserv_service.nick, u->nick,
                "[ERROR] Syntax: \2MAPSTRING \037old\037 \037new\037");
         return;
     }
     old = strtol(s, &s, 0);
     if ((old < 0 || *s) && ((old = lookup_string(s)) < 0)) {
-        notice(s_OperServ, u->nick, "[ERROR] Invalid old string number/name");
+        notice(operserv_service.nick, u->nick, "[ERROR] Invalid old string number/name");
         return;
     }
 
     s = strtok(NULL, " ");
     if (!s) {
-        notice(s_OperServ, u->nick,
+        notice(operserv_service.nick, u->nick,
                "[ERROR] Syntax: \2MAPSTRING \037old\037 \037new\037");
         return;
     }
     new = strtol(s, &s, 0);
     if ((new < 0 || *s) && ((new = lookup_string(s)) < 0)) {
-        notice(s_OperServ, u->nick, "[ERROR] Invalid new string number/name");
+        notice(operserv_service.nick, u->nick, "[ERROR] Invalid new string number/name");
         return;
     }
 
     s = strtok_remaining();
     if ((ret = mapstring(old, new)) >= 0) {
-        notice(s_OperServ, u->nick, "mapstring(%ld,%ld) succeeded => %d",
+        notice(operserv_service.nick, u->nick, "mapstring(%ld,%ld) succeeded => %d",
                old, new, ret);
     } else {
-        notice(s_OperServ, u->nick, "[ERROR] mapstring(%ld,%ld) failed",
+        notice(operserv_service.nick, u->nick, "[ERROR] mapstring(%ld,%ld) failed",
                old, new);
     }
 }
@@ -1962,14 +1885,14 @@ static void do_addstring(User *u)
 
     s = strtok(NULL, " ");
     if (!s) {
-        notice(s_OperServ, u->nick,
+        notice(operserv_service.nick, u->nick,
                "[ERROR] Syntax: \2ADDSTRING \037name\037\2");
         return;
     }
     if ((index = addstring(s)) >= 0) {
-        notice(s_OperServ, u->nick, "addstring(%s) succeeded => %d", s, index);
+        notice(operserv_service.nick, u->nick, "addstring(%s) succeeded => %d", s, index);
     } else {
-        notice(s_OperServ, u->nick, "[ERROR] addstring(%s) failed", s);
+        notice(operserv_service.nick, u->nick, "[ERROR] addstring(%s) failed", s);
     }
 }
 
@@ -2003,35 +1926,20 @@ static int do_user_create(const User *user, int ac, char **av)
 static int wall_oper_callback(User *u, int modechar, int add)
 {
     if (modechar == 'o' && add)
-        wallops(s_OperServ, "\2%s\2 is now an IRC operator.", u->nick);
+        wallops(operserv_service.nick, "\2%s\2 is now an IRC operator.", u->nick);
     return 0;
 }
 
 /*************************************************************************/
 
-/* Callback for NickServ REGISTER/LINK check; we disallow
- * registration/linking of the OperServ pseudoclient nickname.
- */
-
-static int do_reglink_check(const User *u, const char *nick,
-                            const char *pass, const char *email)
-{
-    return irc_stricmp(nick, s_OperServ) == 0
-        || irc_stricmp(nick, s_GlobalNoticer) == 0;
-}
-
 /*************************************************************************/
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective operserv_config[] = {
     { "AllowRaw",         { { CD_SET, 0, &AllowRaw } } },
-    { "GlobalName",       { { CD_STRING, CF_DIRREQ, &s_GlobalNoticer },
-                            { CD_STRING, 0, &desc_GlobalNoticer } } },
     { "KillClonesAutokill",{{ CD_SET, 0, &KillClonesAutokill },
                             { CD_TIME, 0, &KillClonesAutokillExpire } } },
-    { "OperServName",     { { CD_STRING, CF_DIRREQ, &s_OperServ },
-                            { CD_STRING, 0, &desc_OperServ } } },
     { "ServicesRoot",     { { CD_STRING, CF_DIRREQ, &ServicesRoot } } },
     { "WallBadOS",        { { CD_SET, 0, &WallBadOS } } },
     { "WallOper",         { { CD_SET, 0, &WallOper } } },
@@ -2044,178 +1952,145 @@ ConfigDirective module_config[] = {
 /* For enabling/disabling RAW command (AllowRaw) */
 static Command *cmd_RAW = NULL;
 
-/* Previous value of clear_channel() sender */
+/* Previous value of clear_channel() sender, and the nick we set it to */
 static char old_clearchan_sender[NICKMAX];
 static int old_clearchan_sender_set = 0;
+static char clearchan_sender[NICKMAX];
 
 /*************************************************************************/
 
-static int do_load_module(Module *mod, const char *modname)
+/* The help of ADMIN and OPER names NickServ, whose nick is known only
+ * while it is loaded. */
+
+static void set_nickserv_help_param(void)
 {
-    if (strcmp(modname, "operserv/akill") == 0) {
-        module_akill = mod;
+    struct Service *nickserv = NULL;
+    Command *cmd;
 
-    } else if (strcmp(modname, "nickserv/main") == 0) {
-        char **p_s_NickServ;
-        Command *cmd;
-
-        module_nickserv = mod;
-        p_s_NickServ = get_module_symbol(mod, "s_NickServ");
-        if (p_s_NickServ) {
-            cmd = lookup_cmd(THIS_MODULE, "ADMIN");
-            if (cmd)
-                cmd->help_param1 = *p_s_NickServ;
-            cmd = lookup_cmd(THIS_MODULE, "OPER");
-            if (cmd)
-                cmd->help_param1 = *p_s_NickServ;
-        }
-        if (!add_callback(mod, "REGISTER/LINK check", do_reglink_check))
-            module_log("Unable to register NickServ REGISTER/LINK check"
-                       " callback");
-    }
-
-    return 0;
+    if (module_nickserv)
+        nickserv = module_symbol(module_nickserv, "nickserv_service");
+    cmd = lookup_cmd(THIS_MODULE, "ADMIN");
+    if (cmd)
+        cmd->help_param1 = nickserv ? nickserv->nick : "NickServ";
+    cmd = lookup_cmd(THIS_MODULE, "OPER");
+    if (cmd)
+        cmd->help_param1 = nickserv ? nickserv->nick : "NickServ";
 }
 
 /*************************************************************************/
 
-static int do_unload_module(Module *mod)
+/* NickServ and operserv/akill are optional. */
+
+static int do_module_loaded(Module *mod, const char *modname)
+{
+    if (strcmp(modname, "operserv/akill") == 0) {
+        module_akill = mod;
+    } else if (strcmp(modname, "nickserv/main") == 0) {
+        module_nickserv = mod;
+        set_nickserv_help_param();
+    }
+    return 0;
+}
+
+static int do_module_unloaded(Module *mod)
 {
     if (mod == module_akill) {
         module_akill = NULL;
     } else if (mod == module_nickserv) {
-        Command *cmd;
-        cmd = lookup_cmd(THIS_MODULE, "ADMIN");
-        if (cmd)
-            cmd->help_param1 = "NickServ";
-        cmd = lookup_cmd(THIS_MODULE, "OPER");
-        if (cmd)
-            cmd->help_param1 = "NickServ";
         module_nickserv = NULL;
+        set_nickserv_help_param();
     }
     return 0;
 }
 
 /*************************************************************************/
 
-static int do_reconfigure(int after_configure)
-{
-    static char old_s_OperServ[NICKMAX];
-    static char *old_desc_OperServ = NULL;
-
-    if (!after_configure) {
-        /* Before reconfiguration: save old values. */
-        /* Note that old_desc_OperServ might be non-NULL if a previous
-         * reconfigure failed. */
-        free(old_desc_OperServ);
-        strbcpy(old_s_OperServ, s_OperServ);
-        old_desc_OperServ = strdup(desc_OperServ);
-    } else {
-        Command *cmd;
-        /* After reconfiguration: handle value changes. */
-        if (strcmp(old_s_OperServ, s_OperServ) != 0) {
-            if (strcmp(set_clear_channel_sender(PTR_INVALID),old_s_OperServ)==0)
-                set_clear_channel_sender(s_OperServ);
-            send_nickchange(old_s_OperServ, s_OperServ);
-        }
-        if (!old_desc_OperServ || strcmp(old_desc_OperServ,desc_OperServ) != 0)
-            send_namechange(s_OperServ, desc_OperServ);
-        /* Free and clear old values */
-        free(old_desc_OperServ);
-        old_desc_OperServ = NULL;
-        /* Activate/deactivate commands */
-        if (cmd_RAW) {
-            if (AllowRaw)
-                cmd_RAW->name = "RAW";
-            else
-                cmd_RAW->name = "";
-        }
-        /* Update command help parameters */
-        if (module_nickserv) {
-            char **p_s_NickServ;
-            p_s_NickServ = get_module_symbol(module_nickserv, "s_NickServ");
-            if (p_s_NickServ) {
-                cmd = lookup_cmd(THIS_MODULE, "ADMIN");
-                if (cmd)
-                    cmd->help_param1 = *p_s_NickServ;
-                cmd = lookup_cmd(THIS_MODULE, "OPER");
-                if (cmd)
-                    cmd->help_param1 = *p_s_NickServ;
-            }
-        }
-        cmd = lookup_cmd(THIS_MODULE, "GLOBAL");
-        if (cmd)
-            cmd->help_param1 = s_GlobalNoticer;
-    }  /* if (!after_configure) */
-    return 0;
-}
-
-/*************************************************************************/
-
-int init_module(void)
+static void operserv_rehash(Module *module)
 {
     Command *cmd;
 
-
-    if (!new_commandlist(THIS_MODULE)
-     || !register_commands(THIS_MODULE, cmds)
+    /* The core renamed OperServ if its nick changed: follow it as the
+     * sender of channel clearing, unless somebody else took that over. */
+    if (strcmp(operserv_service.nick, clearchan_sender) != 0
+     && strcmp(set_clear_channel_sender(PTR_INVALID), clearchan_sender) == 0
     ) {
+        set_clear_channel_sender(operserv_service.nick);
+        strbcpy(clearchan_sender, operserv_service.nick);
+    }
+    /* Activate/deactivate commands */
+    if (cmd_RAW) {
+        if (AllowRaw)
+            cmd_RAW->name = "RAW";
+        else
+            cmd_RAW->name = "";
+    }
+    /* Update command help parameters */
+    set_nickserv_help_param();
+    cmd = lookup_cmd(module, "GLOBAL");
+    if (cmd)
+        cmd->help_param1 = global_noticer_service.nick;
+}
+
+/*************************************************************************/
+
+static int operserv_init(Module *module)
+{
+    Command *cmd;
+    Module *other;
+
+    if (!new_commandlist(module) || !register_commands(module, cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
 
-    cb_command   = register_callback("command");
-    cb_help      = register_callback("HELP");
-    cb_help_cmds = register_callback("HELP COMMANDS");
-    cb_set       = register_callback("SET");
-    cb_stats     = register_callback("STATS");
-    cb_stats_all = register_callback("STATS ALL");
-    if (cb_command < 0 || cb_help < 0 || cb_help_cmds < 0 || cb_set < 0
-     || cb_stats < 0 || cb_stats_all < 0
+    command_event = event_declare(module, OPERSERV_EVENT_COMMAND);
+    help_event = event_declare(module, OPERSERV_EVENT_HELP);
+    help_cmds_event = event_declare(module, OPERSERV_EVENT_HELP_COMMANDS);
+    set_event = event_declare(module, OPERSERV_EVENT_SET);
+    stats_event = event_declare(module, OPERSERV_EVENT_STATS);
+    stats_all_event = event_declare(module, OPERSERV_EVENT_STATS_ALL);
+    if (!command_event || !help_event || !help_cmds_event || !set_event
+     || !stats_event || !stats_all_event
     ) {
-        module_log("Unable to register callbacks");
-        exit_module(0);
+        module_log("Unable to declare events");
         return 0;
     }
 
-    if (!add_callback(NULL, "load module", do_load_module)
-     || !add_callback(NULL, "unload module", do_unload_module)
-     || !add_callback(NULL, "reconfigure", do_reconfigure)
-     || !add_callback(NULL, "user create", do_user_create)
-     || !add_callback(NULL, "introduce_user", introduce_operserv)
-     || !add_callback(NULL, "m_privmsg", operserv)
-     || !add_callback(NULL, "m_whois", operserv_whois)
-     || (WallOper && !add_callback(NULL, "user MODE", wall_oper_callback))
+    if (!event_attach(module, EVENT_MODULE_LOADED, do_module_loaded)
+     || !event_attach(module, EVENT_MODULE_UNLOADED, do_module_unloaded)
+     || !event_attach(module, EVENT_USER_CREATE, do_user_create)
+     || (WallOper && !event_attach(module, EVENT_USER_MODE,
+                                   wall_oper_callback))
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
-    if (!init_maskdata()) {
-        exit_module(0);
+    if (!init_maskdata())
         return 0;
-    }
 
     init_password(&operserv_data.supass);
     if (!register_dbtable(&oper_dbtable)) {
         module_log("Unable to register database table");
-        exit_module(0);
         return 0;
     }
 
-    cmd_RAW = lookup_cmd(THIS_MODULE, "RAW");
+    cmd_RAW = lookup_cmd(module, "RAW");
     if (cmd_RAW && !AllowRaw)
         cmd_RAW->name = "";
-    cmd = lookup_cmd(THIS_MODULE, "GLOBAL");
+    cmd = lookup_cmd(module, "GLOBAL");
     if (cmd)
-        cmd->help_param1 = s_GlobalNoticer;
+        cmd->help_param1 = global_noticer_service.nick;
+    if ((other = module_find("operserv/akill")) != NULL)
+        do_module_loaded(other, "operserv/akill");
+    if ((other = module_find("nickserv/main")) != NULL)
+        do_module_loaded(other, "nickserv/main");
+    else
+        set_nickserv_help_param();
 
-    if (linked)
-        introduce_operserv(NULL);
-
-    strbcpy(old_clearchan_sender, set_clear_channel_sender(s_OperServ));
+    strbcpy(old_clearchan_sender,
+            set_clear_channel_sender(operserv_service.nick));
+    strbcpy(clearchan_sender, operserv_service.nick);
     old_clearchan_sender_set = 1;
 
     in_rehash = 0;
@@ -2225,7 +2100,7 @@ int init_module(void)
 
 /*************************************************************************/
 
-int exit_module(int shutdown)
+static int operserv_fini(Module *module, int shutdown)
 {
     if (!shutdown && in_rehash) {
         module_log("Refusing to unload because a REHASH command is in"
@@ -2238,18 +2113,12 @@ int exit_module(int shutdown)
         old_clearchan_sender_set = 0;
     }
 
-    if (linked) {
-        send_cmd(s_OperServ, "QUIT :");
-        send_cmd(s_GlobalNoticer, "QUIT :");
-    }
-
     if (cmd_RAW)
         cmd_RAW->name = "RAW";
 
     /* An UPDATE still waiting for its save: nobody will be told. */
     if (update_senders_count) {
         int i;
-        remove_callback(NULL, "save data complete", do_update_complete);
         ARRAY_FOREACH (i, update_senders)
             free(update_senders[i]);
         free(update_senders);
@@ -2265,32 +2134,39 @@ int exit_module(int shutdown)
     clear_password(&operserv_data.supass);
     operserv_data.no_supass = 1;
 
-    if (module_nickserv)
-        do_unload_module(module_nickserv);
-    if (module_akill)
-        do_unload_module(module_akill);
+    module_akill = NULL;
+    module_nickserv = NULL;
 
-    remove_callback(NULL, "user MODE", wall_oper_callback);
-    remove_callback(NULL, "m_whois", operserv_whois);
-    remove_callback(NULL, "m_privmsg", operserv);
-    remove_callback(NULL, "introduce_user", introduce_operserv);
-    remove_callback(NULL, "user create", do_user_create);
-    remove_callback(NULL, "reconfigure", do_reconfigure);
-    remove_callback(NULL, "unload module", do_unload_module);
-    remove_callback(NULL, "load module", do_load_module);
-
-    unregister_callback(cb_stats_all);
-    unregister_callback(cb_stats);
-    unregister_callback(cb_set);
-    unregister_callback(cb_help_cmds);
-    unregister_callback(cb_help);
-    unregister_callback(cb_command);
-
-    unregister_commands(THIS_MODULE, cmds);
-    del_commandlist(THIS_MODULE);
+    unregister_commands(module, cmds);
+    del_commandlist(module);
 
     return 1;
 }
+
+/*************************************************************************/
+
+/* OperServName = <nick>, <description>; GlobalName = <nick>,
+ * <description>; in the module block.  The global noticer only sends. */
+struct Service operserv_service = {
+    .directive = "OperServName",
+    .flags = SERVICE_OPER | SERVICE_INVISIBLE,
+    .on_message = operserv_message,
+};
+
+struct Service global_noticer_service = {
+    .directive = "GlobalName",
+    .flags = SERVICE_OPER | SERVICE_INVISIBLE,
+};
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "OperServ: network administration for IRC operators",
+    .config = operserv_config,
+    .services = MODULE_SERVICES(&operserv_service, &global_noticer_service),
+    .init = operserv_init,
+    .fini = operserv_fini,
+    .rehash = operserv_rehash,
+};
 
 /*************************************************************************/
 

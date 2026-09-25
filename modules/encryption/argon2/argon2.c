@@ -172,10 +172,11 @@ static int argon2_outdated(const CipherParams* params, const char* password)
 
 /* Module stuff. */
 
-ConfigDirective module_config[] = {{"Memory", {{CD_POSINT, 0, &Memory}}},
-                                   {"Passes", {{CD_POSINT, 0, &Passes}}},
-                                   {"Pepper", {{CD_STRING, 0, &Pepper}}},
-                                   {NULL}};
+static ConfigDirective argon2_config[] = {
+    {"Memory", {{CD_POSINT, 0, &Memory}}},
+    {"Passes", {{CD_POSINT, 0, &Passes}}},
+    {"Pepper", {{CD_STRING, 0, &Pepper}}},
+    {NULL}};
 
 static CipherInfo argon2_info = {
     .name = "argon2",
@@ -215,39 +216,44 @@ static void check_config(void)
                    PEPPER_MAX, PEPPER_MAX);
 }
 
-static int do_reconfigure(int after_configure)
+static void argon2_rehash(Module *module)
 {
-    if (after_configure)
-        check_config();
-    return 0;
+    check_config();
 }
 
 /*************************************************************************/
 
-int init_module(void)
+static int argon2_init(Module *module)
 {
     if (sizeof(Argon2Settings) > CIPHER_PARAMS_MAX) {
         module_log("BUG: Argon2Settings do not fit in CipherParams");
         return 0;
     }
-    if (!add_callback(NULL, "reconfigure", do_reconfigure)) {
-        module_log("Unable to add callback");
-        return 0;
-    }
     check_config();
-    argon2_info.owner = THIS_MODULE;
+    argon2_info.owner = module;
     register_cipher(&argon2_info);
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int argon2_fini(Module *module, int shutdown)
 {
     unregister_cipher(&argon2_info);
-    remove_callback(NULL, "reconfigure", do_reconfigure);
     return 1;
 }
+
+/*************************************************************************/
+
+/* A module without a pseudo-client: it provides a cipher (encrypt.h). */
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "Argon2id password hashing",
+    .config = argon2_config,
+    .init = argon2_init,
+    .fini = argon2_fini,
+    .rehash = argon2_rehash,
+};
 
 /*************************************************************************/
 

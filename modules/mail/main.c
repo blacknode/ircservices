@@ -23,9 +23,7 @@ static int MaxMessages;
 static time_t SendTimeout;
 
 /* Low-level send/abort routines (filled in by submodule) */
-EXPORT_VAR(void *,low_send)
 void (*low_send)(MailMessage *msg) = NULL;
-EXPORT_VAR(void *,low_abort)
 void (*low_abort)(MailMessage *msg) = NULL;
 
 /* List of mail messages currently in transit */
@@ -53,7 +51,6 @@ static void send_timeout(Timeout *t);
  * been called.
  */
 
-EXPORT_FUNC(sendmail)
 void sendmail(const char *to, const char *subject, const char *body,
               const char *charset,
               MailCallback completion_callback, void *callback_data)
@@ -169,7 +166,6 @@ static void send_timeout(Timeout *t)
  * low_send().
  */
 
-EXPORT_FUNC(send_finished)
 void send_finished(MailMessage *msg, int status)
 {
     if (!msg) {
@@ -196,7 +192,7 @@ void send_finished(MailMessage *msg, int status)
 
 static int do_FromAddress(const char *filename, int linenum, char *param);
 static int do_FromName(const char *filename, int linenum, char *param);
-ConfigDirective module_config[] = {
+static ConfigDirective mail_config[] = {
     { "FromAddress",      { { CD_FUNC, CF_DIRREQ, do_FromAddress } } },
     { "FromName",         { { CD_FUNC, 0, do_FromName } } },
     { "MaxMessages",      { { CD_POSINT, 0, &MaxMessages } } },
@@ -280,21 +276,14 @@ static int do_FromName(const char *filename, int linenum, char *param)
 
 /*************************************************************************/
 
-int init_module()
-{
-    return 1;
-}
-
-/*************************************************************************/
-
-int exit_module(int shutdown_unused)
+static int mail_fini(Module *module, int shutdown)
 {
     MailMessage *msg, *msg2;
 
     LIST_FOREACH_SAFE(msg, messages, msg2) {
         if (!low_abort) {
             if (msg == messages)  /* only print message once */
-                module_log("exit_module(): BUG: No low-level mail module"
+                module_log("BUG: No low-level mail module"
                            " installed but in-transit messages remain"
                            " (submodule forgot to abort them?)");
         } else {
@@ -305,6 +294,17 @@ int exit_module(int shutdown_unused)
 
     return 1;
 }
+
+/*************************************************************************/
+
+/* A module without a pseudo-client: the mail queue, and the hooks a
+ * sender module (mail/sendmail, mail/smtp) fills in. */
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "Mail: the queue of outgoing messages",
+    .config = mail_config,
+    .fini = mail_fini,
+};
 
 /*************************************************************************/
 

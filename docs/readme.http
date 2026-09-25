@@ -37,10 +37,11 @@ GPL-2.0 rather than "2 or later"; see vendor/mongoose/README.
 2. Claiming a path
 ------------------
 
-A module that serves pages loads after httpd/main, calls use_module() on
-it, and claims routes:
+A module that serves pages lists httpd/main in its ModuleInfo.requires
+(readme.mod_api), so that it is loaded after it and httpd/main cannot be
+unloaded from under it, and claims routes from its `init':
 
-    http_add_route(THIS_MODULE, "GET", "/nick/", handle_nick, NULL);
+    http_add_route(module, "GET", "/nick/", handle_nick, NULL);
 
 A path ending in `/' matches everything under it; anything else matches
 exactly.  An exact match beats a prefix, and a longer prefix beats a
@@ -56,8 +57,8 @@ other than "/".  The method is part of the route; a route for GET answers
 HEAD too (the body is not sent).  Two claims on the same method and path
 are refused.  A request nothing claimed is answered 404 by httpd/main.
 
-A module gives its routes up from exit_module(), with
-http_del_routes(THIS_MODULE); httpd/main also drops them when the module
+A module gives its routes up from its `fini', with
+http_del_routes(module); httpd/main also drops them when the module
 is unloaded, and lets go of the requests that were waiting on them.  A
 route may be claimed while nothing is listening, and http_available() says
 whether anything ever will (a ListenTo is configured): a module that finds
@@ -114,10 +115,11 @@ there is how one response becomes two.
 4. Access control
 -----------------
 
-Before a request is routed, httpd/main calls its "auth" callback, which
-httpd/auth-ip and httpd/auth-password use:
+Before a request is routed, httpd/main emits its "httpd.auth" event
+(HTTPD_EVENT_AUTH in http.h), which httpd/auth-ip and httpd/auth-password
+attach to (event_attach(), readme.mod_api):
 
-    int callback(const struct HttpRequest *req, struct HttpResponse *res)
+    int handler(const struct HttpRequest *req, struct HttpResponse *res)
 
 returning HTTP_AUTH_UNDECIDED (let the next one decide), HTTP_AUTH_ALLOW
 (let it through), or HTTP_AUTH_DENY after filling in `res' with the

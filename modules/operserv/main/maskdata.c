@@ -37,7 +37,7 @@ static MaskData *masklist[256];
 static int32 masklist_count[256];
 static int masklist_iterator[256];
 
-static int cb_expire_md = -1;
+static Event* expire_md_event;
 
 /*************************************************************************/
 
@@ -48,7 +48,7 @@ static int cb_expire_md = -1;
 static int check_expire_maskdata(uint8 type, MaskData *md)
 {
     if (md->expires && md->expires <= time(NULL)) {
-        call_callback_2(cb_expire_md, type, md);
+        event_emit(expire_md_event, type, md);
         del_maskdata(type, md);
         return 1;
     }
@@ -57,7 +57,6 @@ static int check_expire_maskdata(uint8 type, MaskData *md)
 
 /*************************************************************************/
 
-EXPORT_FUNC(add_maskdata)
 MaskData *add_maskdata(uint8 type, MaskData *data)
 {
     int num = masklist_count[type];
@@ -74,7 +73,6 @@ MaskData *add_maskdata(uint8 type, MaskData *data)
 
 /*************************************************************************/
 
-EXPORT_FUNC(del_maskdata)
 void del_maskdata(uint8 type, MaskData *data)
 {
     int num = (int)(long)(data->next);
@@ -96,7 +94,6 @@ void del_maskdata(uint8 type, MaskData *data)
 
 /*************************************************************************/
 
-EXPORT_FUNC(get_maskdata)
 MaskData *get_maskdata(uint8 type, const char *mask)
 {
     int i;
@@ -115,7 +112,6 @@ MaskData *get_maskdata(uint8 type, const char *mask)
 
 /*************************************************************************/
 
-EXPORT_FUNC(get_matching_maskdata)
 MaskData *get_matching_maskdata(uint8 type, const char *str)
 {
     int i;
@@ -138,7 +134,6 @@ MaskData *get_matching_maskdata(uint8 type, const char *str)
 
 /*************************************************************************/
 
-EXPORT_FUNC(put_maskdata)
 MaskData *put_maskdata(MaskData *data)
 {
     if (data) {
@@ -153,14 +148,12 @@ MaskData *put_maskdata(MaskData *data)
 
 /*************************************************************************/
 
-EXPORT_FUNC(first_maskdata)
 MaskData *first_maskdata(uint8 type)
 {
     masklist_iterator[type] = 0;
     return next_maskdata(type);
 }
 
-EXPORT_FUNC(next_maskdata)
 MaskData *next_maskdata(uint8 type)
 {
     MaskData *result;
@@ -175,7 +168,6 @@ MaskData *next_maskdata(uint8 type)
 
 /*************************************************************************/
 
-EXPORT_FUNC(maskdata_count)
 int maskdata_count(uint8 type)
 {
     return masklist_count[type];
@@ -183,7 +175,6 @@ int maskdata_count(uint8 type)
 
 /*************************************************************************/
 
-EXPORT_FUNC(get_exception_by_num)
 MaskData *get_exception_by_num(int num)
 {
     int i;
@@ -204,7 +195,6 @@ MaskData *get_exception_by_num(int num)
  * other exception already has that number.
  */
 
-EXPORT_FUNC(move_exception)
 MaskData *move_exception(MaskData *except, int newnum)
 {
     int count;     /* shortcut for "masklist_count[MD_EXCEPTION]" */
@@ -323,7 +313,7 @@ void do_maskdata_cmd(const MaskDataCmdInfo *info, const User *u)
         mask = s+1;
         s = strchr(mask, '"');
         if (!s) {
-            notice_lang(s_OperServ, u, MISSING_QUOTE);
+            notice_lang(operserv_service.nick, u, MISSING_QUOTE);
             return;
         }
         strtok(s, " ");         /* prime strtok() for later */
@@ -346,10 +336,10 @@ void do_maskdata_cmd(const MaskDataCmdInfo *info, const User *u)
     } else if (stricmp(cmd, "CHECK") == 0) {
         do_maskdata_check(info, u, mask);
     } else if (stricmp(cmd, "COUNT") == 0) {
-        notice_lang(s_OperServ, u, info->msg_count,
+        notice_lang(operserv_service.nick, u, info->msg_count,
                     maskdata_count(info->md_type), info->name);
     } else if (!info->do_unknown_cmd || !info->do_unknown_cmd(u, cmd, mask)) {
-        syntax_error(s_OperServ, u, info->name, OPER_MASKDATA_SYNTAX);
+        syntax_error(operserv_service.nick, u, info->name, OPER_MASKDATA_SYNTAX);
     }
 }
 
@@ -366,18 +356,18 @@ static void do_maskdata_add(const MaskDataCmdInfo *info, const User *u,
     const char *reason;
 
     if (maskdata_count(info->md_type) >= MAX_MASKDATA) {
-        notice_lang(s_OperServ, u, info->msg_add_too_many, info->name);
+        notice_lang(operserv_service.nick, u, info->msg_add_too_many, info->name);
         return;
     }
     reason = strtok_remaining();
     if (!reason) {
-        syntax_error(s_OperServ, u, info->name, OPER_MASKDATA_ADD_SYNTAX);
+        syntax_error(operserv_service.nick, u, info->name, OPER_MASKDATA_ADD_SYNTAX);
         return;
     }
 
     expires = expiry ? dotime(expiry) : *info->def_expiry_ptr;
     if (expires < 0) {
-        notice_lang(s_OperServ, u, BAD_EXPIRY_TIME);
+        notice_lang(operserv_service.nick, u, BAD_EXPIRY_TIME);
         return;
     } else {
         if (expires > 0)
@@ -393,7 +383,7 @@ static void do_maskdata_add(const MaskDataCmdInfo *info, const User *u,
 
     /* Make sure mask does not already exist on list. */
     if (put_maskdata(get_maskdata(info->md_type, mask))) {
-        notice_lang(s_OperServ, u, info->msg_add_exists, mask, info->name);
+        notice_lang(operserv_service.nick, u, info->msg_add_exists, mask, info->name);
         return;
     }
 
@@ -406,9 +396,9 @@ static void do_maskdata_add(const MaskDataCmdInfo *info, const User *u,
     md = add_maskdata(info->md_type, md);
     if (info->do_add_mask)
         info->do_add_mask(u, info->md_type, md);
-    notice_lang(s_OperServ, u, info->msg_added, mask, info->name);
+    notice_lang(operserv_service.nick, u, info->msg_added, mask, info->name);
     if (readonly)
-        notice_lang(s_OperServ, u, READ_ONLY_MODE);
+        notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
 }
 
 /*************************************************************************/
@@ -421,7 +411,7 @@ static void do_maskdata_del(const MaskDataCmdInfo *info, const User *u,
     MaskData *md;
 
     if (!mask) {
-        syntax_error(s_OperServ, u, info->name, OPER_MASKDATA_DEL_SYNTAX);
+        syntax_error(operserv_service.nick, u, info->name, OPER_MASKDATA_DEL_SYNTAX);
         return;
     }
     md = get_maskdata(info->md_type, mask);
@@ -429,11 +419,11 @@ static void do_maskdata_del(const MaskDataCmdInfo *info, const User *u,
         if (info->do_del_mask)
             info->do_del_mask(u, info->md_type, md);
         del_maskdata(info->md_type, md);
-        notice_lang(s_OperServ, u, info->msg_deleted, mask, info->name);
+        notice_lang(operserv_service.nick, u, info->msg_deleted, mask, info->name);
         if (readonly)
-            notice_lang(s_OperServ, u, READ_ONLY_MODE);
+            notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
     } else {
-        notice_lang(s_OperServ, u, info->msg_del_not_found, mask, info->name);
+        notice_lang(operserv_service.nick, u, info->msg_del_not_found, mask, info->name);
     }
 }
 
@@ -447,7 +437,7 @@ static void do_maskdata_clear(const MaskDataCmdInfo *info, const User *u,
     MaskData *md;
 
     if (!mask || stricmp(mask,"ALL") != 0) {
-        syntax_error(s_OperServ, u, info->name, OPER_MASKDATA_CLEAR_SYNTAX);
+        syntax_error(operserv_service.nick, u, info->name, OPER_MASKDATA_CLEAR_SYNTAX);
         return;
     }
     for (md = first_maskdata(info->md_type); md;
@@ -457,9 +447,9 @@ static void do_maskdata_clear(const MaskDataCmdInfo *info, const User *u,
             info->do_del_mask(u, info->md_type, md);
         del_maskdata(info->md_type, md);
     }
-    notice_lang(s_OperServ, u, info->msg_cleared, info->name);
+    notice_lang(operserv_service.nick, u, info->msg_cleared, info->name);
     if (readonly)
-        notice_lang(s_OperServ, u, READ_ONLY_MODE);
+        notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
 }
 
 /*************************************************************************/
@@ -477,7 +467,7 @@ static void do_maskdata_list(const MaskDataCmdInfo *info, const User *u,
     if (skipstr) {
         skip = (int)atolsafe(skipstr, 0, INT_MAX);
         if (skip < 0) {
-            syntax_error(s_OperServ, u, info->name, OPER_MASKDATA_LIST_SYNTAX);
+            syntax_error(operserv_service.nick, u, info->name, OPER_MASKDATA_LIST_SYNTAX);
             return;
         }
     }
@@ -485,7 +475,7 @@ static void do_maskdata_list(const MaskDataCmdInfo *info, const User *u,
         noexpire = 1;
 
     if (maskdata_count(info->md_type) == 0) {
-        notice_lang(s_OperServ, u, info->msg_list_empty, info->name);
+        notice_lang(operserv_service.nick, u, info->msg_list_empty, info->name);
         return;
     }
 
@@ -496,7 +486,7 @@ static void do_maskdata_list(const MaskDataCmdInfo *info, const User *u,
                        && (!noexpire || !md->expires)))
         ) {
             if (!count)
-                notice_lang(s_OperServ, u, info->msg_list_header, info->name);
+                notice_lang(operserv_service.nick, u, info->msg_list_header, info->name);
             count++;
             if (count > skip && count <= skip+ListMax) {
                 maskdata_list_entry(info, u, is_view, md);
@@ -509,9 +499,9 @@ static void do_maskdata_list(const MaskDataCmdInfo *info, const User *u,
             shown = 0;
         else if (shown > ListMax)
             shown = ListMax;
-        notice_lang(s_OperServ, u, LIST_RESULTS, shown, count);
+        notice_lang(operserv_service.nick, u, LIST_RESULTS, shown, count);
     } else {
-        notice_lang(s_OperServ, u, info->msg_list_no_match, info->name);
+        notice_lang(operserv_service.nick, u, info->msg_list_no_match, info->name);
     }
 }
 
@@ -534,14 +524,14 @@ static void maskdata_list_entry(const MaskDataCmdInfo *info, const User *u,
         expires_in_lang(expirebuf, sizeof(expirebuf), u->ngi, md->expires);
         who = *md->who ? md->who : "<unknown>";
         if (md->lastused) {
-            notice_lang(s_OperServ, u, OPER_MASKDATA_VIEW_FORMAT, md->mask,
+            notice_lang(operserv_service.nick, u, OPER_MASKDATA_VIEW_FORMAT, md->mask,
                         who, timebuf, usedbuf, expirebuf, md->reason);
         } else {
-            notice_lang(s_OperServ, u, OPER_MASKDATA_VIEW_UNUSED_FORMAT,
+            notice_lang(operserv_service.nick, u, OPER_MASKDATA_VIEW_UNUSED_FORMAT,
                         md->mask, who, timebuf, expirebuf, md->reason);
         }
     } else { /* !is_view */
-        notice_lang(s_OperServ, u, OPER_MASKDATA_LIST_FORMAT, md->mask,
+        notice_lang(operserv_service.nick, u, OPER_MASKDATA_LIST_FORMAT, md->mask,
                     md->reason);
     }
 }
@@ -558,7 +548,7 @@ static void do_maskdata_check(const MaskDataCmdInfo *info, const User *u,
     int did_header = 0;
 
     if (!mask) {
-        syntax_error(s_OperServ, u, info->name, OPER_MASKDATA_CHECK_SYNTAX);
+        syntax_error(operserv_service.nick, u, info->name, OPER_MASKDATA_CHECK_SYNTAX);
         return;
     }
     for (md = first_maskdata(info->md_type); md;
@@ -567,17 +557,17 @@ static void do_maskdata_check(const MaskDataCmdInfo *info, const User *u,
         if (count < ListMax && match_wild_nocase(md->mask, mask)) {
             count++;
             if (!did_header) {
-                notice_lang(s_OperServ, u, info->msg_check_header,
+                notice_lang(operserv_service.nick, u, info->msg_check_header,
                             mask, info->name);
                 did_header = 1;
             }
-            notice(s_OperServ, u->nick, "    %s", md->mask);
+            notice(operserv_service.nick, u->nick, "    %s", md->mask);
         }
     }
     if (did_header)
-        notice_lang(s_OperServ, u, info->msg_check_count, count);
+        notice_lang(operserv_service.nick, u, info->msg_check_count, count);
     else
-        notice_lang(s_OperServ, u, info->msg_check_no_match, mask, info->name);
+        notice_lang(operserv_service.nick, u, info->msg_check_no_match, mask, info->name);
 }
 
 /*************************************************************************/
@@ -639,26 +629,25 @@ char *make_reason(const char *format, const MaskData *data)
 
 /*************************************************************************/
 
-/* MaskData initialization: set up expiration callback. */
+/* MaskData initialization: declare the expiration event. */
 
 int init_maskdata(void)
 {
-    cb_expire_md = register_callback("expire maskdata");
-    if (cb_expire_md < 0) {
-        module_log("Unable to register MaskData expiration callback");
+    expire_md_event = event_declare(THIS_MODULE, OPERSERV_EVENT_EXPIRE_MASKDATA);
+    if (!expire_md_event) {
+        module_log("Unable to declare the MaskData expiration event");
         return 0;
     }
     return 1;
 }
 
 
-/* MaskData cleanup: remove expiration callback. */
+/* MaskData cleanup (the event is retracted by the loader). */
 
 void exit_maskdata(void)
 {
     clean_dbtables();
-    unregister_callback(cb_expire_md);
-    cb_expire_md = -1;
+    expire_md_event = NULL;
 }
 
 /*************************************************************************/

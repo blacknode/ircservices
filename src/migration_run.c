@@ -10,7 +10,7 @@
  *
  * Two ways in, for two different moments:
  *
- *   - At start-up (and when a module declaring MODULE_MIGRATIONS_AUTO is
+ *   - At start-up (and when a module setting MODULE_APPLY_MIGRATIONS is
  *     loaded), migrations are applied synchronously, one after the other,
  *     on the main thread's own connection: nothing can run until they
  *     have, and nothing else is running yet.
@@ -298,8 +298,8 @@ static const struct MigrationSet* migration_set_of(const char* module)
 
     if (migration_reserved_name(module))
         return core_set;
-    mod = find_module(module);
-    return mod ? get_module_migrations(mod) : NULL;
+    mod = module_find(module);
+    return mod ? module_migrations(mod) : NULL;
 }
 
 static void migration_run_step(MigrationJob* job);
@@ -577,7 +577,7 @@ void migration_cmd_status(struct Module_* owner, MigrationReplyFn reply,
     MigrationAsker asker = {owner, reply, ""};
 
     strbcpy(asker.nick, nick);
-    if (strcmp(module, MIGRATION_CORE) != 0 && !find_module(module)) {
+    if (strcmp(module, MIGRATION_CORE) != 0 && !module_find(module)) {
         migration_reply(&asker, "Module %s is not loaded", module);
         return;
     }
@@ -606,7 +606,7 @@ static void migration_cmd_run(struct Module_* owner, MigrationReplyFn reply,
                         revert ? "reverted" : "applied");
         return;
     }
-    if (!(mod = find_module(module))) {
+    if (!(mod = module_find(module))) {
         migration_reply(&asker, "Module %s is not loaded", module);
         return;
     }
@@ -618,7 +618,7 @@ static void migration_cmd_run(struct Module_* owner, MigrationReplyFn reply,
      * applied when the module is loaded, and reverting one would drop the
      * tables from under the module while it runs. */
     if (revert &&
-        check_module_symbol(mod, "module_migrations_auto", NULL, NULL)) {
+        (module_flags(mod) & MODULE_APPLY_MIGRATIONS)) {
         migration_reply(&asker, "The migrations of %s are applied when it is"
                                 " loaded and cannot be reverted by hand",
                         module);

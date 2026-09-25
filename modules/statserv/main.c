@@ -20,16 +20,10 @@
 
 /*************************************************************************/
 
-static Module *module_operserv;
-static Module *module_nickserv;
+static Event* command_event;
+static Event* help_event;
+static Event* help_cmds_event;
 
-static int cb_command   = -1;
-static int cb_help      = -1;
-static int cb_help_cmds = -1;
-
-
-       char *s_StatServ;
-static char *desc_StatServ;
 static int   SSOpersOnly;
 
 static int16 servercnt = 0;     /* Number of online servers */
@@ -89,12 +83,6 @@ ServerStats *put_serverstats(ServerStats *ss)
     return ss;
 }
 
-EXPORT_FUNC(add_serverstats)
-EXPORT_FUNC(del_serverstats)
-EXPORT_FUNC(get_serverstats)
-EXPORT_FUNC(put_serverstats)
-EXPORT_FUNC(first_serverstats)
-EXPORT_FUNC(next_serverstats)
 
 /*************************************************************************/
 
@@ -146,84 +134,20 @@ static DBTable stat_servers_dbtable = {
 /****************************** Statistics *******************************/
 /*************************************************************************/
 
-/* Introduce the StatServ pseudoclient. */
+/* Main StatServ routine: a PRIVMSG to StatServ. */
 
-static int introduce_statserv(const char *nick)
-{
-    if (!nick || irc_stricmp(nick, s_StatServ) == 0) {
-        send_pseudo_nick(s_StatServ, desc_StatServ, PSEUDO_INVIS);
-        if (nick)
-            return 1;
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-/* Main StatServ routine. */
-
-static int statserv(const char *source, const char *target, char *buf)
+static void statserv_message(struct Service *service, User *u, char *buf)
 {
     const char *cmd;
-    const char *s;
-    User *u;
-
-    if (irc_stricmp(target, s_StatServ) != 0)
-        return 0;
-
-    u = get_user(source);
-    if (!u) {
-        module_log("user record for %s not found", source);
-        notice(s_StatServ, source, getstring(NULL,INTERNAL_ERROR));
-        return 1;
-    }
 
     if (SSOpersOnly && !is_oper(u)) {
-        notice_lang(s_StatServ, u, ACCESS_DENIED);
-        return 1;
+        notice_lang(service->nick, u, ACCESS_DENIED);
+        return;
     }
 
     cmd = strtok(buf, " ");
-    if (!cmd) {
-        return 1;
-    } else if (stricmp(cmd, "\1PING") == 0) {
-        if (!(s = strtok_remaining()))
-            s = "\1";
-        notice(s_StatServ, source, "\1PING %s", s);
-    } else {
-        if (call_callback_2(cb_command, u, cmd) <= 0)
-            run_cmd(s_StatServ, u, THIS_MODULE, cmd);
-    }
-    return 1;
-}
-
-/*************************************************************************/
-
-/* Return a /WHOIS response for StatServ. */
-
-static int statserv_whois(const char *source, char *who, char *extra)
-{
-    if (irc_stricmp(who, s_StatServ) != 0)
-        return 0;
-    send_cmd(ServerName, "311 %s %s %s %s * :%s", source, who,
-             ServiceUser, ServiceHost, desc_StatServ);
-    send_cmd(ServerName, "312 %s %s %s :%s", source, who,
-             ServerName, ServerDesc);
-    send_cmd(ServerName, "313 %s %s :is a network service", source, who);
-    send_cmd(ServerName, "318 %s %s End of /WHOIS response.", source, who);
-    return 1;
-}
-
-/*************************************************************************/
-
-/* Callback for NickServ REGISTER/LINK check; we disallow
- * registration/linking of the StatServ pseudoclient nickname.
- */
-
-static int do_reglink_check(const User *u, const char *nick,
-                            const char *pass, const char *email)
-{
-    return irc_stricmp(nick, s_StatServ) == 0;
+    if (cmd && event_emit(command_event, u, cmd) <= 0)
+        run_cmd(service->nick, u, THIS_MODULE, cmd);
 }
 
 /*************************************************************************/
@@ -237,14 +161,14 @@ static void do_help(User *u)
     char *cmd = strtok_remaining();
 
     if (!cmd) {
-        notice_help(s_StatServ, u, STAT_HELP);
+        notice_help(statserv_service.nick, u, STAT_HELP);
     } else if (stricmp(cmd, "COMMANDS") == 0) {
-        notice_help(s_StatServ, u, STAT_HELP_COMMANDS);
-        call_callback_2(cb_help_cmds, u, 0);
-    } else if (call_callback_2(cb_help, u, cmd) > 0) {
+        notice_help(statserv_service.nick, u, STAT_HELP_COMMANDS);
+        event_emit(help_cmds_event, u, 0);
+    } else if (event_emit(help_event, u, cmd) > 0) {
         return;
     } else {
-        help_cmd(s_StatServ, u, THIS_MODULE, cmd);
+        help_cmd(statserv_service.nick, u, THIS_MODULE, cmd);
     }
 }
 
@@ -275,15 +199,15 @@ static void do_servers(User *u)
                 onlinecount++;
         }
 
-        notice_lang(s_StatServ, u, STAT_SERVERS_STATS_TOTAL, nservers);
-        notice_lang(s_StatServ, u, STAT_SERVERS_STATS_ON_OFFLINE,
+        notice_lang(statserv_service.nick, u, STAT_SERVERS_STATS_TOTAL, nservers);
+        notice_lang(statserv_service.nick, u, STAT_SERVERS_STATS_ON_OFFLINE,
                     onlinecount, (onlinecount*100)/nservers,
                     nservers-onlinecount,
                     ((nservers-onlinecount)*100)/nservers);
         if (ss_lastquit) {
             strftime_lang(lastquit_buf, sizeof(lastquit_buf), u->ngi,
                           STRFTIME_DATE_TIME_FORMAT, ss_lastquit->t_quit);
-            notice_lang(s_StatServ, u, STAT_SERVERS_LASTQUIT_WAS,
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_LASTQUIT_WAS,
                         ss_lastquit->name, lastquit_buf);
         }
 
@@ -291,7 +215,7 @@ static void do_servers(User *u)
     } else if (stricmp(cmd, "LIST") == 0) {
         int matchcount = 0;
 
-        notice_lang(s_StatServ, u, STAT_SERVERS_LIST_HEADER);
+        notice_lang(statserv_service.nick, u, STAT_SERVERS_LIST_HEADER);
         for (ss = first_serverstats(); ss; ss = next_serverstats()) {
             if (mask && !match_wild_nocase(mask, ss->name))
                 continue;
@@ -299,13 +223,13 @@ static void do_servers(User *u)
             if (!SS_IS_ONLINE(ss))
                 continue;
             count++;
-            notice_lang(s_StatServ, u, STAT_SERVERS_LIST_FORMAT,
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_LIST_FORMAT,
                    ss->name, ss->usercnt,
                    !usercnt ? 0 : (ss->usercnt*100)/usercnt,
                    ss->opercnt,
                    !opcnt ? 0 : (ss->opercnt*100)/opcnt);
         }
-        notice_lang(s_StatServ, u, STAT_SERVERS_LIST_RESULTS,
+        notice_lang(statserv_service.nick, u, STAT_SERVERS_LIST_RESULTS,
                         count, matchcount);
 
     } else if (stricmp(cmd, "VIEW") == 0) {
@@ -340,57 +264,57 @@ static void do_servers(User *u)
                               STRFTIME_DATE_TIME_FORMAT, ss->t_quit);
             }
 
-            notice_lang(s_StatServ, u,
+            notice_lang(statserv_service.nick, u,
                         is_online ? STAT_SERVERS_VIEW_HEADER_ONLINE
                                   : STAT_SERVERS_VIEW_HEADER_OFFLINE,
                         ss->name);
-            notice_lang(s_StatServ, u, STAT_SERVERS_VIEW_LASTJOIN, join_buf);
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_VIEW_LASTJOIN, join_buf);
             if (ss->t_quit > 0)
-                notice_lang(s_StatServ, u, STAT_SERVERS_VIEW_LASTQUIT,
+                notice_lang(statserv_service.nick, u, STAT_SERVERS_VIEW_LASTQUIT,
                             quit_buf);
             if (ss->quit_message)
-                notice_lang(s_StatServ, u, STAT_SERVERS_VIEW_QUITMSG,
+                notice_lang(statserv_service.nick, u, STAT_SERVERS_VIEW_QUITMSG,
                             ss->quit_message);
             if (is_online)
-                notice_lang(s_StatServ, u, STAT_SERVERS_VIEW_USERS_OPERS,
+                notice_lang(statserv_service.nick, u, STAT_SERVERS_VIEW_USERS_OPERS,
                             ss->usercnt,
                             !usercnt ? 0 : (ss->usercnt*100)/usercnt,
                             ss->opercnt,
                             !opcnt ? 0 : (ss->opercnt*100)/opcnt);
         }
-        notice_lang(s_StatServ, u, STAT_SERVERS_VIEW_RESULTS, count, nservers);
+        notice_lang(statserv_service.nick, u, STAT_SERVERS_VIEW_RESULTS, count, nservers);
 
     } else if (!is_services_admin(u)) {
         if (is_oper(u))
-            notice_lang(s_StatServ, u, PERMISSION_DENIED);
+            notice_lang(statserv_service.nick, u, PERMISSION_DENIED);
         else
-            syntax_error(s_StatServ, u, "SERVERS", STAT_SERVERS_SYNTAX);
+            syntax_error(statserv_service.nick, u, "SERVERS", STAT_SERVERS_SYNTAX);
 
     /* Only Services admins have access from here on! */
 
     } else if (stricmp(cmd, "DELETE") == 0) {
         if (!mask) {
-            syntax_error(s_StatServ, u, "SERVERS", STAT_SERVERS_DELETE_SYNTAX);
+            syntax_error(statserv_service.nick, u, "SERVERS", STAT_SERVERS_DELETE_SYNTAX);
         } else if (!(ss = get_serverstats(mask))) {
-            notice_lang(s_StatServ, u, SERV_X_NOT_FOUND, mask);
+            notice_lang(statserv_service.nick, u, SERV_X_NOT_FOUND, mask);
         } else if (SS_IS_ONLINE(ss)) {
-            notice_lang(s_StatServ, u, STAT_SERVERS_REMOVE_SERV_FIRST, mask);
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_REMOVE_SERV_FIRST, mask);
         } else {
             del_serverstats(ss);
             ss = NULL;
-            notice_lang(s_StatServ, u, STAT_SERVERS_DELETE_DONE, mask);
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_DELETE_DONE, mask);
         }
 
     } else if (stricmp(cmd, "COPY") == 0) {
         const char *newname = strtok(NULL, " ");
         ServerStats *newss;
         if (!mask || !newname) {
-            syntax_error(s_StatServ, u, "SERVERS", STAT_SERVERS_COPY_SYNTAX);
+            syntax_error(statserv_service.nick, u, "SERVERS", STAT_SERVERS_COPY_SYNTAX);
         } else if (!(ss = get_serverstats(mask))) {
-            notice_lang(s_StatServ, u, SERV_X_NOT_FOUND, mask);
+            notice_lang(statserv_service.nick, u, SERV_X_NOT_FOUND, mask);
         } else if ((newss = get_serverstats(newname)) != NULL) {
             put_serverstats(newss);
-            notice_lang(s_StatServ, u, STAT_SERVERS_SERVER_EXISTS, newname);
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_SERVER_EXISTS, newname);
         } else {
             newss = new_serverstats(newname);
             newss->t_join = ss->t_join;
@@ -400,21 +324,21 @@ static void do_servers(User *u)
             }
             add_serverstats(newss);
             put_serverstats(newss);
-            notice_lang(s_StatServ, u, STAT_SERVERS_COPY_DONE, mask, newname);
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_COPY_DONE, mask, newname);
         }
 
     } else if (stricmp(cmd, "RENAME") == 0) {
         const char *newname = strtok(NULL, " ");
         ServerStats *newss;
         if (!mask || !newname) {
-            syntax_error(s_StatServ, u, "SERVERS", STAT_SERVERS_RENAME_SYNTAX);
+            syntax_error(statserv_service.nick, u, "SERVERS", STAT_SERVERS_RENAME_SYNTAX);
         } else if (!(ss = get_serverstats(mask))) {
-            notice_lang(s_StatServ, u, SERV_X_NOT_FOUND, mask);
+            notice_lang(statserv_service.nick, u, SERV_X_NOT_FOUND, mask);
         } else if ((newss = get_serverstats(newname)) != NULL) {
             put_serverstats(newss);
-            notice_lang(s_StatServ, u, STAT_SERVERS_SERVER_EXISTS, newname);
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_SERVER_EXISTS, newname);
         } else if (SS_IS_ONLINE(ss)) {
-            notice_lang(s_StatServ, u, STAT_SERVERS_REMOVE_SERV_FIRST, mask);
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_REMOVE_SERV_FIRST, mask);
         } else {
             newss = new_serverstats(newname);
             newss->t_join = ss->t_join;
@@ -426,12 +350,12 @@ static void do_servers(User *u)
             ss = NULL;
             add_serverstats(newss);
             put_serverstats(newss);
-            notice_lang(s_StatServ, u, STAT_SERVERS_RENAME_DONE,
+            notice_lang(statserv_service.nick, u, STAT_SERVERS_RENAME_DONE,
                         mask, newname);
         }
 
     } else {
-        syntax_error(s_StatServ, u, "SERVERS", STAT_SERVERS_SYNTAX);
+        syntax_error(statserv_service.nick, u, "SERVERS", STAT_SERVERS_SYNTAX);
     }
 
     put_serverstats(ss);
@@ -448,15 +372,15 @@ static void do_users(User *u)
         cmd = "";
 
     if (stricmp(cmd, "STATS") == 0) {
-        notice_lang(s_StatServ, u, STAT_USERS_TOTUSERS, usercnt);
-        notice_lang(s_StatServ, u, STAT_USERS_TOTOPERS, opcnt);
+        notice_lang(statserv_service.nick, u, STAT_USERS_TOTUSERS, usercnt);
+        notice_lang(statserv_service.nick, u, STAT_USERS_TOTOPERS, opcnt);
         avgusers = (usercnt + servercnt/2) / servercnt;
         avgopers = (opcnt*10 + servercnt/2) / servercnt;
-        notice_lang(s_StatServ, u, STAT_USERS_SERVUSERS, avgusers);
-        notice_lang(s_StatServ, u, STAT_USERS_SERVOPERS,
+        notice_lang(statserv_service.nick, u, STAT_USERS_SERVUSERS, avgusers);
+        notice_lang(statserv_service.nick, u, STAT_USERS_SERVOPERS,
                avgopers/10, avgopers%10);
     } else {
-        syntax_error(s_StatServ, u, "USERS", STAT_USERS_SYNTAX);
+        syntax_error(statserv_service.nick, u, "USERS", STAT_USERS_SYNTAX);
     }
 }
 
@@ -468,7 +392,6 @@ static void do_users(User *u)
  * it.  Always successful.
  */
 
-EXPORT_FUNC(new_serverstats)
 ServerStats *new_serverstats(const char *servername)
 {
     ServerStats *ss = alloc_serverstats();
@@ -481,7 +404,6 @@ ServerStats *new_serverstats(const char *servername)
 
 /* Free a ServerStats structure and associated data. */
 
-EXPORT_FUNC(free_serverstats)
 void free_serverstats(ServerStats *ss)
 {
     free(ss->name);
@@ -590,9 +512,9 @@ static int stats_do_umode(User *user, int modechar, int add)
 
 /*************************************************************************/
 
-/* OperServ STATS ALL callback. */
+/* OperServ STATS ALL handler. */
 
-static int do_stats_all(User *user, const char *s_OperServ)
+static int do_stats_all(User *user, const char *operserv_nick)
 {
     int32 count, mem;
     ServerStats *ss;
@@ -604,7 +526,7 @@ static int do_stats_all(User *user, const char *s_OperServ)
         if (ss->quit_message)
             mem += strlen(ss->quit_message)+1;
     }
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_STATSERV_MEM,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_STATSERV_MEM,
                 count, (mem+512) / 1024);
 
     return 0;
@@ -614,162 +536,75 @@ static int do_stats_all(User *user, const char *s_OperServ)
 /**************************** Module functions ***************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+/* StatServName = <nick>, <description>; in the module block. */
+struct Service statserv_service = {
+    .directive = "StatServName",
+    .flags = SERVICE_INVISIBLE,
+    .on_message = statserv_message,
+};
+
+static ConfigDirective statserv_config[] = {
     { "SSOpersOnly",      { { CD_SET, 0, &SSOpersOnly } } },
-    { "StatServName",     { { CD_STRING, CF_DIRREQ, &s_StatServ },
-                            { CD_STRING, 0, &desc_StatServ } } },
     { NULL }
 };
 
 /*************************************************************************/
 
-static int do_load_module(Module *mod, const char *modname)
+static int statserv_init(Module *module)
 {
-    if (strcmp(modname, "operserv/main") == 0) {
-        module_operserv = mod;
-        if (!add_callback(mod, "STATS ALL", do_stats_all))
-            module_log("Unable to register OperServ STATS ALL callback");
-    }
-    if (strcmp(modname, "nickserv/main") == 0) {
-        module_nickserv = mod;
-        if (!add_callback(mod, "REGISTER/LINK check", do_reglink_check))
-            module_log("Unable to register NickServ REGISTER/LINK check"
-                       " callback");
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-static int do_unload_module(Module *mod)
-{
-    if (mod == module_operserv) {
-        remove_callback(mod, "STATS ALL", do_stats_all);
-        module_operserv = NULL;
-    }
-    if (mod == module_nickserv) {
-        remove_callback(mod, "REGISTER/LINK check", do_reglink_check);
-        module_nickserv = NULL;
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-static int do_reconfigure(int after_configure)
-{
-    static char old_s_StatServ[NICKMAX];
-    static char *old_desc_StatServ = NULL;
-
-    if (!after_configure) {
-        /* Before reconfiguration: save old values. */
-        strbcpy(old_s_StatServ, s_StatServ);
-        old_desc_StatServ = strdup(desc_StatServ);
-    } else {
-        /* After reconfiguration: handle value changes. */
-        if (strcmp(old_s_StatServ, s_StatServ) != 0)
-            send_nickchange(old_s_StatServ, s_StatServ);
-        if (!old_desc_StatServ || strcmp(old_desc_StatServ,desc_StatServ) != 0)
-            send_namechange(s_StatServ, desc_StatServ);
-        free(old_desc_StatServ);
-        old_desc_StatServ = NULL;
-    }  /* if (!after_configure) */
-    return 0;
-}
-
-/*************************************************************************/
-
-int init_module(void)
-{
-    Module *tmpmod;
-
-
-    if (!new_commandlist(THIS_MODULE)
-     || !register_commands(THIS_MODULE, cmds)
-    ) {
+    if (!new_commandlist(module) || !register_commands(module, cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
 
-    cb_command   = register_callback("command");
-    cb_help      = register_callback("HELP");
-    cb_help_cmds = register_callback("HELP COMMANDS");
-    if (cb_command < 0 || cb_help < 0 || cb_help_cmds < 0) {
-        module_log("Unable to register callbacks");
-        exit_module(0);
+    command_event = event_declare(module, STATSERV_EVENT_COMMAND);
+    help_event = event_declare(module, STATSERV_EVENT_HELP);
+    help_cmds_event = event_declare(module, STATSERV_EVENT_HELP_COMMANDS);
+    if (!command_event || !help_event || !help_cmds_event) {
+        module_log("Unable to declare events");
         return 0;
     }
 
-    if (!add_callback(NULL, "load module", do_load_module)
-     || !add_callback(NULL, "unload module", do_unload_module)
-     || !add_callback(NULL, "reconfigure", do_reconfigure)
-     || !add_callback(NULL, "introduce_user", introduce_statserv)
-     || !add_callback(NULL, "m_privmsg", statserv)
-     || !add_callback(NULL, "m_whois", statserv_whois)
-     || !add_callback(NULL, "server create", stats_do_server)
-     || !add_callback(NULL, "server delete", stats_do_squit)
-     || !add_callback(NULL, "user create", stats_do_newuser)
-     || !add_callback(NULL, "user delete", stats_do_quit)
-     || !add_callback(NULL, "user MODE", stats_do_umode)
+    if (!event_attach(module, EVENT_SERVER_CREATE, stats_do_server)
+     || !event_attach(module, EVENT_SERVER_DELETE, stats_do_squit)
+     || !event_attach(module, EVENT_USER_CREATE, stats_do_newuser)
+     || !event_attach(module, EVENT_USER_DELETE, stats_do_quit)
+     || !event_attach(module, EVENT_USER_MODE, stats_do_umode)
+     || !event_attach(module, OPERSERV_EVENT_STATS_ALL, do_stats_all)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
-
-    tmpmod = find_module("nickserv/main");
-    if (tmpmod)
-        do_load_module(tmpmod, "nickserv/main");
 
     if (!register_dbtable(&stat_servers_dbtable)) {
         module_log("Unable to register database table");
-        exit_module(0);
         return 0;
     }
-
-    if (linked)
-        introduce_statserv(NULL);
 
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int statserv_fini(Module *module, int shutdown)
 {
-    if (linked)
-        send_cmd(s_StatServ, "QUIT :");
-
     unregister_dbtable(&stat_servers_dbtable);
     clean_dbtables();
-
-    if (module_nickserv)
-        do_unload_module(module_nickserv);
-    if (module_operserv)
-        do_unload_module(module_operserv);
-
-    remove_callback(NULL, "user MODE", stats_do_umode);
-    remove_callback(NULL, "user delete", stats_do_quit);
-    remove_callback(NULL, "user create", stats_do_newuser);
-    remove_callback(NULL, "server delete", stats_do_squit);
-    remove_callback(NULL, "server create", stats_do_server);
-    remove_callback(NULL, "m_whois", statserv_whois);
-    remove_callback(NULL, "m_privmsg", statserv);
-    remove_callback(NULL, "introduce_user", introduce_statserv);
-    remove_callback(NULL, "reconfigure", do_reconfigure);
-    remove_callback(NULL, "unload module", do_unload_module);
-    remove_callback(NULL, "load module", do_load_module);
-
-    unregister_callback(cb_help_cmds);
-    unregister_callback(cb_help);
-    unregister_callback(cb_command);
-
-    unregister_commands(THIS_MODULE, cmds);
-    del_commandlist(THIS_MODULE);
-
+    unregister_commands(module, cmds);
+    del_commandlist(module);
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "StatServ: statistics about the network's servers",
+    .config = statserv_config,
+    .services = MODULE_SERVICES(&statserv_service),
+    .init = statserv_init,
+    .fini = statserv_fini,
+};
 
 /*************************************************************************/
 

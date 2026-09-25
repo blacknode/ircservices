@@ -17,7 +17,7 @@
 
 /*************************************************************************/
 
-static int cb_collide = -1;
+static Event* collide_event;
 
 
 /* Structure used for collide/release/433 timeouts */
@@ -47,17 +47,17 @@ void collide_nick(NickInfo *ni, int from_timeout)
         rem_ns_timeout(ni, TO_COLLIDE, 1);
         rem_ns_timeout(ni, TO_SEND_433, 1);
     }
-    if (call_callback_1(cb_collide, ni->user) > 0)
+    if (event_emit(collide_event, ni->user) > 0)
         return;
     if (NSForceNickChange) {
         char *guestnick = make_guest_nick();
-        notice_lang(s_NickServ, ni->user, FORCENICKCHANGE_NOW, guestnick);
+        notice_lang(nickserv_service.nick, ni->user, FORCENICKCHANGE_NOW, guestnick);
         send_nickchange_remote(ni->nick, guestnick);
         ni->status |= NS_GUESTED;
         return;
     } else {
-        notice_lang(s_NickServ, ni->user, DISCONNECT_NOW);
-        kill_user(s_NickServ, ni->nick, "Nick kill enforced");
+        notice_lang(nickserv_service.nick, ni->user, DISCONNECT_NOW);
+        kill_user(nickserv_service.nick, ni->nick, "Nick kill enforced");
         introduce_enforcer(ni);
     }
 }
@@ -68,9 +68,9 @@ void collide_nick(NickInfo *ni, int from_timeout)
 
 void introduce_enforcer(NickInfo *ni)
 {
-    char realname[NICKMAX+16]; /*Long enough for s_NickServ + " Enforcement"*/
+    char realname[NICKMAX+16]; /*Long enough for nickserv_service.nick + " Enforcement"*/
 
-    snprintf(realname, sizeof(realname), "%s Enforcement", s_NickServ);
+    snprintf(realname, sizeof(realname), "%s Enforcement", nickserv_service.nick);
     send_nick(ni->nick, NSEnforcerUser, NSEnforcerHost, ServerName,
               realname, enforcer_modes);
     ni->status |= NS_KILL_HELD;
@@ -228,9 +228,9 @@ static void timeout_send_433(Timeout *t)
 
 int init_collide(void)
 {
-    cb_collide = register_callback("collide");
-    if (cb_collide < 0) {
-        module_log("collide: Unable to register callbacks");
+    collide_event = event_declare(THIS_MODULE, NICKSERV_EVENT_COLLIDE);
+    if (!collide_event) {
+        module_log("collide: Unable to declare events");
         exit_collide();
         return 0;
     }
@@ -242,7 +242,6 @@ int init_collide(void)
 void exit_collide()
 {
     rem_ns_timeout(NULL, -1, 1);
-    unregister_callback(cb_collide);
 }
 
 /*************************************************************************/

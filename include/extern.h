@@ -100,7 +100,6 @@ E int LogMaxUsers;
 E int EnableGetpass;
 E int WallAdminPrivs;
 
-E int introduce_user(const char* user);
 E int init(int ac, char** av);
 E int reconfigure(void);
 E void cleanup(void);
@@ -129,8 +128,8 @@ E Socket* servsock;
 E int save_data;
 E time_t start_time;
 E int openlog_failed, openlog_errno;
-E int cb_connect;
-E int cb_save_complete;
+E struct Event_* uplink_linked_event; /* EVENT_UPLINK_LINKED */
+E struct Event_* save_complete_event; /* EVENT_SAVE_COMPLETE */
 
 E void connect_callback(Socket* s, void* param_unused);
 E void disconnect_callback(Socket* s, void* param);
@@ -242,7 +241,7 @@ E void do_quit(const char* source, int ac, char** av);
 E void do_kill(const char* source, int ac, char** av);
 
 E Channel* join_channel(User* user, const char* channel, int32 modes);
-E int part_channel(User* user, const char* channel, int callback,
+E int part_channel(User* user, const char* channel, struct Event_* event,
                    const char* param, const char* source);
 E void part_all_channels(User* user);
 

@@ -22,39 +22,50 @@ define any setting without touching the parser.
     core tables bound (READ)              core tables bound (READ)
     conf_commit()                         conf_commit()      old tree freed
     core tables set (SET)                 core tables set (SET)
-    for each loadmodule:                  "reconfigure" callback (0)
-        dlopen, module_config bound       every module_config bound (READ)
-        (READ+SET), init_module()         every module_config set (SET)
-                                          "reconfigure" callback (1)
+    for each loadmodule:                  every module's table bound (READ)
+        dlopen, the module's table        every module's table set (SET)
+        bound (READ+SET), its `init'      pseudo-clients renamed if needed
+                                          every module's `rehash'
+
+A module's table is its ModuleInfo.config plus one directive per
+pseudo-client it declares (readme.mod_api).
 
 If the file has a syntax error, or a core table fails to bind, the new tree
 is discarded (conf_discard()) and the running configuration is untouched.
 
 The tree is parsed before the first module is loaded, so it is complete
-and available from the moment a module's init_module() runs -- and even
-before, since the module's directive table is bound first.
+and available from the moment a module's `init' runs -- and even before,
+since the module's directive table is bound first.
 
-2. Declaring settings: module_config
-------------------------------------
+2. Declaring settings: ModuleInfo.config
+----------------------------------------
 
 The usual way for a module to get its settings is a table of
-ConfigDirective called `module_config`.  The loader finds it by name, binds
-it to every `module "<this module>"` block before calling init_module(),
-binds it again on every REHASH, and restores the previous values of the
-variables (deconfigure()) when the module is unloaded.
+ConfigDirective named in its ModuleInfo (`.config`, see readme.mod_api).
+The loader binds it to every `module "<this module>"` block before calling
+the module's `init', binds it again on every REHASH, and restores the
+previous values of the variables (deconfigure()) when the module is
+unloaded.  The nick and description of a pseudo-client are not in this
+table: its struct Service names the directive, and the loader adds it.
 
-    static char *s_MyServ, *desc_MyServ;
     static int32 MyMax;
     static time_t MyDelay;
     static int MyFlag;
 
-    ConfigDirective module_config[] = {
-        { "MyServName", { { CD_STRING, CF_DIRREQ, &s_MyServ },
-                          { CD_STRING, 0, &desc_MyServ } } },
+    static ConfigDirective myserv_config[] = {
         { "MyMax",      { { CD_POSINT, 0, &MyMax } } },
         { "MyDelay",    { { CD_TIME, 0, &MyDelay } } },
         { "MyFlag",     { { CD_SET, 0, &MyFlag } } },
         { NULL }
+    };
+
+    struct Service myserv_service = { .directive = "MyServName", ... };
+
+    ModuleInfo module_info = {
+        .abi = MODULE_ABI,
+        .config = myserv_config,
+        .services = MODULE_SERVICES(&myserv_service),
+        ...
     };
 
 which binds
@@ -121,8 +132,8 @@ do_LoadModule() in src/init.c for complete handlers.
 3. Reading the tree directly
 ----------------------------
 
-A module may also look at its block directly, at any time: from
-init_module(), from a command handler, from a callback.  This is the way
+A module may also look at its block directly, at any time: from its
+`init', from a command handler, from an event handler.  This is the way
 to go for structured settings (nested blocks), for settings whose meaning
 depends on other settings, or for optional features that do not deserve a
 variable.
@@ -203,18 +214,16 @@ children, next, parent) and may be read directly, but never modified.
 
 Lifetime.  Nodes belong to the tree, and a REHASH replaces the tree: do not
 keep ConfNode pointers across a REHASH.  Look them up again when you need
-them, or copy what you need, typically from the "reconfigure" callback,
-which is called with 0 before the modules' tables are rebound and with 1
-after; the new tree is already in place in both calls:
+them, or copy what you need, typically from the module's `rehash', which
+is called once the modules' tables have been bound again; the new tree is
+in place:
 
-    static int do_reconfigure(int after_configure)
+    static void myserv_rehash(Module *module)
     {
-        if (after_configure)
-            reload_listeners(conf_this_module());
-        return 0;
+        reload_listeners(conf_this_module());
     }
     ...
-    add_callback(NULL, "reconfigure", do_reconfigure);
+    ModuleInfo module_info = { ..., .rehash = myserv_rehash };
 
 4. Settings outside the module block
 ------------------------------------
@@ -229,14 +238,16 @@ others depend on.
 The core binds its own tables with configure_block(blockname, label,
 table, action), which binds a table to every top-level block with that
 name and label; configure(modulename, table, action) is the same thing for
-a module block, and is what the loader uses for module_config.  Both
+a module block, and is what the loader uses for ModuleInfo.config.  Both
 return 0 on error, having reported it.  Nested blocks are not bound this
 way; read them with the functions of section 3.
 
 5. Beyond the configuration
 ---------------------------
 
-The same header conventions apply to the other services the core offers
+How a module is declared, loaded and unloaded, and how it attaches to
+events and provides pseudo-clients, is in readme.mod_api (modules.h,
+events.h, service.h).  The same header conventions apply to the other services the core offers
 modules, described in readme.database: db.h (asynchronous PostgreSQL
 queries), cache.h (Redis), store.h (records kept in PostgreSQL through
 Redis) and worker.h (worker threads); to migration.h, described in

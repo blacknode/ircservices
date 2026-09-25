@@ -14,7 +14,6 @@
 
 /*************************************************************************/
 
-static Module *module_httpd;
 
 static char *AuthName;
 
@@ -94,7 +93,7 @@ static int do_auth(const struct HttpRequest *req, struct HttpResponse *res)
 
 static int do_Protect1(const char *filename, int linenum, char *param);
 static int do_Protect2(const char *filename, int linenum, char *param);
-ConfigDirective module_config[] = {
+static ConfigDirective auth_password_config[] = {
     { "AuthName",         { { CD_STRING, CF_DIRREQ, &AuthName } } },
     { "Protect",          { { CD_FUNC, 0, do_Protect1 },
                             { CD_FUNC, 0, do_Protect2 } } },
@@ -218,36 +217,20 @@ static int do_Protect2(const char *filename, int linenum, char *param)
 /*************************************************************************/
 /*************************************************************************/
 
-int init_module(void)
+static int auth_password_init(Module *module)
 {
-    module_httpd = find_module("httpd/main");
-    if (!module_httpd) {
-        module_log("Main httpd module not loaded");
-        exit_module(0);
+    if (!event_attach(module, HTTPD_EVENT_AUTH, do_auth)) {
+        module_log("Unable to attach to " HTTPD_EVENT_AUTH);
         return 0;
     }
-    use_module(module_httpd);
-
-    if (!add_callback(module_httpd, "auth", do_auth)) {
-        module_log("Unable to add callback");
-        exit_module(0);
-        return 0;
-    }
-
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int auth_password_fini(Module *module, int shutdown)
 {
     int i;
-
-    if (module_httpd) {
-        remove_callback(module_httpd, "auth", do_auth);
-        unuse_module(module_httpd);
-        module_httpd = NULL;
-    }
 
     ARRAY_FOREACH (i, protected) {
         free(protected[i].path);
@@ -259,6 +242,17 @@ int exit_module(int shutdown_unused)
 
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "HTTP: password-protected paths",
+    .requires = MODULE_REQUIRES("httpd/main"),
+    .config = auth_password_config,
+    .init = auth_password_init,
+    .fini = auth_password_fini,
+};
 
 /*************************************************************************/
 

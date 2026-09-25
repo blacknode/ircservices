@@ -22,12 +22,11 @@
 
 /*************************************************************************/
 
-static Module *module_operserv;
 
-static int cb_send_akill     = -1;
-static int cb_send_exclude   = -1;
-static int cb_cancel_akill   = -1;
-static int cb_cancel_exclude = -1;
+static Event* send_akill_event;
+static Event* send_exclude_event;
+static Event* cancel_akill_event;
+static Event* cancel_exclude_event;
 
 static char * AutokillReason;
 static int    ImmediatelySendAutokill;
@@ -40,7 +39,6 @@ static int    WallAutokillExpire;
        int    EnableExclude; /* not static because main.c/do_help() needs it */
 static time_t ExcludeExpiry;
 static char * ExcludeReason;
-EXPORT_VAR(int,EnableExclude)
 
 static void do_akill(User *u);
 static void do_akillchan(User *u);
@@ -67,7 +65,7 @@ static void send_akill(const MaskData *akill)
     /* Don't send autokills if EnableExclude but no ircd support */
     if (EnableExclude && !(protocol_features & PF_AKILL_EXCL)) {
         if (!warned_exclude) {
-            wallops(s_OperServ, "Warning: Autokill exclusions are enabled,"
+            wallops(operserv_service.nick, "Warning: Autokill exclusions are enabled,"
                     " but this IRC server does not support autokill"
                     " exclusions; autokills will not be sent to servers.");
             module_log("EnableExclude on server type without exclusions--"
@@ -90,7 +88,7 @@ static void send_akill(const MaskData *akill)
         return;
     }
     *host++ = 0;
-    call_callback_5(cb_send_akill, username, host, akill->expires, akill->who,
+    event_emit(send_akill_event, username, host, akill->expires, akill->who,
                     make_reason(AutokillReason, akill));
     free(username);
 }
@@ -104,7 +102,7 @@ static void cancel_akill(char *mask)
     char *s = strchr(mask, '@');
     if (s) {
         *s++ = 0;
-        call_callback_2(cb_cancel_akill, mask, s);
+        event_emit(cancel_akill_event, mask, s);
     } else {
         module_log("BUG: (cancel_akill) Missing @ in mask: %s", mask);
     }
@@ -126,7 +124,7 @@ static void send_exclude(const MaskData *exclude)
         return;
     }
     *host++ = 0;
-    call_callback_5(cb_send_exclude, username, host, exclude->expires,
+    event_emit(send_exclude_event, username, host, exclude->expires,
                     exclude->who, make_reason(ExcludeReason, exclude));
     free(username);
 }
@@ -140,7 +138,7 @@ static void cancel_exclude(char *mask)
     char *s = strchr(mask, '@');
     if (s) {
         *s++ = 0;
-        call_callback_2(cb_cancel_exclude, mask, s);
+        event_emit(cancel_exclude_event, mask, s);
     } else {
         module_log("BUG: (cancel_exclude) Missing @ in mask: %s", mask);
     }
@@ -174,7 +172,7 @@ static int do_user_check(int ac, char **av)
         /* Don't use kill_user(); that's for people who have already
          * signed on.  This is called before the User structure is
          * created. */
-        send_cmd(s_OperServ, "KILL %s :%s (%s)", nick, s_OperServ,
+        send_cmd(operserv_service.nick, "KILL %s :%s (%s)", nick, operserv_service.nick,
                  make_reason(AutokillReason, akill));
         send_akill(akill);
         time(&akill->lastused);
@@ -193,7 +191,6 @@ static int do_user_check(int ac, char **av)
  * is converted to lowercase on return.
  */
 
-EXPORT_FUNC(create_akill)
 void create_akill(char *mask, const char *reason, const char *who,
                   time_t expiry)
 {
@@ -273,13 +270,13 @@ static int check_add_akill(const User *u, uint8 type, char *mask,
     time_t len;
 
     if (strchr(mask, '!')) {
-        notice_lang(s_OperServ, u, OPER_AKILL_NO_NICK);
-        notice_lang(s_OperServ, u, BAD_USERHOST_MASK);
+        notice_lang(operserv_service.nick, u, OPER_AKILL_NO_NICK);
+        notice_lang(operserv_service.nick, u, BAD_USERHOST_MASK);
         return 0;
     }
     s = strchr(mask, '@');
     if (!s || s == mask || s[1] == 0) {
-        notice_lang(s_OperServ, u, BAD_USERHOST_MASK);
+        notice_lang(operserv_service.nick, u, BAD_USERHOST_MASK);
         return 0;
     }
 
@@ -294,7 +291,7 @@ static int check_add_akill(const User *u, uint8 type, char *mask,
         ) {
             /* Hostname mask matches anything or nearly anything, so
              * disallow mask. */
-            notice_lang(s_OperServ, u, OPER_AKILL_MASK_TOO_GENERAL);
+            notice_lang(operserv_service.nick, u, OPER_AKILL_MASK_TOO_GENERAL);
             return 0;
         }
     }
@@ -305,7 +302,7 @@ static int check_add_akill(const User *u, uint8 type, char *mask,
     if (OperMaxExpiry && !is_services_admin(u)
      && (!*expiry_ptr || len > OperMaxExpiry)
     ) {
-        notice_lang(s_OperServ, u, OPER_AKILL_EXPIRY_LIMITED,
+        notice_lang(operserv_service.nick, u, OPER_AKILL_EXPIRY_LIMITED,
                     maketime(u->ngi, OperMaxExpiry, MT_DUALUNIT));
         return 0;
     }
@@ -320,7 +317,7 @@ static void do_add_akill(const User *u, uint8 type, MaskData *md)
     if (WallOSAkill) {
         char buf[BUFSIZE];
         expires_in_lang(buf, sizeof(buf), NULL, md->expires);
-        wallops(s_OperServ, "%s added an autokill for \2%s\2 (%s)",
+        wallops(operserv_service.nick, "%s added an autokill for \2%s\2 (%s)",
                 u->nick, md->mask, buf);
     }
     if (ImmediatelySendAutokill)
@@ -392,7 +389,7 @@ static int check_add_exclude(const User *u, uint8 type, char *mask,
 
     s = strchr(mask, '@');
     if (!s || s == mask || s[1] == 0) {
-        notice_lang(s_OperServ, u, BAD_USERHOST_MASK);
+        notice_lang(operserv_service.nick, u, BAD_USERHOST_MASK);
         return 0;
     }
     return 1;
@@ -405,7 +402,7 @@ static void do_add_exclude(const User *u, uint8 type, MaskData *md)
     if (WallOSAkill) {
         char buf[BUFSIZE];
         expires_in_lang(buf, sizeof(buf), NULL, md->expires);
-        wallops(s_OperServ, "%s added an EXCLUDE for \2%s\2 (%s)",
+        wallops(operserv_service.nick, "%s added an EXCLUDE for \2%s\2 (%s)",
                 u->nick, md->mask, buf);
     }
     send_exclude(md);
@@ -448,18 +445,18 @@ static void do_akillchan(User *u)
         s = strtok(NULL, " ");
     }
     if (!s || *s != '#') {
-        syntax_error(s_OperServ, u, "AKILLCHAN", OPER_AKILLCHAN_SYNTAX);
+        syntax_error(operserv_service.nick, u, "AKILLCHAN", OPER_AKILLCHAN_SYNTAX);
         return;
     }
     channel = s;
     reason = strtok_remaining();
     if (!reason) {
-        syntax_error(s_OperServ, u, "AKILLCHAN", OPER_AKILLCHAN_SYNTAX);
+        syntax_error(operserv_service.nick, u, "AKILLCHAN", OPER_AKILLCHAN_SYNTAX);
         return;
     }
 
     if (!(c = get_channel(channel))) {
-        notice_lang(s_OperServ, u, CHAN_X_NOT_IN_USE, channel);
+        notice_lang(operserv_service.nick, u, CHAN_X_NOT_IN_USE, channel);
         return;
     }
     if (expiry_str) {
@@ -477,7 +474,7 @@ static void do_akillchan(User *u)
         expiry += time(NULL);
 
     if (WallOSAkill)
-        wallops(s_OperServ, "%s used AKILLCHAN for \2%s\2", u->nick, c->name);
+        wallops(operserv_service.nick, "%s used AKILLCHAN for \2%s\2", u->nick, c->name);
 
     count = 0;
     old_immed = ImmediatelySendAutokill;
@@ -497,7 +494,7 @@ static void do_akillchan(User *u)
          * hostname _before_ it gets freed, idiot. */
         snprintf(buf, sizeof(buf), "*@%s", cu->user->host);
         if (kill)
-            kill_user(s_OperServ, cu->user->nick, reason);
+            kill_user(operserv_service.nick, cu->user->nick, reason);
         if (!put_maskdata(get_maskdata(MD_AKILL, buf)))
             create_akill(buf, reason, u->nick, expiry);
         count++;
@@ -505,11 +502,11 @@ static void do_akillchan(User *u)
     ImmediatelySendAutokill = old_immed;
 
     if (count == 1) {
-        notice_lang(s_OperServ, u,
+        notice_lang(operserv_service.nick, u,
                     kill ? OPER_AKILLCHAN_KILLED_ONE
                          : OPER_AKILLCHAN_AKILLED_ONE);
     } else {
-        notice_lang(s_OperServ, u,
+        notice_lang(operserv_service.nick, u,
                     kill ? OPER_AKILLCHAN_KILLED : OPER_AKILLCHAN_AKILLED,
                     count);
     }
@@ -536,7 +533,7 @@ static int do_connect(void)
 
 /*************************************************************************/
 
-/* Callback for autokill expiration. */
+/* Handler for autokill expiration. */
 
 static int expire_omitted_count = 0;
 static time_t expire_last_time = 0;
@@ -553,7 +550,7 @@ static int do_expire_maskdata(uint32 type, MaskData *md)
                 expire_to = add_timeout_ms(1500, expire_ratelimit_timeout, 0);
                 expire_omitted_count++;
             } else {
-                wallops(s_OperServ, "Autokill on %s has expired", md->mask);
+                wallops(operserv_service.nick, "Autokill on %s has expired", md->mask);
             }
             expire_last_time = time(NULL);
         }
@@ -565,7 +562,7 @@ static int do_expire_maskdata(uint32 type, MaskData *md)
 
 static void expire_ratelimit_timeout(Timeout *to)
 {
-    wallops(s_OperServ, "%d more autokill%s ha%s expired",
+    wallops(operserv_service.nick, "%d more autokill%s ha%s expired",
             expire_omitted_count, expire_omitted_count==1 ? "" : "s",
             expire_omitted_count==1 ? "s" : "ve");
     expire_omitted_count = 0;
@@ -580,14 +577,14 @@ static void expire_ratelimit_timeout(Timeout *to)
 static int do_help(User *u, const char *param)
 {
     if (stricmp(param, "AKILL") == 0) {
-        notice_help(s_OperServ, u, OPER_HELP_AKILL);
+        notice_help(operserv_service.nick, u, OPER_HELP_AKILL);
         if (OperMaxExpiry)
-            notice_help(s_OperServ, u, OPER_HELP_AKILL_OPERMAXEXPIRY,
+            notice_help(operserv_service.nick, u, OPER_HELP_AKILL_OPERMAXEXPIRY,
                         maketime(u->ngi, OperMaxExpiry, MT_DUALUNIT));
-        notice_help(s_OperServ, u, OPER_HELP_AKILL_END);
+        notice_help(operserv_service.nick, u, OPER_HELP_AKILL_END);
         return 1;
     } else if (stricmp(param, "AKILLCHAN") == 0) {
-        notice_help(s_OperServ, u, OPER_HELP_AKILLCHAN,
+        notice_help(operserv_service.nick, u, OPER_HELP_AKILLCHAN,
                     maketime(u->ngi, AkillChanExpiry, 0));
         return 1;
     }
@@ -596,7 +593,7 @@ static int do_help(User *u, const char *param)
 
 /*************************************************************************/
 
-static int do_stats_all(User *user, const char *s_OperServ)
+static int do_stats_all(User *user, const char *operserv_nick)
 {
     int32 count, mem;
     MaskData *md;
@@ -620,7 +617,7 @@ static int do_stats_all(User *user, const char *s_OperServ)
         if (md->reason)
             mem += strlen(md->reason)+1;
     }
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_AKILL_MEM,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_AKILL_MEM,
                 count, (mem+512) / 1024);
 
     return 0;
@@ -670,7 +667,7 @@ static DBTable exclude_dbtable = {
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective akill_config[] = {
     { "AkillChanExpiry",  { { CD_TIME, 0, &AkillChanExpiry } } },
     { "AutokillExpiry",   { { CD_TIME, 0, &AutokillExpiry } } },
     { "AutokillReason",   { { CD_STRING, CF_DIRREQ, &AutokillReason } } },
@@ -689,74 +686,63 @@ static Command *cmd_EXCLUDE;
 
 /*************************************************************************/
 
-static int do_reconfigure(int after_configure)
+static void akill_rehash(Module *module)
 {
-    if (after_configure) {
-        /* After reconfiguration: handle value changes. */
-        if (EnableExclude && !ExcludeReason) {
-            module_log("EXCLUDE enabled but ExcludeReason not set; disabling"
-                       " EXCLUDE");
-            EnableExclude = 0;
-        }
-        if (EnableExclude)
-            cmd_EXCLUDE->name = "EXCLUDE";
-        else
-            cmd_EXCLUDE->name = "";
-    }  /* if (!after_configure) */
-    return 0;
+    if (EnableExclude && !ExcludeReason) {
+        module_log("EXCLUDE enabled but ExcludeReason not set; disabling"
+                   " EXCLUDE");
+        EnableExclude = 0;
+    }
+    if (EnableExclude)
+        cmd_EXCLUDE->name = "EXCLUDE";
+    else
+        cmd_EXCLUDE->name = "";
 }
 
 /*************************************************************************/
 
-int init_module(void)
+/* AKILL, EXCLUDE and AKILLCHAN go into OperServ's command list. */
+
+static int akill_init(Module *module)
 {
+    Module *operserv = module_find("operserv/main");
+
     if (EnableExclude && !ExcludeReason) {
         module_log("EXCLUDE enabled but ExcludeReason not set");
         return 0;
     }
 
-    module_operserv = find_module("operserv/main");
-    if (!module_operserv) {
-        module_log("Main OperServ module not loaded");
-        return 0;
-    }
-    use_module(module_operserv);
-
-    if (!register_commands(module_operserv, cmds)) {
+    if (!register_commands(operserv, cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
-    cmd_EXCLUDE = lookup_cmd(module_operserv, "EXCLUDE");
+    cmd_EXCLUDE = lookup_cmd(operserv, "EXCLUDE");
     if (!cmd_EXCLUDE) {
         module_log("BUG: unable to find EXCLUDE command entry");
-        exit_module(0);
         return 0;
     }
     if (!EnableExclude)
         cmd_EXCLUDE->name = "";
 
-    cb_send_akill     = register_callback("send_akill");
-    cb_send_exclude   = register_callback("send_exclude");
-    cb_cancel_akill   = register_callback("cancel_akill");
-    cb_cancel_exclude = register_callback("cancel_exclude");
-    if (cb_send_akill < 0 || cb_send_exclude < 0 || cb_cancel_akill < 0
-     || cb_cancel_exclude < 0
+    send_akill_event = event_declare(module, AKILL_EVENT_SEND_AKILL);
+    send_exclude_event = event_declare(module, AKILL_EVENT_SEND_EXCLUDE);
+    cancel_akill_event = event_declare(module, AKILL_EVENT_CANCEL_AKILL);
+    cancel_exclude_event = event_declare(module, AKILL_EVENT_CANCEL_EXCLUDE);
+    if (!send_akill_event || !send_exclude_event || !cancel_akill_event
+     || !cancel_exclude_event
     ) {
-        module_log("Unable to register callbacks");
-        exit_module(0);
+        module_log("Unable to declare events");
         return 0;
     }
 
-    if (!add_callback(NULL, "reconfigure", do_reconfigure)
-     || !add_callback(NULL, "connect", do_connect)
-     || !add_callback(NULL, "user check", do_user_check)
-     || !add_callback(module_operserv, "expire maskdata", do_expire_maskdata)
-     || !add_callback(module_operserv, "HELP", do_help)
-     || !add_callback(module_operserv, "STATS ALL", do_stats_all)
+    if (!event_attach(module, EVENT_UPLINK_LINKED, do_connect)
+     || !event_attach(module, EVENT_USER_CHECK, do_user_check)
+     || !event_attach(module, OPERSERV_EVENT_EXPIRE_MASKDATA,
+                      do_expire_maskdata)
+     || !event_attach(module, OPERSERV_EVENT_HELP, do_help)
+     || !event_attach(module, OPERSERV_EVENT_STATS_ALL, do_stats_all)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
@@ -764,7 +750,6 @@ int init_module(void)
      || !register_dbtable(&exclude_dbtable)
     ) {
         module_log("Unable to register database tables");
-        exit_module(0);
         return 0;
     }
 
@@ -773,32 +758,29 @@ int init_module(void)
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int akill_fini(Module *module, int shutdown)
 {
     unregister_dbtable(&exclude_dbtable);
     unregister_dbtable(&akill_dbtable);
-
-    remove_callback(NULL, "user check", do_user_check);
-    remove_callback(NULL, "connect", do_connect);
-    remove_callback(NULL, "reconfigure", do_reconfigure);
-
-    unregister_callback(cb_cancel_exclude);
-    unregister_callback(cb_cancel_akill);
-    unregister_callback(cb_send_exclude);
-    unregister_callback(cb_send_akill);
-
-    if (module_operserv) {
-        remove_callback(module_operserv, "STATS ALL", do_stats_all);
-        remove_callback(module_operserv, "HELP", do_help);
-        remove_callback(module_operserv, "expire maskdata",do_expire_maskdata);
-        unregister_commands(module_operserv, cmds);
-        unuse_module(module_operserv);
-        module_operserv = NULL;
+    unregister_commands(module_find("operserv/main"), cmds);
+    if (cmd_EXCLUDE) {
+        cmd_EXCLUDE->name = "EXCLUDE";
+        cmd_EXCLUDE = NULL;
     }
-
-    cmd_EXCLUDE->name = "EXCLUDE";
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "OperServ AKILL: network-wide bans (G-lines)",
+    .requires = MODULE_REQUIRES("operserv/main"),
+    .config = akill_config,
+    .init = akill_init,
+    .fini = akill_fini,
+    .rehash = akill_rehash,
+};
 
 /*************************************************************************/
 

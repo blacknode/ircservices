@@ -32,7 +32,7 @@ In-source builds are refused. Presets (`CMakePresets.json`):
 |-----------|----------------------------------------------------------|
 | `default` | RelWithDebInfo in `build/` (what `.clangd` points at)    |
 | `dev`     | Debug + `SERVICES_MEMCHECKS`                              |
-| `asan`    | Debug + AddressSanitizer/UBSan; run with `ASAN_OPTIONS=detect_odr_violation=0` (every module defines `module_config`) |
+| `asan`    | Debug + AddressSanitizer/UBSan; run with `ASAN_OPTIONS=detect_odr_violation=0` (every module defines `module_info`) |
 | `release` | Release                                                  |
 
 ### Options
@@ -84,6 +84,9 @@ src/                    the core executable (src/CMakeLists.txt)
   redis/                Redis driver (from ircu2)
   encrypt.c             passwords: the ciphers, and the worker round trip
                         that runs a command again once its hash is ready
+  modules.c             module loader (modules.h: ModuleInfo, requires)
+  events.c              events modules declare, attach to and emit
+  service.c             pseudo-clients: introduction, PRIVMSG, WHOIS
 modules/                loadable modules (modules/CMakeLists.txt)
 vendor/mongoose/        Mongoose, the HTTP server of httpd/main (upstream's,
                         never edited; see its README)
@@ -119,6 +122,10 @@ Either way the result is `build/modules/<type>/<name>.so`, loaded with
 and rebuild: the globs pick it up. A module that needs a library or a
 flag declares it in `<name>.cmake` (or `<name>/module.cmake`); see
 `modules/httpd/main/module.cmake`.
+
+What a module contains -- its `module_info` description, the events it
+attaches to, the pseudo-clients (`struct Service`) it provides -- is
+described in `docs/readme.mod_api`.
 
 ## Linking to ircu2
 

@@ -20,32 +20,32 @@ DEFINE_HASH(channel, Channel, name)
 #undef HASH_MODIFY_STATIC
 #define HASH_MODIFY_STATIC HASH_STATIC
 
-static int cb_create = -1;
-static int cb_delete = -1;
-static int cb_join = -1;
-static int cb_join_check = -1;
-static int cb_mode = -1;
-static int cb_mode_change = -1;
-static int cb_umode_change = -1;
-static int cb_topic = -1;
+static Event* channel_create_event;
+static Event* channel_delete_event;
+static Event* channel_join_event;
+static Event* channel_join_check_event;
+static Event* channel_mode_event;
+static Event* channel_mode_change_event;
+static Event* channel_user_mode_change_event;
+static Event* channel_topic_event;
 
 /*************************************************************************/
 /*************************************************************************/
 
 int channel_init(int ac, char** av)
 {
-    cb_create = register_callback("channel create");
-    cb_delete = register_callback("channel delete");
-    cb_join = register_callback("channel JOIN");
-    cb_join_check = register_callback("channel JOIN check");
-    cb_mode = register_callback("channel MODE");
-    cb_mode_change = register_callback("channel mode change");
-    cb_umode_change = register_callback("channel umode change");
-    cb_topic = register_callback("channel TOPIC");
-    if (cb_create < 0 || cb_delete < 0 || cb_join < 0 || cb_join_check < 0 ||
-        cb_mode < 0 || cb_mode_change < 0 || cb_umode_change < 0 ||
-        cb_topic < 0) {
-        log("channel_init: register_callback() failed\n");
+    channel_create_event = event_declare(NULL, EVENT_CHANNEL_CREATE);
+    channel_delete_event = event_declare(NULL, EVENT_CHANNEL_DELETE);
+    channel_join_event = event_declare(NULL, EVENT_CHANNEL_JOIN);
+    channel_join_check_event = event_declare(NULL, EVENT_CHANNEL_JOIN_CHECK);
+    channel_mode_event = event_declare(NULL, EVENT_CHANNEL_MODE);
+    channel_mode_change_event = event_declare(NULL, EVENT_CHANNEL_MODE_CHANGE);
+    channel_user_mode_change_event = event_declare(NULL, EVENT_CHANNEL_USER_MODE_CHANGE);
+    channel_topic_event = event_declare(NULL, EVENT_CHANNEL_TOPIC);
+    if (!channel_create_event || !channel_delete_event || !channel_join_event || !channel_join_check_event ||
+        !channel_mode_event || !channel_mode_change_event || !channel_user_mode_change_event ||
+        !channel_topic_event) {
+        log("channel_init: event_declare() failed");
         return 0;
     }
     return 1;
@@ -59,14 +59,14 @@ void channel_cleanup(void)
 
     for (c = first_channel(); c; c = next_channel())
         del_channel(c);
-    unregister_callback(cb_topic);
-    unregister_callback(cb_umode_change);
-    unregister_callback(cb_mode_change);
-    unregister_callback(cb_mode);
-    unregister_callback(cb_join_check);
-    unregister_callback(cb_join);
-    unregister_callback(cb_delete);
-    unregister_callback(cb_create);
+    event_retract(channel_topic_event);
+    event_retract(channel_user_mode_change_event);
+    event_retract(channel_mode_change_event);
+    event_retract(channel_mode_event);
+    event_retract(channel_join_check_event);
+    event_retract(channel_join_event);
+    event_retract(channel_delete_event);
+    event_retract(channel_create_event);
 }
 
 /*************************************************************************/
@@ -123,7 +123,7 @@ Channel* chan_adduser(User* user, const char* chan, int32 modes)
     int newchan = !c;
     struct c_userlist* u;
 
-    if (call_callback_2(cb_join_check, chan, user) > 0)
+    if (event_emit(channel_join_check_event, chan, user) > 0)
         return NULL;
     if (newchan) {
         log_debug(1, "Creating channel %s", chan);
@@ -132,14 +132,14 @@ Channel* chan_adduser(User* user, const char* chan, int32 modes)
         strbcpy(c->name, chan);
         c->creation_time = time(NULL);
         add_channel(c);
-        call_callback_3(cb_create, c, user, modes);
+        event_emit(channel_create_event, c, user, modes);
     }
     u = smalloc(sizeof(struct c_userlist));
     LIST_INSERT(u, c->users);
     u->user = user;
     u->mode = modes;
     u->flags = 0;
-    call_callback_2(cb_join, c, u);
+    event_emit(channel_join_event, c, u);
     return c;
 }
 
@@ -160,7 +160,7 @@ void chan_deluser(User* user, Channel* c)
 
     if (!c->users) {
         log_debug(1, "Deleting channel %s", c->name);
-        call_callback_1(cb_delete, c);
+        event_emit(channel_delete_event, c);
         set_cmode(NULL, c); /* make sure nothing's left buffered */
         free(c->topic);
         free(c->key);
@@ -337,7 +337,7 @@ void do_cmode(const char* source, int ac, char** av)
             break;
         }
 
-        if (call_callback_5(cb_mode, source, chan, modechar, add, av) <= 0) {
+        if (event_emit(channel_mode_event, source, chan, modechar, add, av) <= 0) {
 
             if (add)
                 chan->mode |= flag;
@@ -390,7 +390,7 @@ void do_cmode(const char* source, int ac, char** av)
 
     } /* while (*s) */
 
-    call_callback_2(cb_mode_change, source, chan);
+    event_emit(channel_mode_change_event, source, chan);
     finish_cumode(source, chan);
 }
 
@@ -452,7 +452,7 @@ static void finish_cumode(const char* source, Channel* chan)
         u->mode |= cumode_changes[i].add;
         u->mode &= ~cumode_changes[i].remove;
         if (u->mode != oldmode)
-            call_callback_4(cb_umode_change, source, chan, u, oldmode);
+            event_emit(channel_user_mode_change_event, source, chan, u, oldmode);
     }
     cumode_count = 0;
 }
@@ -479,7 +479,7 @@ void do_topic(const char* source, int ac, char** av)
         topic = av[3];
     else
         topic = "";
-    if (call_callback_4(cb_topic, c, topic, av[1], strtotime(av[2], NULL)) > 0)
+    if (event_emit(channel_topic_event, c, topic, av[1], strtotime(av[2], NULL)) > 0)
         return;
     strbcpy(c->topic_setter, av[1]);
     if (c->topic) {

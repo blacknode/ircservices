@@ -1,270 +1,200 @@
-/* Module support include file (interface definition).
+/* The loadable-module interface.
  *
  * IRC Services is copyright (c) 1996-2009 Andrew Church.
  *     E-mail: <achurch@achurch.org>
  * Parts written by Andrew Kempe and others.
  * This program is free but copyrighted software; see the file GPL.txt for
  * details.
+ *
+ * A module is a shared object that Services open with dlopen() when a
+ * `loadmodule' directive names it.  It describes itself with exactly one
+ * exported object, `module_info' (a ModuleInfo), and Services reach
+ * everything else through it: what it needs loaded first, its settings,
+ * the pseudo-clients it provides, and the functions to start, reload and
+ * stop it.  The model is ircu2's (include/module.h there).
+ *
+ * Everything a module attaches through this interface -- event handlers
+ * (events.h), pseudo-clients (service.h), holds on other modules -- is
+ * tracked against the module and undone when it is unloaded, whether or
+ * not its `fini' remembers to do it.
+ *
+ * See docs/readme.mod_api for a guided tour and complete examples.
  */
 
 #ifndef MODULES_H
 #define MODULES_H
 
 #include "services.h"
+#include "conffile.h"
 
 /*************************************************************************/
 
-/* Version code macro.  Parameters are:
- *      major: Major version number (the "5" in 5.1a0).
- *      minor: Minor version number (the "1" in 5.1a0).
- *     status: Release status (alpha, prerelease, or final).  Use one of
- *             the MODULE_VERSION_{ALPHA,PRE,FINAL} macros:
- *                5.1a0   -> MODULE_VERSION_ALPHA
- *                5.1pre0 -> MODULE_VERSION_PRE
- *                5.1.0   -> MODULE_VERSION_FINAL
- *    release: Release number (the "0" in 5.1a0).
- */
-#define MODULE_VERSION(major, minor, status, release)                         \
-    (((major) > 5 || ((major) == 5 && (minor) >= 1))                          \
-         ? ((major) << 24 | (minor) << 16 | (status) << 12 | (release))       \
-         : (0x050000 | (release)))
-#define MODULE_VERSION_ALPHA 0xA
-#define MODULE_VERSION_PRE   0xB
-#define MODULE_VERSION_FINAL 0xF
+/* Version of this interface.  A module built against a different value is
+ * refused: recompile it. */
+#define MODULE_ABI 2
 
-/* Version code for modules.  This will be updated whenever a change to the
- * program (structures, callbacks, etc.) makes existing binary modules
- * incompatible.  This is stored in the compiled modules and used to let
- * Services determine whether a given module is compatible with the current
- * binary; it can also be used with #if to make source code compatible with
- * multiple versions of Services.
- */
-#define MODULE_VERSION_CODE MODULE_VERSION(5, 1, MODULE_VERSION_FINAL, 0)
-
-/*************************************************************************/
-
-/* Module information.  The actual structure is defined in module.c, and is
- * opaque to the caller. */
+/* A loaded module.  Opaque: use the functions below. */
 struct Module_;
 typedef struct Module_ Module;
 
-/* Callback function prototype. */
-typedef int (*callback_t)();
-
-/* Callback priority limits. */
-#define CBPRI_MIN -10000
-#define CBPRI_MAX 10000
+/* A pseudo-client (see service.h). */
+struct Service;
 
 /*************************************************************************/
 
-/* Macro to rename a symbol based on the module's ID (MODULE_ID) in order
- * to avoid symbol clashes.  This roundabout construction is necessary to
- * force the preprocessor to substitute the value of MODULE_ID instead of
- * appending "MODULE_ID" literally. */
+/* Flags for ModuleInfo.flags. */
+
+/* Apply the module's pending migrations when it is loaded, before `init'
+ * (for modules that keep Services' own data; see docs/readme.migrations).
+ * Without this flag, pending migrations are only reported. */
+#define MODULE_APPLY_MIGRATIONS 0x0001
+
+/*************************************************************************/
+
+/* The description every module exports as `module_info'. */
+
+typedef struct ModuleInfo {
+    /* MODULE_ABI, as the module was compiled. */
+    unsigned int abi;
+
+    /* One line saying what the module does. */
+    const char* description;
+
+    /* Modules that must be loaded before this one, NULL-terminated (build
+     * it with MODULE_REQUIRES()), or NULL.  Each is held while this module
+     * is loaded, so it cannot be unloaded from under it. */
+    const char* const* requires;
+
+    /* Settings of the module's `module "<name>" { }' block, or NULL.  Read
+     * before `init' and again on every REHASH. */
+    ConfigDirective* config;
+
+    /* Pseudo-clients the module provides, NULL-terminated (build it with
+     * MODULE_SERVICES()), or NULL for a module without one.  Each one's
+     * nick and description are read from the module block with its own
+     * directive (see service.h). */
+    struct Service* const* services;
+
+    /* Bitwise combination of MODULE_* flags, or 0. */
+    unsigned int flags;
+
+    /* Start the module, after its settings have been read.  Return
+     * nonzero on success; zero aborts the load (everything the module
+     * attached is undone). */
+    int (*init)(Module* module);
+
+    /* Stop the module.  `shutdown' is nonzero when Services are exiting.
+     * Return nonzero to allow the unload; zero refuses it (ignored on
+     * shutdown).  May be NULL. */
+    int (*fini)(Module* module, int shutdown);
+
+    /* The configuration was read again (REHASH) and the new settings are
+     * in place.  May be NULL. */
+    void (*rehash)(Module* module);
+} ModuleInfo;
+
+/* Helpers for the NULL-terminated lists of a ModuleInfo:
+ *     .requires = MODULE_REQUIRES("operserv/main", "nickserv/main"),
+ *     .services = MODULE_SERVICES(&operserv_service, &global_service),
+ */
+#define MODULE_REQUIRES(...) ((const char* const[]){__VA_ARGS__, NULL})
+#define MODULE_SERVICES(...) ((struct Service* const[]){__VA_ARGS__, NULL})
+
+/*************************************************************************/
+
+/* THIS_MODULE is the calling module's own handle (NULL in the core), and
+ * MODULE_NAME its name.  The handle is filled in by the loader; see the
+ * internals at the end of this file. */
 
 #define RENAME_SYMBOL(symbol)       RENAME_SYMBOL_2(symbol, MODULE_ID)
 #define RENAME_SYMBOL_2(symbol, id) RENAME_SYMBOL_3(symbol, id)
 #define RENAME_SYMBOL_3(symbol, id) symbol##_##id
 
-/*************************************************************************/
-
-/* Macros to retrieve a pointer to the current module or its name. */
-
 #ifdef MODULE
-#define THIS_MODULE RENAME_SYMBOL(_this_module)
+#define THIS_MODULE RENAME_SYMBOL(module_self)
 #else
 #define THIS_MODULE NULL
 #endif
 
-#define MODULE_NAME (get_module_name(THIS_MODULE))
+#define MODULE_NAME (module_name(THIS_MODULE))
 
 /*************************************************************************/
 /*************************************************************************/
 
-/* External variable/function declarations.  Note that many of the
- * functions below are macroized to automatically pass a "current-module"
- * parameter; functions whose names begin with "_" should not be called
- * directly. */
+/* Finding out about modules. */
 
-/*************************************************************************/
+/* The loaded module called `name' ("nickserv/main"), or NULL. */
+extern Module* module_find(const char* name);
 
-/* Initialization and cleanup: */
+/* The name a module was loaded by; "core" for NULL. */
+extern const char* module_name(const Module* module);
 
-extern int modules_init(int ac, char** av);
-extern void modules_cleanup(void);
-extern void unload_all_modules(void);
-
-/*************************************************************************/
-
-/* Module-level functions: */
-
-/* Load a new module and return the Module pointer, or NULL on error. */
-extern Module* load_module(const char* modulename);
-
-/* Remove a module from memory.  Return nonzero on success, zero on
- * failure. */
-extern int unload_module(Module* module);
-
-/* Return the Module pointer for the named module, or NULL if no such
- * module exists. */
-extern Module* find_module(const char* modulename);
-
-/* Increment or decrement the use count for the given module.  A module
- * cannot be unloaded while its use count is nonzero. */
-#define use_module(mod)   _use_module(mod, THIS_MODULE)
-#define unuse_module(mod) _unuse_module(mod, THIS_MODULE)
-extern void _use_module(Module* module, const Module* caller);
-extern void _unuse_module(Module* module, const Module* caller);
-
-/* Re-read configuration files for all modules.  Return nonzero on success,
- * zero on failure. */
-int reconfigure_modules(void);
-
-/*************************************************************************/
-
-/* Module symbol/information retrieval: */
-
-/* Retrieve the value of the named symbol in the given module.  Return NULL
- * if no such symbol exists.  Note that this function should not be used
- * for symbols whose value might be NULL, because there is no way to
- * distinguish a symbol value of NULL from an error return.  For such
- * symbols, or for cases where a symbol might legitimately not exist and
- * no error should be printed for nonexistence, use check_module_symbol(). */
-#define get_module_symbol(mod, symname)                                       \
-    _get_module_symbol(mod, symname, THIS_MODULE)
-extern void* _get_module_symbol(Module* module, const char* symname,
-                                const Module* caller);
-
-/* Check whether the given symbol exists in the given module; return 1 if
- * so, 0 otherwise.  If `resultptr' is non-NULL and the symbol exists, the
- * value is stored in the variable it points to.  If `errorptr' is non-NULL
- * and the symbol does not exist, a human-readable error message is stored
- * in the variable it points to. */
-extern int check_module_symbol(Module* module, const char* symname,
-                               void** resultptr, const char** errorptr);
-
-/* Retrieve the name of the given module. */
-extern const char* get_module_name(const Module* module);
+/* The MODULE_* flags of its ModuleInfo. */
+extern unsigned int module_flags(const Module* module);
 
 /* The migrations the module ships, validated when it was loaded, or NULL
  * if it ships none (see migration.h). */
 struct MigrationSet;
-extern const struct MigrationSet* get_module_migrations(const Module* module);
+extern const struct MigrationSet* module_migrations(const Module* module);
+
+/* Look up an exported symbol of `module' (of every loaded module and the
+ * core if `module' is NULL).  module_symbol() logs a missing symbol and
+ * returns NULL; module_has_symbol() stays quiet, returns nonzero if the
+ * symbol exists, and stores its value in `*value' if `value' is not NULL.
+ * A module listed in `requires' may simply use the other module's symbols
+ * directly (they are resolved when the module is loaded). */
+extern void* module_symbol(Module* module, const char* symbol);
+extern int module_has_symbol(Module* module, const char* symbol,
+                             void** value);
+
+/* Hold `held' on behalf of `holder': a held module cannot be unloaded.
+ * For dependencies found at run time; the ones in `requires' are held by
+ * the loader.  Every hold is released when the holder is unloaded. */
+extern int module_hold(Module* holder, Module* held);
+extern void module_release(Module* holder, Module* held);
 
 /*************************************************************************/
 
-/* Callback-related functions: (all functions except register_callback()
- * and call_callback() return nonzero on success and zero on error)
- */
+/* Loading and unloading (the core, and OperServ). */
 
-/* Register a new callback list. */
-#define register_callback(name) _register_callback(THIS_MODULE, name)
-extern int _register_callback(Module* module, const char* name);
+/* Load the module `name' ("<type>/<name>", as loadmodule gives it) and
+ * start it.  Returns its handle, or NULL on error (logged). */
+extern Module* module_load(const char* name);
 
-/* Call all functions in a callback list.  Return 1 if a callback returned
- * nonzero, 0 if all callbacks returned zero, or -1 on error.  The _N
- * formats allow passing parameters. */
-#define call_callback(id)               call_callback_1(id, NULL)
-#define call_callback_1(id, arg1)       call_callback_2(id, arg1, NULL)
-#define call_callback_2(id, arg1, arg2) call_callback_3(id, arg1, arg2, NULL)
-#define call_callback_3(id, arg1, arg2, arg3)                                 \
-    call_callback_4(id, arg1, arg2, arg3, NULL)
-#define call_callback_4(id, arg1, arg2, arg3, arg4)                           \
-    call_callback_5(id, arg1, arg2, arg3, arg4, NULL)
-#define call_callback_5(id, arg1, arg2, arg3, arg4, arg5)                     \
-    _call_callback_5(THIS_MODULE, id, (void*)(long)(arg1),                    \
-                     (void*)(long)(arg2), (void*)(long)(arg3),                \
-                     (void*)(long)(arg4), (void*)(long)(arg5))
-extern int _call_callback_5(Module* module, int id, void* arg1, void* arg2,
-                            void* arg3, void* arg4, void* arg5);
+/* Stop and unload a module.  Fails (returns zero) if another module holds
+ * it or its `fini' refuses. */
+extern int module_unload(Module* module);
 
-/* Delete a callback list. */
-#define unregister_callback(name) _unregister_callback(THIS_MODULE, name)
-extern int _unregister_callback(Module* module, int id);
+/* Unload every module, most recently loaded first. */
+extern void module_unload_all(void);
 
-/* Add a function to a callback list with the given priority (higher
- * priority value = called sooner).  Callbacks with the same priority are
- * called in the order they were added. */
-#define add_callback_pri(module, name, callback, priority)                    \
-    _add_callback_pri(module, name, callback, priority, THIS_MODULE)
-int _add_callback_pri(Module* module, const char* name, callback_t callback,
-                      int priority, const Module* caller);
+/* Read every loaded module's settings again (REHASH).  Returns nonzero on
+ * success; on failure no module's settings have changed. */
+extern int module_reconfigure_all(void);
 
-/* Add a function to a callback list with priority 0. */
-#define add_callback(module, name, callback)                                  \
-    add_callback_pri(module, name, callback, 0)
-
-/* Remove a function from a callback list. */
-#define remove_callback(module, name, callback)                               \
-    _remove_callback(module, name, callback, THIS_MODULE)
-extern int _remove_callback(Module* module, const char* name,
-                            callback_t callback, const Module* caller);
+/* Start and stop the module system (init.c). */
+extern int module_system_init(void);
+extern void module_system_cleanup(void);
 
 /*************************************************************************/
 /*************************************************************************/
 
-/* Module functions: */
+/* Internals: the handle slot the loader fills in. */
 
-int init_module(void);
-int exit_module(int shutdown);
-
-/*************************************************************************/
-
-/* Macros to declare a symbol to be exported.  Only one may be used per
- * line, and it must be placed at the beginning of the line and be the only
- * thing on the line (no semicolon at the end).  This does not have any
- * actual effect on compilation, but such lines are extracted to create
- * module symbol lists.  Note that it is not necessary to explicitly list
- * the init_module, exit_module, and module_config symbols (and in fact,
- * doing so will cause an error when linking the final executable).
- *
- * Also note that typedefs cannot be used here; use struct tags instead.
- *
- * Examples:
- *     EXPORT_VAR(const char *,s_NickServ)
- *     EXPORT_ARRAY(some_array)
- *     EXPORT_FUNC(create_akill)
- */
-
-#define EXPORT_VAR(type, symbol)
-#define EXPORT_ARRAY(symbol)
-#define EXPORT_FUNC(symbol)
-
-/*************************************************************************/
-/*************************************************************************/
-
-/* Internal-use stuff. */
-
-/*************************************************************************/
-
-/* Pointer to the current module.  This is defined in each module's main
- * source file, and automatically initialized by load_module().  Modules
- * should use the THIS_MODULE macro to retrieve their own module pointer
- * rather than accessing this variable directly.
- */
 #ifdef MODULE
 #ifndef MODULE_MAIN_FILE
 extern
 #endif
-    Module* RENAME_SYMBOL(_this_module);
+    Module* RENAME_SYMBOL(module_self);
 #ifdef MODULE_MAIN_FILE
-Module** _this_module_ptr = &RENAME_SYMBOL(_this_module); /* used by loader */
+Module** module_self_slot = &RENAME_SYMBOL(module_self);
 #endif
 #endif
 
 /*************************************************************************/
 
-/* If the preprocessor symbol MODULE_MAIN_FILE is defined, the following
- * required variable is automatically defined.  This symbol should be
- * defined for one (and only one) file per module.  (Normally, this symbol
- * is defined automatically by modules/Makerules for the main source file
- * for each module, and does not need to be defined manually.)
- */
-#if defined(MODULE_MAIN_FILE)
-const int32 module_version = MODULE_VERSION_CODE;
-#endif
-
-/*************************************************************************/
+#include "events.h"
+#include "service.h"
 
 #endif /* MODULES_H */
 

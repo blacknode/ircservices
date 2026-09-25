@@ -221,9 +221,78 @@ struct nickgroupinfo_ {
 /*************************************************************************/
 /*************************************************************************/
 
+/* Events of nickserv/main (see include/events.h).  "Stop" is what a
+ * handler returning nonzero does.
+ *
+ * nickserv.command:       (User *u, char *command)  a command, before it
+ *                         runs; stop: it was handled
+ * nickserv.help:          (User *u, char *topic)  stop: help was given
+ * nickserv.help_commands: (User *u, int which)  append to the list of
+ *                         commands: 0 = all users, 1 = operators
+ * nickserv.set:           (User *u, NickInfo *ni, NickGroupInfo *ngi,
+ *                         char *option, char *param)  SET; stop: handled
+ * nickserv.unset:         (User *u, NickInfo *ni, NickGroupInfo *ngi,
+ *                         char *option)  UNSET; stop: handled
+ * nickserv.set_email:     (User *u, NickGroupInfo *ngi,
+ *                         const char *old_email)  the address changed
+ * nickserv.register_check: (const User *u, const char *nick,
+ *                         const char *password, const char *email)
+ *                         REGISTER or LINK of `nick'; stop: refused (the
+ *                         pseudo-clients' nicks are always refused)
+ * nickserv.registered:    (User *u, NickInfo *ni, NickGroupInfo *ngi,
+ *                         int *replied)  a nick was registered; set
+ *                         *replied if you told the user
+ * nickserv.identify_check: (User *u, char *password)  IDENTIFY; stop:
+ *                         refused
+ * nickserv.identified:    (User *u, int old_authstat)  a user identified
+ * nickserv.set_identified: (User *u, int old_authstat)  a user was marked
+ *                         identified
+ * nickserv.user_validated: (User *user, int nickchange, uint32 old_group)
+ *                         the nick of a user was looked up (connecting,
+ *                         or changing nick)
+ * nickserv.check_recognized: (const User *u)  return 1 if the user is
+ *                         recognized without a password
+ * nickserv.cancel_user:   (User *u, int old_status, int old_authstat)
+ *                         a user's hold on a nick ends
+ * nickserv.check_expire:  (NickInfo *ni, NickGroupInfo *ngi)  stop: the
+ *                         nick does not expire
+ * nickserv.nick_delete:   (NickInfo *ni)  a nick is dropped
+ * nickserv.nickgroup_delete: (NickGroupInfo *ngi, const char *main_nick)
+ *                         a nick group is dropped
+ * nickserv.collide:       (User *u)  a nick collision is about to be
+ *                         enforced; stop: handled
+ *
+ * Events of other NickServ modules:
+ * autojoin.send_svsjoin:  (const char *nick, const char *channel)
+ * mail_auth.authed:       (User *u, NickInfo *ni, NickGroupInfo *ngi,
+ *                         int reason)  a nick's address was verified
+ */
+#define NICKSERV_EVENT_COMMAND          "nickserv.command"
+#define NICKSERV_EVENT_HELP             "nickserv.help"
+#define NICKSERV_EVENT_HELP_COMMANDS    "nickserv.help_commands"
+#define NICKSERV_EVENT_SET              "nickserv.set"
+#define NICKSERV_EVENT_UNSET            "nickserv.unset"
+#define NICKSERV_EVENT_SET_EMAIL        "nickserv.set_email"
+#define NICKSERV_EVENT_REGISTER_CHECK   "nickserv.register_check"
+#define NICKSERV_EVENT_REGISTERED       "nickserv.registered"
+#define NICKSERV_EVENT_IDENTIFY_CHECK   "nickserv.identify_check"
+#define NICKSERV_EVENT_IDENTIFIED       "nickserv.identified"
+#define NICKSERV_EVENT_SET_IDENTIFIED   "nickserv.set_identified"
+#define NICKSERV_EVENT_USER_VALIDATED   "nickserv.user_validated"
+#define NICKSERV_EVENT_CHECK_RECOGNIZED "nickserv.check_recognized"
+#define NICKSERV_EVENT_CANCEL_USER      "nickserv.cancel_user"
+#define NICKSERV_EVENT_CHECK_EXPIRE     "nickserv.check_expire"
+#define NICKSERV_EVENT_NICK_DELETE      "nickserv.nick_delete"
+#define NICKSERV_EVENT_NICKGROUP_DELETE "nickserv.nickgroup_delete"
+#define NICKSERV_EVENT_COLLIDE          "nickserv.collide"
+#define AUTOJOIN_EVENT_SEND_SVSJOIN     "autojoin.send_svsjoin"
+#define MAIL_AUTH_EVENT_AUTHED          "mail_auth.authed"
+
+/*************************************************************************/
+
 /* Prototypes for exported functions and variables. */
 
-E char *s_NickServ;
+E struct Service nickserv_service;
 
 E NickInfo *add_nickinfo(NickInfo *ni);
 E void del_nickinfo(NickInfo *ni);

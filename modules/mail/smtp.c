@@ -20,9 +20,6 @@ static char **RelayHosts;
 int RelayHosts_count;
 static char *SMTPName;
 
-static Module *module_mail_main;
-static typeof(low_send) *low_send_p;
-static typeof(low_abort) *low_abort_p;
 
 /*************************************************************************/
 
@@ -388,7 +385,7 @@ static void abort_smtp(MailMessage *msg)
 /*************************************************************************/
 
 static int do_RelayHost(const char *filename, int linenum, char *param);
-ConfigDirective module_config[] = {
+static ConfigDirective smtp_config[] = {
     { "RelayHost",        { { CD_FUNC, CF_DIRREQ, do_RelayHost } } },
     { "SMTPName",         { { CD_STRING, CF_DIRREQ, &SMTPName } } },
     { NULL }
@@ -439,79 +436,43 @@ static int do_RelayHost(const char *filename, int linenum, char *param)
 
 /*************************************************************************/
 
-static int do_load_module(Module *mod, const char *modname)
+/* mail/main is required, so its hooks for the low-level sender are there
+ * to be set directly (mail-local.h). */
+
+static int smtp_init(Module *module)
 {
-    if (strcmp(modname, "mail/main") == 0) {
-        module_mail_main = mod;
-        low_send_p = get_module_symbol(mod, "low_send");
-        if (low_send_p)
-            *low_send_p = send_smtp;
-        else
-            module_log("Unable to find `low_send' symbol, cannot send mail");
-        low_abort_p = get_module_symbol(mod, "low_abort");
-        if (low_abort_p)
-            *low_abort_p = abort_smtp;
-        else
-            module_log("Unable to find `low_abort' symbol, cannot send mail");
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-static int do_unload_module(Module *mod)
-{
-    if (mod == module_mail_main) {
-        if (low_send_p)
-            *low_send_p = NULL;
-        if (low_abort_p)
-            *low_abort_p = NULL;
-        low_send_p = NULL;
-        low_abort_p = NULL;
-        module_mail_main = NULL;
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-int init_module(void)
-{
-    Module *tmpmod;
-
     connections = NULL;
-
-    if (!add_callback(NULL, "load module", do_load_module)
-     || !add_callback(NULL, "unload module", do_unload_module)
-    ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
-        return 0;
-    }
-
-    tmpmod = find_module("mail/main");
-    if (tmpmod)
-        do_load_module(tmpmod, "mail/main");
-
+    low_send = send_smtp;
+    low_abort = abort_smtp;
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int smtp_fini(Module *module, int shutdown)
 {
-    SocketInfo *si, *si2;
-
-    if (module_mail_main)
-        do_unload_module(module_mail_main);
-    remove_callback(NULL, "unload module", do_unload_module);
-    remove_callback(NULL, "load module", do_load_module);
-
-    LIST_FOREACH_SAFE (si, connections, si2)
-        free_socketinfo(si);
-
+    if (low_send == send_smtp)
+        low_send = NULL;
+    if (low_abort == abort_smtp)
+        low_abort = NULL;
+    {
+        SocketInfo *si, *si2;
+        LIST_FOREACH_SAFE (si, connections, si2)
+            free_socketinfo(si);
+    }
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "Mail: send through an SMTP relay",
+    .requires = MODULE_REQUIRES("mail/main"),
+    .config = smtp_config,
+    .init = smtp_init,
+    .fini = smtp_fini,
+};
 
 /*************************************************************************/
 

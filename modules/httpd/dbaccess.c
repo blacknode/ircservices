@@ -59,7 +59,6 @@ static void redirect_to(Client *c, const char *path, const char *suffix)
 
 /*************************************************************************/
 
-static Module *module_httpd;
 static Module *module_operserv;
 static Module *module_operserv_akill;
 static Module *module_operserv_news;
@@ -1095,7 +1094,7 @@ static int handle_chanserv(Client *c, char *path)
     } else if (mode == MODE_LEVELS) {
         LevelInfo *levelinfo;  /* from ChanServ */
 
-        levelinfo = get_module_symbol(module_chanserv, "levelinfo");
+        levelinfo = module_symbol(module_chanserv, "levelinfo");
         http_response_printf(c->res,
                    "<html><head><title>Access levels for channel \"%s\""
                    "</title></head><body><h1 align=center>Access levels"
@@ -1464,19 +1463,22 @@ static int do_route(http_req_t id, const struct HttpRequest *req,
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective dbaccess_config[] = {
     { "Prefix",           { { CD_STRING, CF_DIRREQ, &Prefix } } },
     { NULL }
 };
 
 /*************************************************************************/
 
-#define GET_SYMBOL(sym)  p_##sym = get_module_symbol(mod, #sym)
+/* Every module this one reads from is optional: its symbols are looked
+ * up while it is loaded. */
 
-static int do_load_module(Module *mod, const char *modname)
+#define GET_SYMBOL(sym)  p_##sym = module_symbol(mod, #sym)
+
+static int do_module_loaded(Module *mod, const char *modname)
 {
     if (strcmp(modname, "operserv/main") == 0) {
-        p_ServicesRoot = get_module_symbol(mod, "ServicesRoot");
+        p_ServicesRoot = module_symbol(mod, "ServicesRoot");
         if (!p_ServicesRoot) {
             static char *dummy_ServicesRoot = "";
             p_ServicesRoot = &dummy_ServicesRoot;
@@ -1515,9 +1517,9 @@ static int do_load_module(Module *mod, const char *modname)
         GET_SYMBOL(_get_ngi);
         GET_SYMBOL(_get_ngi_id);
         GET_SYMBOL(put_nickgroupinfo);
-        p_get_nickinfo = get_module_symbol(mod, "get_nickinfo");
-        p__get_ngi = get_module_symbol(mod, "_get_ngi");
-        p__get_ngi_id = get_module_symbol(mod, "_get_ngi_id");
+        p_get_nickinfo = module_symbol(mod, "get_nickinfo");
+        p__get_ngi = module_symbol(mod, "_get_ngi");
+        p__get_ngi_id = module_symbol(mod, "_get_ngi_id");
         if (p_get_nickinfo && p_put_nickinfo && p_foreach_nickinfo
          && p__get_ngi && p__get_ngi_id
          && p_put_nickgroupinfo
@@ -1577,7 +1579,7 @@ static int do_load_module(Module *mod, const char *modname)
 
 /*************************************************************************/
 
-static int do_unload_module(Module *mod)
+static int do_module_unloaded(Module *mod)
 {
     if (mod == module_operserv) {
         p_ServicesRoot = NULL;
@@ -1656,81 +1658,55 @@ static int claim(void)
     return 1;
 }
 
-static int do_reconfigure(int after_configure)
+static void dbaccess_rehash(Module *module)
 {
-    if (after_configure)
-        claim();
-    return 0;
+    claim();
 }
 
 /*************************************************************************/
 
-int init_module(void)
+static int dbaccess_init(Module *module)
 {
-    Module *tmpmod;
+    static const char *const readable[] = {
+        "operserv/main", "operserv/akill", "operserv/news",
+        "operserv/sessions", "operserv/sline", "nickserv/main",
+        "chanserv/main", "statserv/main", NULL
+    };
+    Module *other;
+    int i;
 
-    module_httpd = find_module("httpd/main");
-    if (!module_httpd) {
-        module_log("Main httpd module not loaded");
-        exit_module(0);
-        return 0;
-    }
-    use_module(module_httpd);
-
-    if (!add_callback(NULL, "load module", do_load_module)
-     || !add_callback(NULL, "unload module", do_unload_module)
-     || !add_callback(NULL, "reconfigure", do_reconfigure)
+    if (!event_attach(module, EVENT_MODULE_LOADED, do_module_loaded)
+     || !event_attach(module, EVENT_MODULE_UNLOADED, do_module_unloaded)
      || !claim()
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
         return 0;
     }
-
-    tmpmod = find_module("operserv/main");
-    if (tmpmod)
-        do_load_module(tmpmod, "operserv/main");
-    tmpmod = find_module("operserv/akill");
-    if (tmpmod)
-        do_load_module(tmpmod, "operserv/akill");
-    tmpmod = find_module("operserv/news");
-    if (tmpmod)
-        do_load_module(tmpmod, "operserv/news");
-    tmpmod = find_module("operserv/sessions");
-    if (tmpmod)
-        do_load_module(tmpmod, "operserv/sessions");
-    tmpmod = find_module("operserv/sline");
-    if (tmpmod)
-        do_load_module(tmpmod, "operserv/sline");
-    tmpmod = find_module("nickserv/main");
-    if (tmpmod)
-        do_load_module(tmpmod, "nickserv/main");
-    tmpmod = find_module("chanserv/main");
-    if (tmpmod)
-        do_load_module(tmpmod, "chanserv/main");
-    tmpmod = find_module("statserv/main");
-    if (tmpmod)
-        do_load_module(tmpmod, "statserv/main");
-
+    for (i = 0; readable[i]; i++) {
+        if ((other = module_find(readable[i])) != NULL)
+            do_module_loaded(other, readable[i]);
+    }
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int dbaccess_fini(Module *module, int shutdown)
 {
-    remove_callback(NULL, "unload module", do_unload_module);
-    remove_callback(NULL, "load module", do_load_module);
-
-    remove_callback(NULL, "reconfigure", do_reconfigure);
-    if (module_httpd) {
-        http_del_routes(THIS_MODULE);
-        unuse_module(module_httpd);
-        module_httpd = NULL;
-    }
-
+    http_del_routes(module);
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "HTTP: read-only pages over the Services databases",
+    .requires = MODULE_REQUIRES("httpd/main"),
+    .config = dbaccess_config,
+    .init = dbaccess_init,
+    .fini = dbaccess_fini,
+    .rehash = dbaccess_rehash,
+};
 
 /*************************************************************************/
 

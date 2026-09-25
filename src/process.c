@@ -12,7 +12,7 @@
 #include "p10.h"
 #include "services.h"
 
-static int cb_recvmsg = -1;
+static Event* message_receive_event;
 
 /*************************************************************************/
 /*************************************************************************/
@@ -69,9 +69,9 @@ int split_buf(char* buf, char*** argv_ptr, int colon_special)
 
 int process_init(int ac, char** av)
 {
-    cb_recvmsg = register_callback("receive message");
-    if (cb_recvmsg < 0) {
-        log("process_init: register_callback() failed\n");
+    message_receive_event = event_declare(NULL, EVENT_MESSAGE_RECEIVE);
+    if (!message_receive_event) {
+        log("process_init: event_declare() failed");
         return 0;
     }
     return 1;
@@ -81,7 +81,7 @@ int process_init(int ac, char** av)
 
 void process_cleanup(void)
 {
-    unregister_callback(cb_recvmsg);
+    event_retract(message_receive_event);
     free(sbargv);
     sbargv = NULL;
 }
@@ -104,7 +104,7 @@ void process(void)
     /* Work on a copy, so the original is still in inbuf if we crash. */
     strbcpy(buf, inbuf);
     if (p10_parse(buf, &source, &cmd, &ac, &av) &&
-        call_callback_4(cb_recvmsg, source, cmd, ac, av) <= 0) {
+        event_emit(message_receive_event, source, cmd, ac, av) <= 0) {
         Message* m = find_message(cmd);
         if (m) {
             if (m->func)

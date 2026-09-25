@@ -39,9 +39,9 @@
  *
  * The core's own set (src/migrations/, recorded as module "core") is
  * applied when Services start: it creates the tables everything else is
- * recorded in.  A module that declares MODULE_MIGRATIONS_AUTO -- the ones
+ * recorded in.  A module that sets MODULE_APPLY_MIGRATIONS -- the ones
  * that keep Services' own data (NickServ, ChanServ, OperServ, ...) -- has
- * its pending migrations applied when it is loaded, before init_module():
+ * its pending migrations applied when it is loaded, before its `init':
  * without them there would not even be an identified operator to apply
  * them by hand.  Every other module follows ircu2's rule: its migrations
  * never run by themselves.  Loading it tells Services what SQL exists; an
@@ -97,9 +97,9 @@ struct MigrationSet {
     struct Migration* ms_list;
 };
 
-/* In a module's main source file, declares that its migrations are applied
- * when it is loaded (see WHO APPLIES THEM above). */
-#define MODULE_MIGRATIONS_AUTO const int module_migrations_auto = 1
+/* A module has its migrations applied when it is loaded by setting
+ * MODULE_APPLY_MIGRATIONS in its ModuleInfo.flags (modules.h; see WHO
+ * APPLIES THEM above). */
 
 /*************************************************************************/
 
@@ -128,12 +128,12 @@ extern int migration_reserved_name(const char* name);
 extern int migration_core_start(void);
 
 /* Apply every pending migration of `set', in order, now.  Blocks; used for
- * modules declaring MODULE_MIGRATIONS_AUTO, when they are loaded.  Returns
+ * modules setting MODULE_APPLY_MIGRATIONS, when they are loaded.  Returns
  * nonzero if the schema is up to date afterwards. */
 extern int migration_apply_now(const struct MigrationSet* set);
 
 /* Log a warning if `set' has migrations that are not applied.  Blocks
- * (one query).  Used when a module without MODULE_MIGRATIONS_AUTO is
+ * (one query).  Used when a module without MODULE_APPLY_MIGRATIONS is
  * loaded. */
 extern void migration_check_pending(const struct MigrationSet* set);
 

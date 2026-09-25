@@ -27,21 +27,15 @@
 
 /*************************************************************************/
 
-static Module *module_operserv;
-static const char **p_ServicesRoot;
 
-static int cb_check_expire  = -1;
-static int cb_command       = -1;
-static int cb_help          = -1;
-static int cb_help_cmds     = -1;
-       int cb_reglink_check = -1;  /* called from util.c */
-static int cb_registered    = -1;
-static int cb_id_check      = -1;
-static int cb_identified    = -1;
-
-       char *s_NickServ;
-static char *desc_NickServ;
-EXPORT_VAR(char *,s_NickServ)
+static Event* check_expire_event;
+static Event* command_event;
+static Event* help_event;
+static Event* help_cmds_event;
+       Event* reglink_check_event;  /* emitted from util.c */
+static Event* registered_event;
+static Event* id_check_event;
+static Event* identified_event;
 
        int32  NSRegEmailMax;
        int    NSRequireEmail;
@@ -74,7 +68,7 @@ static time_t NSDropEmailExpire;
 
 static void refresh_owned_channels(NickGroupInfo *ngi)
 {
-    Module *mod = find_module("chanserv/main");
+    Module *mod = module_find("chanserv/main");
     void (*p_update)(NickGroupInfo *);
 
     if (!mod) {
@@ -84,7 +78,7 @@ static void refresh_owned_channels(NickGroupInfo *ngi)
         return;
     }
     p_update = (void (*)(NickGroupInfo *))
-        get_module_symbol(mod, "update_owned_channels");
+        module_symbol(mod, "update_owned_channels");
     if (p_update)
         p_update(ngi);
 }
@@ -200,11 +194,11 @@ static int check_expire_nick(NickInfo *ni)
         ni->last_seen = now;
     }
     ngi = ni->nickgroup ? get_ngi_id(ni->nickgroup) : NULL;
-    if (!*p_ServicesRoot || irc_stricmp(ni->nick, *p_ServicesRoot) != 0) {
-        if (call_callback_2(cb_check_expire, ni, ngi) > 0) {
+    if (!ServicesRoot || irc_stricmp(ni->nick, ServicesRoot) != 0) {
+        if (event_emit(check_expire_event, ni, ngi) > 0) {
             put_nickgroupinfo(ngi);
             if (u)
-                notice_lang(s_NickServ, u, NICK_EXPIRED);
+                notice_lang(nickserv_service.nick, u, NICK_EXPIRED);
             delnick(ni);
             return 1;
         }
@@ -216,7 +210,7 @@ static int check_expire_nick(NickInfo *ni)
             put_nickgroupinfo(ngi);
             module_log("Expiring nickname %s", ni->nick);
             if (u)
-                notice_lang(s_NickServ, u, NICK_EXPIRED);
+                notice_lang(nickserv_service.nick, u, NICK_EXPIRED);
             delnick(ni);
             return 1;
         }
@@ -241,9 +235,8 @@ static int check_expire_nick(NickInfo *ni)
  * there is no longer any way to go through every record in memory, and
  * the few things that must look at many records ask the database
  * (store_foreach(), store_count()).  The tables are created by this
- * module's migrations (migrations/). */
-
-MODULE_MIGRATIONS_AUTO;
+ * module's migrations (migrations/), applied when it is loaded
+ * (MODULE_APPLY_MIGRATIONS in module_info below). */
 
 /* How often expired nicknames and suspensions are looked for, and how many
  * are handled per round. */
@@ -553,7 +546,6 @@ static StoreType ngi_type = {
 
 /*************************************************************************/
 
-EXPORT_FUNC(add_nickinfo)
 NickInfo *add_nickinfo(NickInfo *ni)
 {
     if (!store_add(&nick_type, ni))
@@ -561,20 +553,17 @@ NickInfo *add_nickinfo(NickInfo *ni)
     return ni;
 }
 
-EXPORT_FUNC(del_nickinfo)
 void del_nickinfo(NickInfo *ni)
 {
     store_delete(&nick_type, ni);
 }
 
 /* The nick, without the expiration check. */
-EXPORT_FUNC(get_nickinfo_noexpire)
 NickInfo *get_nickinfo_noexpire(const char *nick)
 {
     return store_get(&nick_type, nick);
 }
 
-EXPORT_FUNC(get_nickinfo)
 NickInfo *get_nickinfo(const char *nick)
 {
     NickInfo *ni = store_get(&nick_type, nick);
@@ -586,14 +575,12 @@ NickInfo *get_nickinfo(const char *nick)
     return ni;
 }
 
-EXPORT_FUNC(put_nickinfo)
 NickInfo *put_nickinfo(NickInfo *ni)
 {
     store_put(&nick_type, ni);
     return ni;
 }
 
-EXPORT_FUNC(hold_nickinfo)
 NickInfo *hold_nickinfo(NickInfo *ni)
 {
     store_hold(&nick_type, ni);
@@ -602,7 +589,6 @@ NickInfo *hold_nickinfo(NickInfo *ni)
 
 /*************************************************************************/
 
-EXPORT_FUNC(add_nickgroupinfo)
 NickGroupInfo *add_nickgroupinfo(NickGroupInfo *ngi)
 {
     if (!store_add(&ngi_type, ngi))
@@ -610,13 +596,11 @@ NickGroupInfo *add_nickgroupinfo(NickGroupInfo *ngi)
     return ngi;
 }
 
-EXPORT_FUNC(del_nickgroupinfo)
 void del_nickgroupinfo(NickGroupInfo *ngi)
 {
     store_delete(&ngi_type, ngi);
 }
 
-EXPORT_FUNC(get_nickgroupinfo)
 NickGroupInfo *get_nickgroupinfo(uint32 id)
 {
     char key[16];
@@ -627,7 +611,6 @@ NickGroupInfo *get_nickgroupinfo(uint32 id)
     return store_get(&ngi_type, key);
 }
 
-EXPORT_FUNC(put_nickgroupinfo)
 NickGroupInfo *put_nickgroupinfo(NickGroupInfo *ngi)
 {
     if (ngi && ngi != NICKGROUPINFO_INVALID)
@@ -635,7 +618,6 @@ NickGroupInfo *put_nickgroupinfo(NickGroupInfo *ngi)
     return ngi;
 }
 
-EXPORT_FUNC(hold_nickgroupinfo)
 NickGroupInfo *hold_nickgroupinfo(NickGroupInfo *ngi)
 {
     if (ngi && ngi != NICKGROUPINFO_INVALID)
@@ -649,7 +631,6 @@ NickGroupInfo *hold_nickgroupinfo(NickGroupInfo *ngi)
  * `where' is SQL over the nicks (or nickgroups) table, alias t; its
  * values are $2, $3... (see store_foreach()). */
 
-EXPORT_FUNC(foreach_nickinfo)
 int foreach_nickinfo(const char *where, const char *const *params,
                      int nparams, int (*fn)(NickInfo *ni, void *arg),
                      void *arg)
@@ -658,7 +639,6 @@ int foreach_nickinfo(const char *where, const char *const *params,
                          (StoreEachFn)fn, arg);
 }
 
-EXPORT_FUNC(foreach_nickgroupinfo)
 int foreach_nickgroupinfo(const char *where, const char *const *params,
                           int nparams,
                           int (*fn)(NickGroupInfo *ngi, void *arg),
@@ -668,13 +648,11 @@ int foreach_nickgroupinfo(const char *where, const char *const *params,
                          (StoreEachFn)fn, arg);
 }
 
-EXPORT_FUNC(count_nickinfo)
 long count_nickinfo(const char *where, const char *const *params, int nparams)
 {
     return store_count(&nick_type, where, params, nparams);
 }
 
-EXPORT_FUNC(count_nickgroupinfo)
 long count_nickgroupinfo(const char *where, const char *const *params,
                          int nparams)
 {
@@ -683,14 +661,12 @@ long count_nickgroupinfo(const char *where, const char *const *params,
 
 /* Fetch in the background the records of `nicks', and call `done' when
  * they are ready: for the paths that see the whole network go by. */
-EXPORT_FUNC(prefetch_nickinfo)
 int prefetch_nickinfo(Module *owner, const char **nicks, int count,
                       void (*done)(void *arg), void *arg)
 {
     return store_prefetch(owner, &nick_type, nicks, count, done, arg);
 }
 
-EXPORT_FUNC(prefetch_nickgroupinfo)
 int prefetch_nickgroupinfo(Module *owner, const uint32 *ids, int count,
                            void (*done)(void *arg), void *arg)
 {
@@ -798,59 +774,27 @@ static void expire_check(Timeout *t)
 /************************ Main NickServ routines *************************/
 /*************************************************************************/
 
-/* Introduce the NickServ pseudoclient. */
-
-static int introduce_nickserv(const char *nick)
-{
-    if (!nick || irc_stricmp(nick, s_NickServ) == 0) {
-        send_pseudo_nick(s_NickServ, desc_NickServ, PSEUDO_OPER);
-        if (nick)
-            return 1;
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-static int nickserv(const char *source, const char *target, char *buf);
+static void nickserv_message(struct Service *service, User *u, char *buf);
 
 /* Run a command again once its password is ready (see encrypt.h). */
 
 static void nickserv_replay(User *u, char *line)
 {
-    nickserv(u->nick, s_NickServ, line);
+    nickserv_message(&nickserv_service, u, line);
 }
 
 /*************************************************************************/
 
-/* Main NickServ routine. */
+/* Main NickServ routine: a PRIVMSG to NickServ. */
 
-static int nickserv(const char *source, const char *target, char *buf)
+static void nickserv_message(struct Service *service, User *u, char *buf)
 {
     char *cmd;
-    User *u = get_user(source);
-
-    if (irc_stricmp(target, s_NickServ) != 0)
-        return 0;
-
-    if (!u) {
-        module_log("user record for %s not found", source);
-        notice(s_NickServ, source,
-                getstring(NULL, INTERNAL_ERROR));
-        return 1;
-    }
 
     password_command_begin(THIS_MODULE, u, nickserv_replay, buf);
     cmd = strtok(buf, " ");
 
-    if (!cmd) {
-        /* nothing */
-    } else if (stricmp(cmd, "\1PING") == 0) {
-        const char *s;
-        if (!(s = strtok_remaining()))
-            s = "\1";
-        notice(s_NickServ, source, "\1PING %s", s);
-    } else {
+    if (cmd) {
         int i;
         ARRAY_FOREACH (i, aliases) {
             if (stricmp(cmd, aliases[i].alias) == 0) {
@@ -858,35 +802,17 @@ static int nickserv(const char *source, const char *target, char *buf)
                 break;
             }
         }
-        if (call_callback_2(cb_command, u, cmd) <= 0)
-            run_cmd(s_NickServ, u, THIS_MODULE, cmd);
+        if (event_emit(command_event, u, cmd) <= 0)
+            run_cmd(nickserv_service.nick, u, THIS_MODULE, cmd);
     }
     password_command_end();
-    return 1;
-
 }
 
 /*************************************************************************/
 
-/* Return a /WHOIS response for NickServ. */
-
-static int nickserv_whois(const char *source, char *who, char *extra)
-{
-    if (irc_stricmp(who, s_NickServ) != 0)
-        return 0;
-    send_cmd(ServerName, "311 %s %s %s %s * :%s", source, who,
-             ServiceUser, ServiceHost, desc_NickServ);
-    send_cmd(ServerName, "312 %s %s %s :%s", source, who,
-             ServerName, ServerDesc);
-    send_cmd(ServerName, "313 %s %s :is a network service", source, who);
-    send_cmd(ServerName, "318 %s %s End of /WHOIS response.", source, who);
-    return 1;
-}
-
-/*************************************************************************/
 /*************************************************************************/
 
-/* Callback for users connecting to the network. */
+/* Handler for users connecting to the network. */
 
 /* Validating users in the background.  A user connecting or changing nick
  * needs the nick's record (and its group's); on a network of any size these
@@ -902,29 +828,28 @@ typedef struct {
     uint32 old_group;   /* Nick group of the old nick (nick change) */
 } ValidateArg;
 
-/* "user validated" (User *user, int nickchange, uint32 old_nickgroup):
- * the user's nick is known (user->ni, user->ngi), after the connection or
- * nick change that triggered it.  Replaces "user create" and "user
- * nickchange (after)" for anything that needs the nick's record. */
-static int cb_validated = -1;
+/* "nickserv.user_validated" (User *user, int nickchange,
+ * uint32 old_nickgroup): the user's nick is known (user->ni, user->ngi),
+ * after the connection or nick change that triggered it.  Replaces
+ * "user.create" and "user.nick_change_after" for anything that needs the
+ * nick's record. */
+static Event* validated_event;
 
 /* The nick group of a user's nick before a nick change: from the "before"
- * callback to the "after" one, which run back to back. */
+ * handler to the "after" one, which run back to back. */
 static User *nickchange_user;
 static uint32 nickchange_old_group;
-
-
 
 /* What a nick change adds to validate_user(). */
 static void validate_after_nickchange(User *user)
 {
     if (usermode_reg) {
         if (user_identified(user)) {
-            send_cmd(s_NickServ, "SVSMODE %s :+%s", user->nick,
+            send_cmd(nickserv_service.nick, "SVSMODE %s :+%s", user->nick,
                      mode_flags_to_string(usermode_reg, MODE_USER));
             user->mode |= usermode_reg;
         } else {
-            send_cmd(s_NickServ, "SVSMODE %s :-%s", user->nick,
+            send_cmd(nickserv_service.nick, "SVSMODE %s :-%s", user->nick,
                      mode_flags_to_string(usermode_reg, MODE_USER));
             user->mode &= ~usermode_reg;
         }
@@ -936,7 +861,7 @@ static void validated(User *user, int nickchange, uint32 old_group)
     validate_user(user);
     if (nickchange)
         validate_after_nickchange(user);
-    call_callback_3(cb_validated, user, nickchange, old_group);
+    event_emit(validated_event, user, nickchange, old_group);
 }
 
 static void validate_finish(ValidateArg *arg)
@@ -1100,7 +1025,7 @@ static void release_identified(User *user, uint32 id)
 
 /************************************/
 
-/* Callback for users disconnecting from the network. */
+/* Handler for users disconnecting from the network. */
 
 static int do_user_delete(User *user, const char *reason)
 {
@@ -1122,7 +1047,7 @@ static int do_user_delete(User *user, const char *reason)
 
 /*************************************************************************/
 
-/* Callback for REGISTER/LINK check; we disallow registration/linking of
+/* Handler for REGISTER/LINK check; we disallow registration/linking of
  * the NickServ pseudoclient nickname or guest nicks.  This is done here
  * instead of in the routines themselves to avoid duplication of code at an
  * insignificant performance cost.
@@ -1138,29 +1063,30 @@ static int do_reglink_check(const User *u, const char *nick,
          * changing. */
         return 1;
     }
-    return irc_stricmp(nick, s_NickServ) == 0;
+    /* Nor the nick of any pseudo-client. */
+    return service_find(nick) != NULL;
 }
 
 /*************************************************************************/
 
-/* Callback for OperServ STATS ALL. */
+/* Handler for OperServ STATS ALL. */
 
-static int do_stats_all(User *user, const char *s_OperServ)
+static int do_stats_all(User *user, const char *operserv_nick)
 {
     /* The records are in the database; memory holds only those in use.
      * The counts are the database's, the sizes those of the records in
      * memory. */
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_NICKINFO_MEM,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_NICKINFO_MEM,
                 (int)count_nickinfo(NULL, NULL, 0),
                 (int)((store_resident(&nick_type)*sizeof(NickInfo)+512)
                       / 1024));
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_RESIDENT,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_RESIDENT,
                 (int)store_resident(&nick_type));
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_NICKGROUPINFO_MEM,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_NICKGROUPINFO_MEM,
                 (int)count_nickgroupinfo(NULL, NULL, 0),
                 (int)((store_resident(&ngi_type)*sizeof(NickGroupInfo)+512)
                       / 1024));
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_RESIDENT,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_RESIDENT,
                 (int)store_resident(&ngi_type));
     return 0;
 }
@@ -1176,108 +1102,108 @@ static void do_help(User *u)
     char *cmd = strtok_remaining();
 
     if (!cmd) {
-        notice_help(s_NickServ, u, NICK_HELP);
+        notice_help(nickserv_service.nick, u, NICK_HELP);
         if (NSExpire)
-            notice_help(s_NickServ, u, NICK_HELP_EXPIRES,
+            notice_help(nickserv_service.nick, u, NICK_HELP_EXPIRES,
                         maketime(u->ngi,NSExpire,0));
         if (NSHelpWarning)
-            notice_help(s_NickServ, u, NICK_HELP_WARNING);
-    } else if (call_callback_2(cb_help, u, cmd) > 0) {
+            notice_help(nickserv_service.nick, u, NICK_HELP_WARNING);
+    } else if (event_emit(help_event, u, cmd) > 0) {
         return;
     } else if (stricmp(cmd, "COMMANDS") == 0) {
-        notice_help(s_NickServ, u, NICK_HELP_COMMANDS);
-        if (find_module("nickserv/mail-auth"))
-            notice_help(s_NickServ, u, NICK_HELP_COMMANDS_AUTH);
-        if (find_module("nickserv/link"))
-            notice_help(s_NickServ, u, NICK_HELP_COMMANDS_LINK);
-        if (find_module("nickserv/access"))
-            notice_help(s_NickServ, u, NICK_HELP_COMMANDS_ACCESS);
-        if (find_module("nickserv/autojoin"))
-            notice_help(s_NickServ, u, NICK_HELP_COMMANDS_AJOIN);
-        notice_help(s_NickServ, u, NICK_HELP_COMMANDS_SET);
+        notice_help(nickserv_service.nick, u, NICK_HELP_COMMANDS);
+        if (module_find("nickserv/mail-auth"))
+            notice_help(nickserv_service.nick, u, NICK_HELP_COMMANDS_AUTH);
+        if (module_find("nickserv/link"))
+            notice_help(nickserv_service.nick, u, NICK_HELP_COMMANDS_LINK);
+        if (module_find("nickserv/access"))
+            notice_help(nickserv_service.nick, u, NICK_HELP_COMMANDS_ACCESS);
+        if (module_find("nickserv/autojoin"))
+            notice_help(nickserv_service.nick, u, NICK_HELP_COMMANDS_AJOIN);
+        notice_help(nickserv_service.nick, u, NICK_HELP_COMMANDS_SET);
         if (!NSListOpersOnly)
-            notice_help(s_NickServ, u, NICK_HELP_COMMANDS_LIST);
-        notice_help(s_NickServ, u, NICK_HELP_COMMANDS_LISTCHANS);
-        call_callback_2(cb_help_cmds, u, 0);
+            notice_help(nickserv_service.nick, u, NICK_HELP_COMMANDS_LIST);
+        notice_help(nickserv_service.nick, u, NICK_HELP_COMMANDS_LISTCHANS);
+        event_emit(help_cmds_event, u, 0);
         if (is_oper(u)) {
-            notice_help(s_NickServ, u, NICK_OPER_HELP_COMMANDS);
+            notice_help(nickserv_service.nick, u, NICK_OPER_HELP_COMMANDS);
             if (NSEnableDropEmail)
-                notice_help(s_NickServ, u, NICK_OPER_HELP_COMMANDS_DROPEMAIL);
+                notice_help(nickserv_service.nick, u, NICK_OPER_HELP_COMMANDS_DROPEMAIL);
             if (EnableGetpass)
-                notice_help(s_NickServ, u, NICK_OPER_HELP_COMMANDS_GETPASS);
-            notice_help(s_NickServ, u, NICK_OPER_HELP_COMMANDS_FORBID);
+                notice_help(nickserv_service.nick, u, NICK_OPER_HELP_COMMANDS_GETPASS);
+            notice_help(nickserv_service.nick, u, NICK_OPER_HELP_COMMANDS_FORBID);
             if (NSListOpersOnly)
-                notice_help(s_NickServ, u, NICK_HELP_COMMANDS_LIST);
-            if (find_module("nickserv/mail-auth"))
-                notice_help(s_NickServ, u, NICK_OPER_HELP_COMMANDS_SETAUTH);
-            call_callback_2(cb_help_cmds, u, 1);
-            notice_help(s_NickServ, u, NICK_OPER_HELP_COMMANDS_END);
+                notice_help(nickserv_service.nick, u, NICK_HELP_COMMANDS_LIST);
+            if (module_find("nickserv/mail-auth"))
+                notice_help(nickserv_service.nick, u, NICK_OPER_HELP_COMMANDS_SETAUTH);
+            event_emit(help_cmds_event, u, 1);
+            notice_help(nickserv_service.nick, u, NICK_OPER_HELP_COMMANDS_END);
         }
     } else if (stricmp(cmd, "REGISTER") == 0) {
-        notice_help(s_NickServ, u, NICK_HELP_REGISTER,
+        notice_help(nickserv_service.nick, u, NICK_HELP_REGISTER,
                     getstring(u->ngi,NICK_REGISTER_SYNTAX));
-        notice_help(s_NickServ, u, NICK_HELP_REGISTER_EMAIL);
-        notice_help(s_NickServ, u, NICK_HELP_REGISTER_END);
+        notice_help(nickserv_service.nick, u, NICK_HELP_REGISTER_EMAIL);
+        notice_help(nickserv_service.nick, u, NICK_HELP_REGISTER_END);
     } else if (stricmp(cmd, "DROP") == 0) {
-        notice_help(s_NickServ, u, NICK_HELP_DROP);
-        if (find_module("nickserv/link"))
-            notice_help(s_NickServ, u, NICK_HELP_DROP_LINK);
-        notice_help(s_NickServ, u, NICK_HELP_DROP_END);
+        notice_help(nickserv_service.nick, u, NICK_HELP_DROP);
+        if (module_find("nickserv/link"))
+            notice_help(nickserv_service.nick, u, NICK_HELP_DROP_LINK);
+        notice_help(nickserv_service.nick, u, NICK_HELP_DROP_END);
     } else if ((stricmp(cmd, "DROPEMAIL") == 0
                 || stricmp(cmd, "DROPEMAIL-CONFIRM") == 0)
                && NSEnableDropEmail
                && is_oper(u)
     ) {
-        notice_help(s_NickServ, u, NICK_OPER_HELP_DROPEMAIL,
+        notice_help(nickserv_service.nick, u, NICK_OPER_HELP_DROPEMAIL,
                     maketime(u->ngi,NSDropEmailExpire,0));
     } else if (stricmp(cmd, "SET") == 0) {
-        notice_help(s_NickServ, u, NICK_HELP_SET);
-        if (find_module("nickserv/link"))
-            notice_help(s_NickServ, u, NICK_HELP_SET_OPTION_MAINNICK);
-        notice_help(s_NickServ, u, NICK_HELP_SET_END);
+        notice_help(nickserv_service.nick, u, NICK_HELP_SET);
+        if (module_find("nickserv/link"))
+            notice_help(nickserv_service.nick, u, NICK_HELP_SET_OPTION_MAINNICK);
+        notice_help(nickserv_service.nick, u, NICK_HELP_SET_END);
         if (is_oper(u))
-            notice_help(s_NickServ, u, NICK_OPER_HELP_SET);
+            notice_help(nickserv_service.nick, u, NICK_OPER_HELP_SET);
     } else if (strnicmp(cmd, "SET", 3) == 0
                && isspace(cmd[3])
                && stricmp(cmd+4+strspn(cmd+4," \t"), "LANGUAGE") == 0) {
         int i;
-        notice_help(s_NickServ, u, NICK_HELP_SET_LANGUAGE);
+        notice_help(nickserv_service.nick, u, NICK_HELP_SET_LANGUAGE);
         for (i = 0; i < NUM_LANGS && langlist[i] >= 0; i++) {
-            notice(s_NickServ, u->nick, "    %2d) %s",
+            notice(nickserv_service.nick, u->nick, "    %2d) %s",
                    i+1, getstring_lang(langlist[i],LANG_NAME));
         }
     } else if (stricmp(cmd, "INFO") == 0) {
-        notice_help(s_NickServ, u, NICK_HELP_INFO);
-        if (find_module("nickserv/mail-auth"))
-            notice_help(s_NickServ, u, NICK_HELP_INFO_AUTH);
+        notice_help(nickserv_service.nick, u, NICK_HELP_INFO);
+        if (module_find("nickserv/mail-auth"))
+            notice_help(nickserv_service.nick, u, NICK_HELP_INFO_AUTH);
         if (is_oper(u))
-            notice_help(s_NickServ, u, NICK_OPER_HELP_INFO);
+            notice_help(nickserv_service.nick, u, NICK_OPER_HELP_INFO);
     } else if (stricmp(cmd, "LIST") == 0) {
         if (is_oper(u)) {
-            notice_help(s_NickServ, u, NICK_OPER_HELP_LIST);
-            notice_help(s_NickServ, u, NICK_OPER_HELP_LIST_END);
+            notice_help(nickserv_service.nick, u, NICK_OPER_HELP_LIST);
+            notice_help(nickserv_service.nick, u, NICK_OPER_HELP_LIST_END);
         } else {
-            notice_help(s_NickServ, u, NICK_HELP_LIST);
+            notice_help(nickserv_service.nick, u, NICK_HELP_LIST);
         }
         if (NSListOpersOnly)
-            notice_help(s_NickServ, u, NICK_HELP_LIST_OPERSONLY);
+            notice_help(nickserv_service.nick, u, NICK_HELP_LIST_OPERSONLY);
     } else if (stricmp(cmd, "LISTEMAIL") == 0) {
         char buf[BUFSIZE];
         int msg = is_oper(u) ? NICK_LIST_OPER_SYNTAX : NICK_LIST_SYNTAX;
         snprintf(buf, sizeof(buf), getstring(u->ngi,msg), "LISTEMAIL");
-        notice_help(s_NickServ, u, NICK_HELP_LISTEMAIL, buf);
+        notice_help(nickserv_service.nick, u, NICK_HELP_LISTEMAIL, buf);
         if (NSListOpersOnly)
-            notice_help(s_NickServ, u, NICK_HELP_LIST_OPERSONLY);
+            notice_help(nickserv_service.nick, u, NICK_HELP_LIST_OPERSONLY);
     } else if (stricmp(cmd, "RECOVER") == 0) {
-        notice_help(s_NickServ, u, NICK_HELP_RECOVER,
+        notice_help(nickserv_service.nick, u, NICK_HELP_RECOVER,
                     maketime(u->ngi,NSReleaseTimeout,MT_SECONDS));
     } else if (stricmp(cmd, "RELEASE") == 0) {
-        notice_help(s_NickServ, u, NICK_HELP_RELEASE,
+        notice_help(nickserv_service.nick, u, NICK_HELP_RELEASE,
                     maketime(u->ngi,NSReleaseTimeout,MT_SECONDS));
     } else if (stricmp(cmd, "SUSPEND") == 0 && is_oper(u)) {
-        notice_help(s_NickServ, u, NICK_OPER_HELP_SUSPEND, s_OperServ);
+        notice_help(nickserv_service.nick, u, NICK_OPER_HELP_SUSPEND, operserv_service.nick);
     } else {
-        help_cmd(s_NickServ, u, THIS_MODULE, cmd);
+        help_cmd(nickserv_service.nick, u, THIS_MODULE, cmd);
     }
 }
 
@@ -1295,18 +1221,18 @@ static void do_register(User *u)
     time_t now = time(NULL);
 
     if (readonly) {
-        notice_lang(s_NickServ, u, NICK_REGISTRATION_DISABLED);
+        notice_lang(nickserv_service.nick, u, NICK_REGISTRATION_DISABLED);
         return;
     }
 
     if (now < u->lastnickreg + NSRegDelay) {
         time_t left = (u->lastnickreg + NSRegDelay) - now;
-        notice_lang(s_NickServ, u, NICK_REG_PLEASE_WAIT,
+        notice_lang(nickserv_service.nick, u, NICK_REG_PLEASE_WAIT,
                     maketime(u->ngi, left, MT_SECONDS));
 
     } else if (time(NULL) < u->my_signon + NSInitialRegDelay) {
         time_t left = (u->my_signon + NSInitialRegDelay) - now;
-        notice_lang(s_NickServ, u, NICK_REG_PLEASE_WAIT_FIRST,
+        notice_lang(nickserv_service.nick, u, NICK_REG_PLEASE_WAIT_FIRST,
                     maketime(u->ngi, left, MT_SECONDS));
 
     } else if (!pass || (NSRequireEmail && !email)
@@ -1317,41 +1243,41 @@ static void do_register(User *u)
     ) {
         /* No password/email, or they (apparently) tried to include the nick
          * in the command. */
-        syntax_error(s_NickServ, u, "REGISTER", NICK_REGISTER_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "REGISTER", NICK_REGISTER_SYNTAX);
 
     } else if (!reglink_check(u, u->nick, pass, email)) {
-        /* Denied by the callback. */
-        notice_lang(s_NickServ, u, NICK_CANNOT_BE_REGISTERED, u->nick);
+        /* Denied by a nickserv.register_check handler. */
+        notice_lang(nickserv_service.nick, u, NICK_CANNOT_BE_REGISTERED, u->nick);
         return;
 
     } else if (u->ni) {  /* i.e. there's already such a nick regged */
         if (u->ni->status & NS_VERBOTEN) {
             module_log("%s@%s tried to register forbidden nick %s",
                        u->username, u->host, u->nick);
-            notice_lang(s_NickServ, u, NICK_CANNOT_BE_REGISTERED, u->nick);
+            notice_lang(nickserv_service.nick, u, NICK_CANNOT_BE_REGISTERED, u->nick);
         } else {
             if (u->ngi->flags & NF_SUSPENDED)
                 module_log("%s@%s tried to register suspended nick %s",
                            u->username, u->host, u->nick);
-            notice_lang(s_NickServ, u, NICK_X_ALREADY_REGISTERED, u->nick);
+            notice_lang(nickserv_service.nick, u, NICK_X_ALREADY_REGISTERED, u->nick);
         }
 
     } else if (u->ngi == NICKGROUPINFO_INVALID) {
         module_log("%s@%s tried to register nick %s with missing nick group",
                    u->username, u->host, u->nick);
-        notice_lang(s_NickServ, u, NICK_REGISTRATION_FAILED);
+        notice_lang(nickserv_service.nick, u, NICK_REGISTRATION_FAILED);
 
     } else if (put_nickinfo(get_nickinfo(u->nick))) {
         /* Theoretically impossible if the previous tests were false, but
          * just in case */
         module_log("REGISTER %s: u->ni is NULL but nick is registered!",
                    u->nick);
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
 
     } else if (stricmp(pass, u->nick) == 0
                || (StrictPasswords && strlen(pass) < 5)
     ) {
-        notice_lang(s_NickServ, u, MORE_OBSCURE_PASSWORD);
+        notice_lang(nickserv_service.nick, u, MORE_OBSCURE_PASSWORD);
 
     } else if (email && !valid_email(email)) {
         /* Display the syntax as well in case the user just got E-mail and
@@ -1361,20 +1287,20 @@ static void do_register(User *u)
         char buf[BUFSIZE];
         snprintf(buf, sizeof(buf), getstring(u->ngi,NICK_REGISTER_SYNTAX),
                  "REGISTER");
-        notice_lang(s_NickServ, u, SYNTAX_ERROR, buf);
-        notice_lang(s_NickServ, u, BAD_EMAIL);
+        notice_lang(nickserv_service.nick, u, SYNTAX_ERROR, buf);
+        notice_lang(nickserv_service.nick, u, BAD_EMAIL);
 
     } else if (email && rejected_email(email)) {
-        notice_lang(s_NickServ, u, REJECTED_EMAIL);
+        notice_lang(nickserv_service.nick, u, REJECTED_EMAIL);
         return;
 
     } else if (NSRegEmailMax && email && !is_services_admin(u)
                && ((n = count_nicks_with_email(email)) < 0
                    || n >= NSRegEmailMax)) {
         if (n < 0) {
-            notice_lang(s_NickServ, u, NICK_REGISTER_EMAIL_UNAUTHED);
+            notice_lang(nickserv_service.nick, u, NICK_REGISTER_EMAIL_UNAUTHED);
         } else {
-            notice_lang(s_NickServ, u, NICK_REGISTER_TOO_MANY_NICKS, n,
+            notice_lang(nickserv_service.nick, u, NICK_REGISTER_TOO_MANY_NICKS, n,
                         NSRegEmailMax);
         }
 
@@ -1395,7 +1321,7 @@ static void do_register(User *u)
                 module_log("REGISTER from %s!%s@%s denied because E-mail"
                            " address %s is used by a suspended nick",
                            u->nick, u->username, u->host, email);
-                notice_lang(s_NickServ, u, PERMISSION_DENIED);
+                notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
                 return;
             }
         }
@@ -1409,7 +1335,7 @@ static void do_register(User *u)
             memset(pass, 0, strlen(pass));
             module_log("Failed to encrypt password for %s (register)",
                        u->nick);
-            notice_lang(s_NickServ, u, NICK_REGISTRATION_FAILED);
+            notice_lang(nickserv_service.nick, u, NICK_REGISTRATION_FAILED);
             return;
         }
         /* Do nick setup stuff */
@@ -1417,7 +1343,7 @@ static void do_register(User *u)
         if (!ni) {
             clear_password(&passbuf);
             module_log("makenick(%s) failed", u->nick);
-            notice_lang(s_NickServ, u, NICK_REGISTRATION_FAILED);
+            notice_lang(nickserv_service.nick, u, NICK_REGISTRATION_FAILED);
             return;
         }
         copy_password(&ngi->pass, &passbuf);
@@ -1431,7 +1357,7 @@ static void do_register(User *u)
         ngi->channelmax = CHANMAX_DEFAULT;
         ngi->language = LANG_DEFAULT;
         ngi->timezone = TIMEZONE_DEFAULT;
-        call_callback_4(cb_registered, u, ni, ngi, &replied);
+        event_emit(registered_event, u, ni, ngi, &replied);
         /* If the IDENTIFIED flag is still set (a module might have
          * cleared it, e.g. mail-auth), record the ID stamp */
         if (nick_identified(ni))
@@ -1450,9 +1376,9 @@ static void do_register(User *u)
                        u->nick, u->username, u->host);
         }
         if (!replied)
-            notice_lang(s_NickServ, u, NICK_REGISTERED, u->nick);
+            notice_lang(nickserv_service.nick, u, NICK_REGISTERED, u->nick);
         if (NSShowPassword)
-            notice_lang(s_NickServ, u, NICK_PASSWORD_IS, pass);
+            notice_lang(nickserv_service.nick, u, NICK_PASSWORD_IS, pass);
         /* Clear password from memory and other last-minute things */
         memset(pass, 0, strlen(pass));
         /* Note time REGISTER command was used */
@@ -1460,7 +1386,7 @@ static void do_register(User *u)
         /* Set +r (or other registered-nick mode) if IDENTIFIED is still
          * set. */
         if (nick_identified(ni) && usermode_reg) {
-            send_cmd(s_NickServ, "SVSMODE %s :+%s", u->nick,
+            send_cmd(nickserv_service.nick, "SVSMODE %s :+%s", u->nick,
                      mode_flags_to_string(usermode_reg, MODE_USER));
         }
 
@@ -1477,20 +1403,20 @@ static void do_identify(User *u)
     NickGroupInfo *ngi = NULL;
 
     if (!pass || strtok_remaining()) {
-        syntax_error(s_NickServ, u, "IDENTIFY", NICK_IDENTIFY_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "IDENTIFY", NICK_IDENTIFY_SYNTAX);
 
     } else if (!(ni = u->ni)) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
 
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, u->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, u->nick);
 
     } else if (!(ngi = u->ngi) || ngi == NICKGROUPINFO_INVALID) {
         module_log("IDENTIFY: missing NickGroupInfo for %s", u->nick);
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
 
     } else if (ngi->flags & NF_SUSPENDED) {
-        notice_lang(s_NickServ, u, NICK_X_SUSPENDED, u->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_SUSPENDED, u->nick);
 
     } else if (!nick_check_password(u, u->ni, pass, "IDENTIFY",
                                     NICK_IDENTIFY_FAILED)) {
@@ -1498,9 +1424,9 @@ static void do_identify(User *u)
 
     } else if (NSRequireEmail && !ngi->email) {
         ni->authstat |= NA_IDENT_NOMAIL;
-        notice_lang(s_NickServ, u, NICK_IDENTIFY_EMAIL_MISSING, s_NickServ);
+        notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_EMAIL_MISSING, nickserv_service.nick);
 
-    } else if (call_callback_2(cb_id_check, u, pass) <= 0) {
+    } else if (event_emit(id_check_event, u, pass) <= 0) {
         int old_authstat = ni->authstat;
         set_identified(u);
         if (!(old_authstat & NA_IDENTIFIED)) {
@@ -1508,8 +1434,8 @@ static void do_identify(User *u)
             module_log("%s!%s@%s identified for nick %s",
                        u->nick, u->username, u->host, u->nick);
         }
-        notice_lang(s_NickServ, u, NICK_IDENTIFY_SUCCEEDED);
-        call_callback_2(cb_identified, u, old_authstat);
+        notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_SUCCEEDED);
+        event_emit(identified_event, u, old_authstat);
     }
 }
 
@@ -1522,26 +1448,26 @@ static void do_drop(User *u)
     NickGroupInfo *ngi = (u->ngi==NICKGROUPINFO_INVALID ? NULL : u->ngi);
 
     if (readonly && !is_services_admin(u)) {
-        notice_lang(s_NickServ, u, NICK_DROP_DISABLED);
+        notice_lang(nickserv_service.nick, u, NICK_DROP_DISABLED);
         return;
     }
 
     if (!pass || strtok_remaining()) {
-        syntax_error(s_NickServ, u, "DROP", NICK_DROP_SYNTAX);
-        if (find_module("nickserv/link"))
-            notice_lang(s_NickServ, u, NICK_DROP_WARNING);
+        syntax_error(nickserv_service.nick, u, "DROP", NICK_DROP_SYNTAX);
+        if (module_find("nickserv/link"))
+            notice_lang(nickserv_service.nick, u, NICK_DROP_WARNING);
     } else if (!ni || !ngi) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
     } else if (ngi->flags & NF_SUSPENDED) {
-        notice_lang(s_NickServ, u, NICK_X_SUSPENDED, u->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_SUSPENDED, u->nick);
     } else if (!nick_check_password(u, u->ni, pass, "DROP",
                                     NICK_DROP_FAILED)) {
         /* nothing */
     } else {
         if (readonly)  /* they must be a servadmin in this case */
-            notice_lang(s_NickServ, u, READ_ONLY_MODE);
+            notice_lang(nickserv_service.nick, u, READ_ONLY_MODE);
         drop_nickgroup(ngi, u, NULL);
-        notice_lang(s_NickServ, u, NICK_DROPPED);
+        notice_lang(nickserv_service.nick, u, NICK_DROPPED);
     }
 }
 
@@ -1558,25 +1484,25 @@ static void do_dropnick(User *u)
     NickGroupInfo *ngi = NULL;
 
     if (!nick) {
-        syntax_error(s_NickServ, u, "DROPNICK", NICK_DROPNICK_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "DROPNICK", NICK_DROPNICK_SYNTAX);
     } else if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->nickgroup && !(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
         put_nickinfo(ni);
     } else if (NSSecureAdmins && nick_is_services_admin(ni)
                && !is_services_root(u)
     ) {
-        notice_lang(s_NickServ, u, PERMISSION_DENIED);
+        notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
         put_nickinfo(ni);
         put_nickgroupinfo(ngi);
     } else {
         if (WallAdminPrivs) {
-            wallops(s_NickServ, "\2%s\2 used DROPNICK on \2%s\2",
+            wallops(nickserv_service.nick, "\2%s\2 used DROPNICK on \2%s\2",
                     u->nick, ni->nick);
         }
         if (readonly)
-            notice_lang(s_NickServ, u, READ_ONLY_MODE);
+            notice_lang(nickserv_service.nick, u, READ_ONLY_MODE);
         if (ngi) {
             drop_nickgroup(ngi, u, PTR_INVALID);
         } else {
@@ -1584,7 +1510,7 @@ static void do_dropnick(User *u)
                        u->nick, u->username, u->host, ni->nick);
             delnick(ni);
         }
-        notice_lang(s_NickServ, u, NICK_X_DROPPED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_DROPPED, nick);
     }
 }
 
@@ -1609,11 +1535,11 @@ static void do_dropemail(User *u)
 
     /* Parameter check */
     if (!mask || strtok_remaining()) {
-        syntax_error(s_NickServ, u, "DROPEMAIL", NICK_DROPEMAIL_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "DROPEMAIL", NICK_DROPEMAIL_SYNTAX);
         return;
     }
     if (strlen(mask) > sizeof(dropemail_buffer[0].mask)-1) {
-        notice_lang(s_NickServ, u, NICK_DROPEMAIL_PATTERN_TOO_LONG,
+        notice_lang(nickserv_service.nick, u, NICK_DROPEMAIL_PATTERN_TOO_LONG,
                     sizeof(dropemail_buffer[0].mask)-1);
         return;
     }
@@ -1634,7 +1560,7 @@ static void do_dropemail(User *u)
             " where g.id = t.nickgroup and g.email is null)", NULL, 0);
     }
     if (count <= 0) {
-        notice_lang(s_NickServ, u, NICK_DROPEMAIL_NONE);
+        notice_lang(nickserv_service.nick, u, NICK_DROPEMAIL_NONE);
         return;
     }
     if (mask == NULL)
@@ -1671,7 +1597,7 @@ static void do_dropemail(User *u)
     dropemail_buffer[found].count = count;
 
     /* Send count and prompt for confirmation */
-    notice_lang(s_NickServ, u, NICK_DROPEMAIL_COUNT, count, s_NickServ, mask);
+    notice_lang(nickserv_service.nick, u, NICK_DROPEMAIL_COUNT, count, nickserv_service.nick, mask);
 }
 
 
@@ -1699,7 +1625,7 @@ static void do_dropemail_confirm(User *u)
 
     /* Parameter check */
     if (!mask || strtok_remaining()) {
-        syntax_error(s_NickServ, u, "DROPEMAIL-CONFIRM",
+        syntax_error(nickserv_service.nick, u, "DROPEMAIL-CONFIRM",
                      NICK_DROPEMAIL_CONFIRM_SYNTAX);
         return;
     }
@@ -1715,15 +1641,15 @@ static void do_dropemail_confirm(User *u)
         }
     }
     if (i >= DROPEMAIL_BUFSIZE) {
-        notice_lang(s_NickServ, u, NICK_DROPEMAIL_CONFIRM_UNKNOWN);
+        notice_lang(nickserv_service.nick, u, NICK_DROPEMAIL_CONFIRM_UNKNOWN);
         return;
     }
 
     /* Okay, go ahead and delete */
-    notice_lang(s_NickServ, u, NICK_DROPEMAIL_CONFIRM_DROPPING,
+    notice_lang(nickserv_service.nick, u, NICK_DROPEMAIL_CONFIRM_DROPPING,
                 dropemail_buffer[i].count);
     if (readonly)
-        notice_lang(s_NickServ, u, READ_ONLY_MODE);
+        notice_lang(nickserv_service.nick, u, READ_ONLY_MODE);
     *dropemail_buffer[i].mask = 0;  /* clear out the entry */
     if (strcmp(mask,"-") == 0)
         mask = NULL;
@@ -1742,9 +1668,9 @@ static void do_dropemail_confirm(User *u)
                                   dropemail_one, &arg);
         }
     }
-    notice_lang(s_NickServ, u, NICK_DROPEMAIL_CONFIRM_DROPPED);
+    notice_lang(nickserv_service.nick, u, NICK_DROPEMAIL_CONFIRM_DROPPED);
     if (WallAdminPrivs) {
-        wallops(s_NickServ, "\2%s\2 used DROPEMAIL for \2%s\2 (%d nicks"
+        wallops(nickserv_service.nick, "\2%s\2 used DROPEMAIL for \2%s\2 (%d nicks"
                 " dropped)", u->nick, mask, dropemail_buffer[i].count);
     }
 }
@@ -1772,16 +1698,16 @@ static void do_info(User *u)
     NickGroupInfo *ngi = NULL;
 
     if (!nick) {
-        syntax_error(s_NickServ, u, "INFO", NICK_INFO_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "INFO", NICK_INFO_SYNTAX);
 
     } else if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
 
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
 
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
 
     } else {
         char buf[BUFSIZE], *end;
@@ -1809,7 +1735,7 @@ static void do_info(User *u)
                 if (ngi->nicks_count == 0) {  /* Should be impossible */
                     module_log("... nickgroup %u is now empty, dropping",
                                ngi->id);
-                    notice_lang(s_NickServ, u, INTERNAL_ERROR);
+                    notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
                     put_nickgroupinfo(ngi);
                     put_nickinfo(ni);
                     delgroup(ngi);
@@ -1829,52 +1755,52 @@ static void do_info(User *u)
         if (can_show_all && (param && stricmp(param, "ALL") == 0))
             show_all = 1;
 
-        notice_lang(s_NickServ, u, NICK_INFO_REALNAME,
+        notice_lang(nickserv_service.nick, u, NICK_INFO_REALNAME,
                     nick, ni->last_realname);
 
         /* Ignore HIDE and show the real hostmask to anyone who can use
          * INFO ALL. */
         if (nick_online) {
             if (!(ngi->flags & NF_HIDE_MASK) || can_show_all)
-                notice_lang(s_NickServ, u, NICK_INFO_ADDRESS_ONLINE,
+                notice_lang(nickserv_service.nick, u, NICK_INFO_ADDRESS_ONLINE,
                         can_show_all ? ni->last_realmask : ni->last_usermask);
             else
-                notice_lang(s_NickServ, u, NICK_INFO_ADDRESS_ONLINE_NOHOST,
+                notice_lang(nickserv_service.nick, u, NICK_INFO_ADDRESS_ONLINE_NOHOST,
                             ni->nick);
         } else {
             if (linked_nick_online
              && (!(ngi->flags & NF_PRIVATE) || can_show_all)
             ) {
-                notice_lang(s_NickServ, u, NICK_INFO_ADDRESS_OTHER_NICK,
+                notice_lang(nickserv_service.nick, u, NICK_INFO_ADDRESS_OTHER_NICK,
                             linked_nick_online);
             }
             if (!(ngi->flags & NF_HIDE_MASK) || can_show_all)
-                notice_lang(s_NickServ, u, NICK_INFO_ADDRESS,
+                notice_lang(nickserv_service.nick, u, NICK_INFO_ADDRESS,
                         can_show_all ? ni->last_realmask : ni->last_usermask);
             strftime_lang(buf, sizeof(buf), u->ngi,
                           STRFTIME_DATE_TIME_FORMAT, ni->last_seen);
-            notice_lang(s_NickServ, u, NICK_INFO_LAST_SEEN, buf);
+            notice_lang(nickserv_service.nick, u, NICK_INFO_LAST_SEEN, buf);
         }
 
         strftime_lang(buf, sizeof(buf), u->ngi, STRFTIME_DATE_TIME_FORMAT,
                       ni->time_registered);
-        notice_lang(s_NickServ, u, NICK_INFO_TIME_REGGED, buf);
+        notice_lang(nickserv_service.nick, u, NICK_INFO_TIME_REGGED, buf);
         if (ni->last_quit && (!(ngi->flags & NF_HIDE_QUIT) || CHECK_SHOW_ALL))
-            notice_lang(s_NickServ, u, NICK_INFO_LAST_QUIT, ni->last_quit);
+            notice_lang(nickserv_service.nick, u, NICK_INFO_LAST_QUIT, ni->last_quit);
         if (ngi->url)
-            notice_lang(s_NickServ, u, NICK_INFO_URL, ngi->url);
+            notice_lang(nickserv_service.nick, u, NICK_INFO_URL, ngi->url);
         if (ngi->email && (!(ngi->flags & NF_HIDE_EMAIL) || CHECK_SHOW_ALL)) {
             if (ngi_unauthed(ngi)) {
                 if (can_show_all) {
-                    notice_lang(s_NickServ, u, NICK_INFO_EMAIL_UNAUTHED,
+                    notice_lang(nickserv_service.nick, u, NICK_INFO_EMAIL_UNAUTHED,
                                 ngi->email);
                 }
             } else {
-                notice_lang(s_NickServ, u, NICK_INFO_EMAIL, ngi->email);
+                notice_lang(nickserv_service.nick, u, NICK_INFO_EMAIL, ngi->email);
             }
         }
         if (ngi->info)
-            notice_lang(s_NickServ, u, NICK_INFO_INFO, ngi->info);
+            notice_lang(nickserv_service.nick, u, NICK_INFO_INFO, ngi->info);
         *buf = 0;
         end = buf;
         if (ngi->flags & NF_KILLPROTECT) {
@@ -1900,29 +1826,29 @@ static void do_info(User *u)
                             getstring(u->ngi, NICK_INFO_OPT_NOOP));
             need_comma = 1;
         }
-        notice_lang(s_NickServ, u, NICK_INFO_OPTIONS,
+        notice_lang(nickserv_service.nick, u, NICK_INFO_OPTIONS,
                     *buf ? buf : getstring(u->ngi, NICK_INFO_OPT_NONE));
 
         if ((ni->status & NS_NOEXPIRE) && CHECK_SHOW_ALL)
-            notice_lang(s_NickServ, u, NICK_INFO_NO_EXPIRE);
+            notice_lang(nickserv_service.nick, u, NICK_INFO_NO_EXPIRE);
 
         if (ngi->flags & NF_SUSPENDED) {
-            notice_lang(s_NickServ, u, NICK_X_SUSPENDED, nick);
+            notice_lang(nickserv_service.nick, u, NICK_X_SUSPENDED, nick);
             if (CHECK_SHOW_ALL) {
                 char timebuf[BUFSIZE], expirebuf[BUFSIZE];
                 strftime_lang(timebuf, sizeof(timebuf), u->ngi,
                               STRFTIME_DATE_TIME_FORMAT, ngi->suspend_time);
                 expires_in_lang(expirebuf, sizeof(expirebuf), u->ngi,
                                 ngi->suspend_expires);
-                notice_lang(s_NickServ, u, NICK_INFO_SUSPEND_DETAILS,
+                notice_lang(nickserv_service.nick, u, NICK_INFO_SUSPEND_DETAILS,
                             ngi->suspend_who, timebuf, expirebuf);
-                notice_lang(s_NickServ, u, NICK_INFO_SUSPEND_REASON,
+                notice_lang(nickserv_service.nick, u, NICK_INFO_SUSPEND_REASON,
                             ngi->suspend_reason);
             }
         }
 
         if (can_show_all && !show_all && used_all)
-            notice_lang(s_NickServ, u, NICK_INFO_SHOW_ALL, s_NickServ,
+            notice_lang(nickserv_service.nick, u, NICK_INFO_SHOW_ALL, nickserv_service.nick,
                         ni->nick);
     }
 
@@ -1944,14 +1870,14 @@ static void do_listchans(User *u)
         if (nick) {
             NickInfo *ni2 = get_nickinfo(nick);
             if (!ni2) {
-                notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+                notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
                 return;
             } else if (ni2 == ni) {
                 /* Let the command through even for non-servadmins if they
                  * gave their own nick; it's less confusing than a
                  * "Permission denied" error */
             } else if (!is_services_admin(u)) {
-                notice_lang(s_NickServ, u, PERMISSION_DENIED);
+                notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
                 put_nickinfo(ni2);
                 return;
             } else {
@@ -1960,27 +1886,27 @@ static void do_listchans(User *u)
             }
         }
     } else if (strtok_remaining()) {
-        syntax_error(s_NickServ, u, "LISTCHANS", NICK_LISTCHANS_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "LISTCHANS", NICK_LISTCHANS_SYNTAX);
         return;
     }
     if (!ni) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
         return;
     }
     if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, ni->nick);
     } else if (!user_identified(u)) {
-        notice_lang(s_NickServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
+        notice_lang(nickserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (refresh_owned_channels(ngi), !ngi->channels_count) {
-        notice_lang(s_NickServ, u, NICK_LISTCHANS_NONE, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_LISTCHANS_NONE, ni->nick);
     } else {
         int i;
-        notice_lang(s_NickServ, u, NICK_LISTCHANS_HEADER, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_LISTCHANS_HEADER, ni->nick);
         ARRAY_FOREACH (i, ngi->channels)
-            notice(s_NickServ, u->nick, "    %s", ngi->channels[i]);
-        notice_lang(s_NickServ, u, NICK_LISTCHANS_END, ngi->channels_count);
+            notice(nickserv_service.nick, u->nick, "    %s", ngi->channels[i]);
+        notice_lang(nickserv_service.nick, u, NICK_LISTCHANS_END, ngi->channels_count);
     }
     put_nickinfo(ni);
     put_nickgroupinfo(ngi);
@@ -2081,8 +2007,8 @@ static int list_one(NickInfo *ni, void *arg_)
                     auth_char = "?";
             }
             if (a->nnicks == 1)  /* display header before first result */
-                notice_lang(s_NickServ, u, NICK_LIST_HEADER, a->pattern);
-            notice(s_NickServ, u->nick, "   %c%c%s %s",
+                notice_lang(nickserv_service.nick, u, NICK_LIST_HEADER, a->pattern);
+            notice(nickserv_service.nick, u->nick, "   %c%c%s %s",
                    suspended_char, noexpire_char, auth_char, buf);
         }
     }
@@ -2107,16 +2033,16 @@ static void do_list_common(User *u, const char *cmdname, int email)
     a.is_servadmin = is_services_admin(u);
 
     if (NSListOpersOnly && !is_oper(u)) {
-        notice_lang(s_NickServ, u, PERMISSION_DENIED);
+        notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
         return;
     }
 
-    a.have_auth_module = (find_module("nickserv/mail-auth") != NULL);
+    a.have_auth_module = (module_find("nickserv/mail-auth") != NULL);
 
     if (pattern && *pattern == '+') {
         a.skip = (int)atolsafe(pattern+1, 0, INT_MAX);
         if (a.skip < 0) {
-            syntax_error(s_NickServ, u, cmdname,
+            syntax_error(nickserv_service.nick, u, cmdname,
                          is_oper(u)? NICK_LIST_OPER_SYNTAX: NICK_LIST_SYNTAX);
             return;
         }
@@ -2124,7 +2050,7 @@ static void do_list_common(User *u, const char *cmdname, int email)
     }
 
     if (!pattern) {
-        syntax_error(s_NickServ, u, cmdname,
+        syntax_error(nickserv_service.nick, u, cmdname,
                      is_oper(u) ? NICK_LIST_OPER_SYNTAX : NICK_LIST_SYNTAX);
         return;
     }
@@ -2142,7 +2068,7 @@ static void do_list_common(User *u, const char *cmdname, int email)
         } else if (stricmp(keyword, "NOAUTH") == 0 && a.have_auth_module) {
             a.match_auth = 1;
         } else {
-            syntax_error(s_NickServ, u, cmdname,
+            syntax_error(nickserv_service.nick, u, cmdname,
                  is_oper(u) ? NICK_LIST_OPER_SYNTAX : NICK_LIST_SYNTAX);
         }
     }
@@ -2161,7 +2087,7 @@ static void do_list_common(User *u, const char *cmdname, int email)
     }
     seen = foreach_nickinfo(where, params, 1, list_one, &a);
     if (seen < 0) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (a.nnicks) {
         int count = a.nnicks - a.skip;
         long total = a.nnicks;
@@ -2175,9 +2101,9 @@ static void do_list_common(User *u, const char *cmdname, int email)
             if (candidates > total)
                 total = candidates;
         }
-        notice_lang(s_NickServ, u, LIST_RESULTS, count, (int)total);
+        notice_lang(nickserv_service.nick, u, LIST_RESULTS, count, (int)total);
     } else {
-        notice_lang(s_NickServ, u, NICK_LIST_NO_MATCH);
+        notice_lang(nickserv_service.nick, u, NICK_LIST_NO_MATCH);
     }
 }
 
@@ -2203,27 +2129,27 @@ static void do_recover(User *u)
     User *u2;
 
     if (!nick || strtok_remaining()) {
-        syntax_error(s_NickServ, u, "RECOVER", NICK_RECOVER_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "RECOVER", NICK_RECOVER_SYNTAX);
     } else if (!(u2 = get_user(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_IN_USE, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_IN_USE, nick);
     } else if (!(ni = u2->ni)) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->status & NS_GUESTED) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_IN_USE, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_IN_USE, nick);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
     } else if (irc_stricmp(nick, u->nick) == 0) {
-        notice_lang(s_NickServ, u, NICK_NO_RECOVER_SELF);
+        notice_lang(nickserv_service.nick, u, NICK_NO_RECOVER_SELF);
     } else {
         if (pass) {
             if (!nick_check_password(u, ni, pass, "RECOVER", ACCESS_DENIED))
                 return;
         } else if (!has_identified_nick(u, ni->nickgroup)) {
-            notice_lang(s_NickServ, u, ACCESS_DENIED);
+            notice_lang(nickserv_service.nick, u, ACCESS_DENIED);
             return;
         }
         collide_nick(ni, 0);
-        notice_lang(s_NickServ, u, NICK_RECOVERED, s_NickServ, nick);
+        notice_lang(nickserv_service.nick, u, NICK_RECOVERED, nickserv_service.nick, nick);
     }
 }
 
@@ -2236,23 +2162,23 @@ static void do_release(User *u)
     NickInfo *ni = NULL;
 
     if (!nick || strtok_remaining()) {
-        syntax_error(s_NickServ, u, "RELEASE", NICK_RELEASE_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "RELEASE", NICK_RELEASE_SYNTAX);
     } else if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
     } else if (!(ni->status & NS_KILL_HELD)) {
-        notice_lang(s_NickServ, u, NICK_RELEASE_NOT_HELD, nick);
+        notice_lang(nickserv_service.nick, u, NICK_RELEASE_NOT_HELD, nick);
     } else {
         if (pass) {
             if (!nick_check_password(u, ni, pass, "RELEASE", ACCESS_DENIED))
                 return;
         } else if (!has_identified_nick(u, ni->nickgroup)) {
-            notice_lang(s_NickServ, u, ACCESS_DENIED);
+            notice_lang(nickserv_service.nick, u, ACCESS_DENIED);
             return;
         }
         release_nick(ni, 0);
-        notice_lang(s_NickServ, u, NICK_RELEASED);
+        notice_lang(nickserv_service.nick, u, NICK_RELEASED);
     }
     put_nickinfo(ni);
 }
@@ -2267,29 +2193,29 @@ static void do_ghost(User *u)
     User *u2;
 
     if (!nick || strtok_remaining()) {
-        syntax_error(s_NickServ, u, "GHOST", NICK_GHOST_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "GHOST", NICK_GHOST_SYNTAX);
     } else if (!(u2 = get_user(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_IN_USE, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_IN_USE, nick);
     } else if (!(ni = u2->ni)) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->status & NS_GUESTED) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_IN_USE, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_IN_USE, nick);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
     } else if (irc_stricmp(nick, u->nick) == 0) {
-        notice_lang(s_NickServ, u, NICK_NO_GHOST_SELF);
+        notice_lang(nickserv_service.nick, u, NICK_NO_GHOST_SELF);
     } else {
         char buf[NICKMAX+32];
         if (pass) {
             if (!nick_check_password(u, ni, pass, "GHOST", ACCESS_DENIED))
                 return;
         } else if (!has_identified_nick(u, ni->nickgroup)) {
-            notice_lang(s_NickServ, u, ACCESS_DENIED);
+            notice_lang(nickserv_service.nick, u, ACCESS_DENIED);
             return;
         }
         snprintf(buf, sizeof(buf), "GHOST command used by %s", u->nick);
-        kill_user(s_NickServ, nick, buf);
-        notice_lang(s_NickServ, u, NICK_GHOST_KILLED);
+        kill_user(nickserv_service.nick, nick, buf);
+        notice_lang(nickserv_service.nick, u, NICK_GHOST_KILLED);
     }
 }
 
@@ -2303,13 +2229,13 @@ static void do_status(User *u)
 
     while ((nick = strtok(NULL, " ")) && (i++ < 16)) {
         if (!(u2 = get_user(nick)) || !u2->ni)
-            notice(s_NickServ, u->nick, "STATUS %s 0", nick);
+            notice(nickserv_service.nick, u->nick, "STATUS %s 0", nick);
         else if (user_identified(u2))
-            notice(s_NickServ, u->nick, "STATUS %s 3", nick);
+            notice(nickserv_service.nick, u->nick, "STATUS %s 3", nick);
         else if (user_recognized(u2))
-            notice(s_NickServ, u->nick, "STATUS %s 2", nick);
+            notice(nickserv_service.nick, u->nick, "STATUS %s 2", nick);
         else
-            notice(s_NickServ, u->nick, "STATUS %s 1", nick);
+            notice(nickserv_service.nick, u->nick, "STATUS %s 1", nick);
     }
 }
 
@@ -2325,29 +2251,29 @@ static void do_getpass(User *u)
 
     /* Assumes that permission checking has already been done. */
     if (!nick) {
-        syntax_error(s_NickServ, u, "GETPASS", NICK_GETPASS_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "GETPASS", NICK_GETPASS_SYNTAX);
     } else if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (NSSecureAdmins && nick_is_services_admin(ni)
                && !is_services_root(u)) {
-        notice_lang(s_NickServ, u, PERMISSION_DENIED);
+        notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
     } else if ((i = decrypt_password(&ngi->pass, pass, PASSMAX)) == -2) {
-        notice_lang(s_NickServ, u, NICK_GETPASS_UNAVAILABLE, nick);
+        notice_lang(nickserv_service.nick, u, NICK_GETPASS_UNAVAILABLE, nick);
     } else if (i != 0) {
         module_log("decrypt_password() failed for GETPASS on %s", nick);
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else {
         module_log("%s!%s@%s used GETPASS on %s",
                    u->nick, u->username, u->host, ni->nick);
         if (WallAdminPrivs) {
-            wallops(s_NickServ, "\2%s\2 used GETPASS on \2%s\2",
+            wallops(nickserv_service.nick, "\2%s\2 used GETPASS on \2%s\2",
                     u->nick, ni->nick);
         }
-        notice_lang(s_NickServ, u, NICK_GETPASS_PASSWORD_IS, nick, pass);
+        notice_lang(nickserv_service.nick, u, NICK_GETPASS_PASSWORD_IS, nick, pass);
     }
     put_nickinfo(ni);
     put_nickgroupinfo(ngi);
@@ -2363,7 +2289,7 @@ static void do_forbid(User *u)
 
     /* Assumes that permission checking has already been done. */
     if (!nick) {
-        syntax_error(s_NickServ, u, "FORBID", NICK_FORBID_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "FORBID", NICK_FORBID_SYNTAX);
         return;
     }
     u2 = get_user(nick);
@@ -2371,7 +2297,7 @@ static void do_forbid(User *u)
         if (NSSecureAdmins && nick_is_services_admin(ni)
             && !is_services_root(u)
         ) {
-            notice_lang(s_NickServ, u, PERMISSION_DENIED);
+            notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
             return;
         }
         if (u2) {
@@ -2384,7 +2310,7 @@ static void do_forbid(User *u)
     }
 
     if (readonly)
-        notice_lang(s_NickServ, u, READ_ONLY_MODE);
+        notice_lang(nickserv_service.nick, u, READ_ONLY_MODE);
     ni = makenick(nick, NULL);
     if (ni) {
         ni->status |= NS_VERBOTEN;
@@ -2392,16 +2318,16 @@ static void do_forbid(User *u)
         put_nickinfo(ni);
         module_log("%s!%s@%s set FORBID for nick %s",
                    u->nick, u->username, u->host, nick);
-        notice_lang(s_NickServ, u, NICK_FORBID_SUCCEEDED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_FORBID_SUCCEEDED, nick);
         if (WallAdminPrivs)
-            wallops(s_NickServ, "\2%s\2 used FORBID on \2%s\2", u->nick, nick);
+            wallops(nickserv_service.nick, "\2%s\2 used FORBID on \2%s\2", u->nick, nick);
         /* If someone is using the nick, make them stop */
         if (u2)
             validate_user(u2);
     } else {
         module_log("Valid FORBID for %s by %s!%s@%s failed",
                    nick, u->nick, u->username, u->host);
-        notice_lang(s_NickServ, u, NICK_FORBID_FAILED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_FORBID_FAILED, nick);
     }
 }
 
@@ -2424,26 +2350,26 @@ static void do_suspend(User *u)
     reason = strtok_remaining();
 
     if (!nick || !reason) {
-        syntax_error(s_NickServ, u, "SUSPEND", NICK_SUSPEND_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SUSPEND", NICK_SUSPEND_SYNTAX);
     } else if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (ngi->flags & NF_SUSPENDED) {
-        notice_lang(s_NickServ, u, NICK_SUSPEND_ALREADY_SUSPENDED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_SUSPEND_ALREADY_SUSPENDED, nick);
     } else if (NSSecureAdmins && nick_is_services_admin(ni)
                && !is_services_root(u)
     ) {
-        notice_lang(s_NickServ, u, PERMISSION_DENIED);
+        notice_lang(nickserv_service.nick, u, PERMISSION_DENIED);
     } else {
         if (expiry)
             expires = dotime(expiry);
         else
             expires = NSSuspendExpire;
         if (expires < 0) {
-            notice_lang(s_NickServ, u, BAD_EXPIRY_TIME);
+            notice_lang(nickserv_service.nick, u, BAD_EXPIRY_TIME);
             return;
         } else if (expires > 0) {
             expires += time(NULL);      /* Set an absolute time */
@@ -2451,11 +2377,11 @@ static void do_suspend(User *u)
         module_log("%s!%s@%s suspended %s",
                    u->nick, u->username, u->host, ni->nick);
         suspend_nick(ngi, reason, u->nick, expires);
-        notice_lang(s_NickServ, u, NICK_SUSPEND_SUCCEEDED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_SUSPEND_SUCCEEDED, nick);
         if (readonly)
-            notice_lang(s_NickServ, u, READ_ONLY_MODE);
+            notice_lang(nickserv_service.nick, u, READ_ONLY_MODE);
         if (WallAdminPrivs) {
-            wallops(s_NickServ, "\2%s\2 used SUSPEND on \2%s\2",
+            wallops(nickserv_service.nick, "\2%s\2 used SUSPEND on \2%s\2",
                     u->nick, ni->nick);
         }
         /* If someone is using the nick, make them stop */
@@ -2475,24 +2401,24 @@ static void do_unsuspend(User *u)
     char *nick = strtok(NULL, " ");
 
     if (!nick) {
-        syntax_error(s_NickServ, u, "UNSUSPEND", NICK_UNSUSPEND_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "UNSUSPEND", NICK_UNSUSPEND_SYNTAX);
     } else if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (!(ngi->flags & NF_SUSPENDED)) {
-        notice_lang(s_NickServ, u, NICK_UNSUSPEND_NOT_SUSPENDED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_UNSUSPEND_NOT_SUSPENDED, nick);
     } else {
         module_log("%s!%s@%s unsuspended %s",
                    u->nick, u->username, u->host, ni->nick);
         unsuspend_nick(ngi, 1);
-        notice_lang(s_NickServ, u, NICK_UNSUSPEND_SUCCEEDED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_UNSUSPEND_SUCCEEDED, nick);
         if (readonly)
-            notice_lang(s_NickServ, u, READ_ONLY_MODE);
+            notice_lang(nickserv_service.nick, u, READ_ONLY_MODE);
         if (WallAdminPrivs) {
-            wallops(s_NickServ, "\2%s\2 used UNSUSPEND on \2%s\2",
+            wallops(nickserv_service.nick, "\2%s\2 used UNSUSPEND on \2%s\2",
                     u->nick, ni->nick);
         }
     }
@@ -2519,12 +2445,12 @@ static void do_listnick(User *u)
         return;
     ni = get_nickinfo(nick);
     if (!ni) {
-        notice(s_NickServ, u->nick, "%s", nick);
-        notice(s_NickServ, u->nick, ":");
+        notice(nickserv_service.nick, u->nick, "%s", nick);
+        notice(nickserv_service.nick, u->nick, ":");
         return;
     }
     ngi = get_nickgroupinfo(ni->nickgroup);
-    notice(s_NickServ, u->nick, "%s group:%u usermask:%s realmask:%s"
+    notice(nickserv_service.nick, u->nick, "%s group:%u usermask:%s realmask:%s"
            " reg:%d seen:%d stat:%04X auth:%04X idstamp:%d badpass:%d :%s;%s",
            ni->nick, (int)ni->nickgroup, ni->last_usermask, ni->last_realmask,
            (int)ni->time_registered, (int)ni->last_seen, ni->status & 0xFFFF,
@@ -2546,39 +2472,39 @@ static void do_listnick(User *u)
         } else {
             *buf2 = 0;
         }
-        notice(s_NickServ, u->nick, "+ flags:%08X ospriv:%04X authcode:%s"
+        notice(nickserv_service.nick, u->nick, "+ flags:%08X ospriv:%04X authcode:%s"
                " susp:%s chancnt:%d chanmax:%d lang:%d tz:%d acccnt:%d"
                " ajoincnt:%d memocnt:%d memomax:%d igncnt:%d",
                ngi->flags, ngi->os_priv, buf1, buf2, ngi->channels_count,
                ngi->channelmax, ngi->language, ngi->timezone,
                ngi->access_count, ngi->ajoin_count, ngi->memos.memos_count,
                ngi->memos.memomax, ngi->ignore_count);
-        notice(s_NickServ, u->nick, "+ url:%s", ngi->url ? ngi->url : "");
-        notice(s_NickServ, u->nick, "+ email:%s", ngi->email?ngi->email:"");
-        notice(s_NickServ, u->nick, "+ info:%s", ngi->info ? ngi->info : "");
+        notice(nickserv_service.nick, u->nick, "+ url:%s", ngi->url ? ngi->url : "");
+        notice(nickserv_service.nick, u->nick, "+ email:%s", ngi->email?ngi->email:"");
+        notice(nickserv_service.nick, u->nick, "+ info:%s", ngi->info ? ngi->info : "");
         s = buf1;
         *buf1 = 0;
         ARRAY_FOREACH (i, ngi->access)
             s += snprintf(s, sizeof(buf1)-(s-buf1), "%s%s",
                           *buf1 ? "," : "", ngi->access[i]);
         strnrepl(buf1, sizeof(buf1), " ", "_");
-        notice(s_NickServ, u->nick, "+ acc:%s", buf1);
+        notice(nickserv_service.nick, u->nick, "+ acc:%s", buf1);
         s = buf1;
         *buf1 = 0;
         ARRAY_FOREACH (i, ngi->ajoin)
             s += snprintf(s, sizeof(buf1)-(s-buf1), "%s%s",
                           *buf1 ? "," : "", ngi->ajoin[i]);
         strnrepl(buf1, sizeof(buf1), " ", "_");
-        notice(s_NickServ, u->nick, "+ ajoin:%s", buf1);
+        notice(nickserv_service.nick, u->nick, "+ ajoin:%s", buf1);
         s = buf1;
         *buf1 = 0;
         ARRAY_FOREACH (i, ngi->ignore)
             s += snprintf(s, sizeof(buf1)-(s-buf1), "%s%s",
                           *buf1 ? "," : "", ngi->ignore[i]);
         strnrepl(buf1, sizeof(buf1), " ", "_");
-        notice(s_NickServ, u->nick, "+ ign:%s", buf1);
+        notice(nickserv_service.nick, u->nick, "+ ign:%s", buf1);
     } else {
-        notice(s_NickServ, u->nick, ":");
+        notice(nickserv_service.nick, u->nick, ":");
     }
     put_nickinfo(ni);
     put_nickgroupinfo(ngi);
@@ -2605,9 +2531,7 @@ static char *temp_nsuserhost;
 
 static int do_NSAlias(const char *filename, int linenum, char *param);
 
-ConfigDirective module_config[] = {
-    { "NickServName",     { { CD_STRING, CF_DIRREQ, &s_NickServ },
-                            { CD_STRING, 0, &desc_NickServ } } },
+static ConfigDirective nickserv_config[] = {
     { "NSAlias",          { { CD_FUNC, 0, do_NSAlias } } },
     { "NSAllowKillImmed", { { CD_SET, 0, &NSAllowKillImmed } } },
     { "NSDefHideEmail",   { { CD_SET, 0, &NSDefHideEmail } } },
@@ -2789,106 +2713,70 @@ static int do_command_line(const char *option, const char *value)
 
 /*************************************************************************/
 
-static int do_reconfigure(int after_configure)
+static void nickserv_rehash(Module *module)
 {
-    static char old_s_NickServ[NICKMAX];
-    static char *old_desc_NickServ = NULL;
-
-    if (!after_configure) {
-        /* Before reconfiguration: save old values. */
-        strbcpy(old_s_NickServ, s_NickServ);
-        old_desc_NickServ = strdup(desc_NickServ);
+    handle_config();
+    if (NSEnableRegister)
+        cmd_REGISTER->name = "REGISTER";
+    else
+        cmd_REGISTER->name = "";
+    if (NSEnableDropEmail) {
+        cmd_DROPEMAIL->name = "DROPEMAIL";
+        cmd_DROPEMAIL_CONFIRM->name = "DROPEMAIL-CONFIRM";
     } else {
-        /* After reconfiguration: handle value changes. */
-        handle_config();
-        if (strcmp(old_s_NickServ,s_NickServ) != 0)
-            send_nickchange(old_s_NickServ, s_NickServ);
-        if (!old_desc_NickServ || strcmp(old_desc_NickServ,desc_NickServ) != 0)
-            send_namechange(s_NickServ, desc_NickServ);
-        free(old_desc_NickServ);
-        if (NSEnableRegister)
-            cmd_REGISTER->name = "REGISTER";
-        else
-            cmd_REGISTER->name = "";
-        if (NSEnableDropEmail) {
-            cmd_DROPEMAIL->name = "DROPEMAIL";
-            cmd_DROPEMAIL_CONFIRM->name = "DROPEMAIL-CONFIRM";
-        } else {
-            cmd_DROPEMAIL->name = "";
-            cmd_DROPEMAIL_CONFIRM->name = "";
-        }
-        if (EnableGetpass)
-            cmd_GETPASS->name = "GETPASS";
-        else
-            cmd_GETPASS->name = "";
-        if (NSRequireEmail) {
-            mapstring(NICK_REGISTER_SYNTAX, NICK_REGISTER_REQ_EMAIL_SYNTAX);
-            mapstring(NICK_HELP_REGISTER_EMAIL, NICK_HELP_REGISTER_EMAIL_REQ);
-            mapstring(NICK_HELP_UNSET, NICK_HELP_UNSET_REQ_EMAIL);
-        } else {
-            mapstring(NICK_REGISTER_SYNTAX, old_REGISTER_SYNTAX);
-            mapstring(NICK_HELP_REGISTER_EMAIL, old_HELP_REGISTER_EMAIL);
-            mapstring(NICK_HELP_UNSET, old_HELP_UNSET);
-        }
-        if (NSForceNickChange) {
-            mapstring(DISCONNECT_IN_1_MINUTE, FORCENICKCHANGE_IN_1_MINUTE);
-            mapstring(DISCONNECT_IN_20_SECONDS, FORCENICKCHANGE_IN_20_SECONDS);
-        } else {
-            mapstring(DISCONNECT_IN_1_MINUTE, old_DISCONNECT_IN_1_MINUTE);
-            mapstring(DISCONNECT_IN_20_SECONDS, old_DISCONNECT_IN_20_SECONDS);
-        }
-    }  /* if (!after_configure) */
-    return 0;
+        cmd_DROPEMAIL->name = "";
+        cmd_DROPEMAIL_CONFIRM->name = "";
+    }
+    if (EnableGetpass)
+        cmd_GETPASS->name = "GETPASS";
+    else
+        cmd_GETPASS->name = "";
+    if (NSRequireEmail) {
+        mapstring(NICK_REGISTER_SYNTAX, NICK_REGISTER_REQ_EMAIL_SYNTAX);
+        mapstring(NICK_HELP_REGISTER_EMAIL, NICK_HELP_REGISTER_EMAIL_REQ);
+        mapstring(NICK_HELP_UNSET, NICK_HELP_UNSET_REQ_EMAIL);
+    } else {
+        mapstring(NICK_REGISTER_SYNTAX, old_REGISTER_SYNTAX);
+        mapstring(NICK_HELP_REGISTER_EMAIL, old_HELP_REGISTER_EMAIL);
+        mapstring(NICK_HELP_UNSET, old_HELP_UNSET);
+    }
+    if (NSForceNickChange) {
+        mapstring(DISCONNECT_IN_1_MINUTE, FORCENICKCHANGE_IN_1_MINUTE);
+        mapstring(DISCONNECT_IN_20_SECONDS, FORCENICKCHANGE_IN_20_SECONDS);
+    } else {
+        mapstring(DISCONNECT_IN_1_MINUTE, old_DISCONNECT_IN_1_MINUTE);
+        mapstring(DISCONNECT_IN_20_SECONDS, old_DISCONNECT_IN_20_SECONDS);
+    }
 }
 
 /*************************************************************************/
 
-int init_module(void)
+static int nickserv_init(Module *module)
 {
     handle_config();
 
-    module_operserv = find_module("operserv/main");
-    if (!module_operserv) {
-        module_log("OperServ main module not loaded");
-        exit_module(0);
-        return 0;
-    }
-    use_module(module_operserv);
-    p_ServicesRoot = get_module_symbol(module_operserv, "ServicesRoot");
-    if (!p_ServicesRoot) {
-        exit_module(0);
-        return 0;
-    }
-
-    if (!new_commandlist(THIS_MODULE)
-     || !register_commands(THIS_MODULE, cmds)
-    ) {
+    if (!new_commandlist(module) || !register_commands(module, cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
-    cmd_REGISTER = lookup_cmd(THIS_MODULE, "REGISTER");
+    cmd_REGISTER = lookup_cmd(module, "REGISTER");
     if (!cmd_REGISTER) {
         module_log("BUG: unable to find REGISTER command entry");
-        exit_module(0);
         return 0;
     }
-    cmd_DROPEMAIL = lookup_cmd(THIS_MODULE, "DROPEMAIL");
+    cmd_DROPEMAIL = lookup_cmd(module, "DROPEMAIL");
     if (!cmd_DROPEMAIL) {
         module_log("BUG: unable to find DROPEMAIL command entry");
-        exit_module(0);
         return 0;
     }
-    cmd_DROPEMAIL_CONFIRM = lookup_cmd(THIS_MODULE, "DROPEMAIL-CONFIRM");
+    cmd_DROPEMAIL_CONFIRM = lookup_cmd(module, "DROPEMAIL-CONFIRM");
     if (!cmd_DROPEMAIL_CONFIRM) {
         module_log("BUG: unable to find DROPEMAIL-CONFIRM command entry");
-        exit_module(0);
         return 0;
     }
-    cmd_GETPASS = lookup_cmd(THIS_MODULE, "GETPASS");
+    cmd_GETPASS = lookup_cmd(module, "GETPASS");
     if (!cmd_GETPASS) {
         module_log("BUG: unable to find GETPASS command entry");
-        exit_module(0);
         return 0;
     }
     if (!NSEnableRegister)
@@ -2900,56 +2788,49 @@ int init_module(void)
     if (!EnableGetpass)
         cmd_GETPASS->name = "";
 
-    cb_check_expire  = register_callback("check_expire");
-    cb_command       = register_callback("command");
-    cb_help          = register_callback("HELP");
-    cb_help_cmds     = register_callback("HELP COMMANDS");
-    cb_reglink_check = register_callback("REGISTER/LINK check");
-    cb_registered    = register_callback("registered");
-    cb_id_check      = register_callback("IDENTIFY check");
-    cb_identified    = register_callback("identified");
-    cb_validated     = register_callback("user validated");
-    if (cb_check_expire < 0 || cb_command < 0 || cb_help < 0
-     || cb_help_cmds < 0 || cb_reglink_check < 0 || cb_registered < 0
-     || cb_id_check < 0 || cb_identified < 0 || cb_validated < 0
+    check_expire_event = event_declare(module, NICKSERV_EVENT_CHECK_EXPIRE);
+    command_event = event_declare(module, NICKSERV_EVENT_COMMAND);
+    help_event = event_declare(module, NICKSERV_EVENT_HELP);
+    help_cmds_event = event_declare(module, NICKSERV_EVENT_HELP_COMMANDS);
+    reglink_check_event = event_declare(module, NICKSERV_EVENT_REGISTER_CHECK);
+    registered_event = event_declare(module, NICKSERV_EVENT_REGISTERED);
+    id_check_event = event_declare(module, NICKSERV_EVENT_IDENTIFY_CHECK);
+    identified_event = event_declare(module, NICKSERV_EVENT_IDENTIFIED);
+    validated_event = event_declare(module, NICKSERV_EVENT_USER_VALIDATED);
+    if (!check_expire_event || !command_event || !help_event
+     || !help_cmds_event || !reglink_check_event || !registered_event
+     || !id_check_event || !identified_event || !validated_event
     ) {
-        module_log("Unable to register callbacks");
-        exit_module(0);
+        module_log("Unable to declare events");
         return 0;
     }
 
-    if (!add_callback(NULL, "command line", do_command_line)
-     || !add_callback(NULL, "reconfigure", do_reconfigure)
-     || !add_callback(NULL, "introduce_user", introduce_nickserv)
-     || !add_callback_pri(NULL, "m_privmsg", validate_before_privmsg,
-                          CBPRI_MAX)
-     || !add_callback(NULL, "m_privmsg", nickserv)
-     || !add_callback(NULL, "m_whois", nickserv_whois)
-     || !add_callback(NULL, "user create", do_user_create)
-     || !add_callback(NULL, "user nickchange (before)",
+    /* A user talking to any pseudo-client is validated first. */
+    if (!event_attach(module, EVENT_COMMAND_LINE, do_command_line)
+     || !event_attach_priority(module, EVENT_MESSAGE_PRIVMSG,
+                               validate_before_privmsg, EVENT_PRIORITY_FIRST)
+     || !event_attach(module, EVENT_USER_CREATE, do_user_create)
+     || !event_attach(module, EVENT_USER_NICK_CHANGE_BEFORE,
                       do_user_nickchange_before)
-     || !add_callback(NULL, "user nickchange (after)",
+     || !event_attach(module, EVENT_USER_NICK_CHANGE_AFTER,
                       do_user_nickchange_after)
-     || !add_callback(NULL, "user delete", do_user_delete)
-     || !add_callback(module_operserv, "STATS ALL", do_stats_all)
-     || !add_callback(THIS_MODULE, "REGISTER/LINK check", do_reglink_check)
+     || !event_attach(module, EVENT_USER_DELETE, do_user_delete)
+     || !event_attach(module, OPERSERV_EVENT_STATS_ALL, do_stats_all)
+     || !event_attach(module, NICKSERV_EVENT_REGISTER_CHECK, do_reglink_check)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
     /* The tables exist: this module's migrations were applied when it was
-     * loaded (MODULE_MIGRATIONS_AUTO). */
+     * loaded (MODULE_APPLY_MIGRATIONS). */
     if (!store_register(&ngi_type) || !store_register(&nick_type)) {
         module_log("Unable to register the record types");
-        exit_module(0);
         return 0;
     }
     expire_timeout = add_timeout(EXPIRE_INTERVAL, expire_check, 1);
 
     if (!init_collide() || !init_set() || !init_util()) {
-        exit_module(0);
         return 0;
     }
 
@@ -2973,19 +2854,13 @@ int init_module(void)
         mapstring(DISCONNECT_IN_20_SECONDS, FORCENICKCHANGE_IN_20_SECONDS);
     }
 
-    if (linked)
-        introduce_nickserv(NULL);
-
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int nickserv_fini(Module *module, int shutdown)
 {
-    if (linked)
-        send_cmd(s_NickServ, "QUIT :");
-
     if (old_REGISTER_SYNTAX >= 0) {
         mapstring(NICK_REGISTER_SYNTAX, old_REGISTER_SYNTAX);
         old_REGISTER_SYNTAX = -1;
@@ -3007,8 +2882,6 @@ int exit_module(int shutdown_unused)
         old_DISCONNECT_IN_20_SECONDS = -1;
     }
 
-    exit_util();
-    exit_set();
     exit_collide();
 
     if (expire_timeout) {
@@ -3034,30 +2907,6 @@ int exit_module(int shutdown_unused)
     store_unregister(&nick_type);
     store_unregister(&ngi_type);
 
-    remove_callback(THIS_MODULE, "REGISTER/LINK check", do_reglink_check);
-    remove_callback(NULL, "user delete", do_user_delete);
-    remove_callback(NULL, "user nickchange (after)",
-                    do_user_nickchange_after);
-    remove_callback(NULL, "user nickchange (before)",
-                    do_user_nickchange_before);
-    remove_callback(NULL, "user create", do_user_create);
-    remove_callback(NULL, "m_whois", nickserv_whois);
-    remove_callback(NULL, "m_privmsg", nickserv);
-    remove_callback(NULL, "m_privmsg", validate_before_privmsg);
-    remove_callback(NULL, "introduce_user", introduce_nickserv);
-    remove_callback(NULL, "reconfigure", do_reconfigure);
-    remove_callback(NULL, "command line", do_command_line);
-
-    unregister_callback(cb_validated);
-    unregister_callback(cb_identified);
-    unregister_callback(cb_id_check);
-    unregister_callback(cb_registered);
-    unregister_callback(cb_reglink_check);
-    unregister_callback(cb_help_cmds);
-    unregister_callback(cb_help);
-    unregister_callback(cb_command);
-    unregister_callback(cb_check_expire);
-
     /* These are static, so the pointers don't need to be cleared */
     if (cmd_GETPASS)
         cmd_GETPASS->name = "GETPASS";
@@ -3067,18 +2916,35 @@ int exit_module(int shutdown_unused)
         cmd_DROPEMAIL->name = "DROPEMAIL";
     if (cmd_REGISTER)
         cmd_REGISTER->name = "REGISTER";
-    unregister_commands(THIS_MODULE, cmds);
-    del_commandlist(THIS_MODULE);
-
-    if (module_operserv) {
-        remove_callback(module_operserv, "STATS ALL", do_stats_all);
-        p_ServicesRoot = NULL;
-        unuse_module(module_operserv);
-        module_operserv = NULL;
-    }
+    unregister_commands(module, cmds);
+    del_commandlist(module);
 
     return 1;
 }
+
+/*************************************************************************/
+
+/* NickServName = <nick>, <description>; in the module block. */
+struct Service nickserv_service = {
+    .directive = "NickServName",
+    .flags = SERVICE_OPER,
+    .on_message = nickserv_message,
+};
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "NickServ: nickname registration",
+    .requires = MODULE_REQUIRES("operserv/main"),
+    .config = nickserv_config,
+    .services = MODULE_SERVICES(&nickserv_service),
+    .flags = MODULE_APPLY_MIGRATIONS,
+    .init = nickserv_init,
+    .fini = nickserv_fini,
+    .rehash = nickserv_rehash,
+};
+
+/*************************************************************************/
+
 
 /*************************************************************************/
 

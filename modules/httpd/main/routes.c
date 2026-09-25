@@ -9,7 +9,7 @@
  * Ported from ircu2 (ircd/http.c).  No socket here and no parsing -- those
  * are server.c's, and Mongoose's under it.  What is here is a list of
  * routes, the requests waiting for an answer, the deadline that bounds
- * them, and the "auth" callback every request goes through first.  Main
+ * them, and the "httpd.auth" event every request goes through first.  Main
  * thread only.
  */
 
@@ -48,8 +48,8 @@ static HttpRoute* routes;
 static HttpCall* calls;
 static unsigned long last_id;
 
-/* The "auth" callback. */
-static int cb_auth = -1;
+/* The "httpd.auth" event. */
+static Event* auth_event;
 
 /* How long a handler has (RequestTimeout). */
 int httpd_timeout_seconds = HTTP_TIMEOUT_DEFAULT;
@@ -185,7 +185,6 @@ static HttpRoute* route_find(const char* method, const char* path)
     return best;
 }
 
-EXPORT_FUNC(http_add_route)
 int http_add_route(Module* mod, const char* method, const char* path,
                    HttpHandlerFn fn, void* user)
 {
@@ -220,7 +219,6 @@ int http_add_route(Module* mod, const char* method, const char* path,
     return 1;
 }
 
-EXPORT_FUNC(http_del_route)
 int http_del_route(Module* mod, const char* method, const char* path)
 {
     HttpRoute* r;
@@ -237,7 +235,6 @@ int http_del_route(Module* mod, const char* method, const char* path)
     return 0;
 }
 
-EXPORT_FUNC(http_del_routes)
 void http_del_routes(Module* mod)
 {
     HttpRoute *r, *r2;
@@ -302,9 +299,9 @@ void httpd_deliver(struct WorkTask* task)
     /* Access control first, for every request: a 401 must not depend on
      * whether there is anything at that path. */
     httpd_response_init(&authres);
-    res = call_callback_2(cb_auth, &req, &authres);
+    res = event_emit(auth_event, &req, &authres);
     if (res < 0) {
-        module_log("The auth callback failed for %s", req.hreq_path);
+        module_log("An httpd.auth handler failed for %s", req.hreq_path);
         httpd_response_free(&authres);
         send_status(xfer->hx_conn, HTTP_F_INTERNAL_SERVER_ERROR);
         return;
@@ -350,7 +347,6 @@ void httpd_deliver(struct WorkTask* task)
     }
 }
 
-EXPORT_FUNC(http_response)
 struct HttpResponse* http_response(http_req_t id)
 {
     HttpCall* call = find_call(id);
@@ -358,7 +354,6 @@ struct HttpResponse* http_response(http_req_t id)
     return call ? &call->res : NULL;
 }
 
-EXPORT_FUNC(http_respond)
 void http_respond(http_req_t id, const struct HttpResponse* res)
 {
     HttpCall* call = find_call(id);
@@ -384,7 +379,7 @@ void httpd_routes_expire(void)
     {
         if (call->deadline <= now) {
             module_log("A handler did not answer %s in time; sending 504",
-                       call->mod ? get_module_name(call->mod) : "(core)");
+                       call->mod ? module_name(call->mod) : "(core)");
             send_status(call->conn, HTTP_F_GATEWAY_TIMEOUT);
             free_call(call);
         }
@@ -395,8 +390,8 @@ void httpd_routes_expire(void)
 
 int httpd_routes_init(void)
 {
-    cb_auth = register_callback("auth");
-    return cb_auth >= 0;
+    auth_event = event_declare(THIS_MODULE, HTTPD_EVENT_AUTH);
+    return auth_event != NULL;
 }
 
 /* The listener is going: every request in flight goes with it, silently,
@@ -416,10 +411,7 @@ void httpd_routes_cleanup(void)
         LIST_REMOVE(r, routes);
         free(r);
     }
-    if (cb_auth >= 0) {
-        unregister_callback(cb_auth);
-        cb_auth = -1;
-    }
+    auth_event = NULL; /* Retracted by the loader */
 }
 
 /*

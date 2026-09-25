@@ -291,7 +291,7 @@ int worker_submit_owned(struct Module_* mod, struct WorkTask* task)
     pthread_mutex_lock(&wInfo.wi_mutex);
     /* Read inside the lock: a worker thread may be submitting at the same
      * moment the main thread is shutting the pool down.  Before
-     * worker_init() -- a module's init_module(), before the fork -- the
+     * worker_init() -- a module's `init', before the fork -- the
      * task is queued, and the pool picks it up when it starts. */
     accepted = (wInfo.wi_up ? wInfo.wi_nthreads > 0 : !wInfo.wi_configured) &&
                task_accept();
@@ -510,7 +510,7 @@ const char* worker_name(const struct Worker* worker)
  *
  * Services load their modules before they fork into the background, and a
  * thread does not survive a fork: the subsystem only comes up afterwards
- * (worker_init()).  A module that asks for a worker from init_module() --
+ * (worker_init()).  A module that asks for a worker from its `init' --
  * directly, or by sending the first query to a connection pool -- gets one
  * all the same: the worker is recorded here and its thread started by
  * worker_init(), so that the caller does not have to know about the
@@ -803,7 +803,7 @@ void worker_cancel_module(struct Module_* mod)
             complained = time(NULL);
             log("worker: waiting for work in flight before unloading"
                 " module `%s'",
-                get_module_name((const Module*)mod));
+                module_name((const Module*)mod));
         }
         deadline.tv_sec = time(NULL) + WORKER_STALL_WARN;
         deadline.tv_nsec = 0;
@@ -830,7 +830,7 @@ void worker_cancel_module(struct Module_* mod)
     }
     if (cancelled)
         log("worker: discarded %u task%s belonging to module `%s'", cancelled,
-            cancelled == 1 ? "" : "s", get_module_name((const Module*)mod));
+            cancelled == 1 ? "" : "s", module_name((const Module*)mod));
 }
 
 /*************************************************************************/

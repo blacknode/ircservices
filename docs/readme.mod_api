@@ -1,0 +1,889 @@
+readme.mod_api -- La API de módulos
+===================================
+
+Cómo se escribe un módulo de Services: cómo se describe, cómo se carga y
+se descarga, cómo reacciona a lo que pasa en la red (eventos) y cómo
+ofrece un pseudo-cliente (NickServ, ChanServ, el tuyo).  El diseño sigue
+el de ircu2 (include/module.h e include/hooks.h allí): un módulo exporta
+una única descripción, y todo lo que registra queda asociado a él y se
+deshace solo al descargarlo.
+
+    include/modules.h     el descriptor (ModuleInfo) y el cargador
+    include/events.h      los eventos: declarar, emitir, engancharse
+    include/service.h     los pseudo-clientes (struct Service)
+    src/modules.c         el cargador
+    src/events.c          los eventos
+    src/service.c         los pseudo-clientes
+
+La configuración de los módulos (tablas ConfigDirective, lectura directa
+del árbol) está en readme.api; las migraciones SQL, en readme.migrations;
+la base de datos, la caché y los hilos, en readme.database.
+
+
+1. Un módulo en un vistazo
+--------------------------
+
+Un módulo es un objeto compartido (.so) que Services abren con dlopen()
+cuando una línea `loadmodule` lo nombra.  Exporta un solo símbolo,
+`module_info`, que dice todo lo que el núcleo necesita saber:
+
+    #include "services.h"
+    #include "modules.h"
+
+    static int hello_init(Module *module)
+    {
+        module_log("hola");
+        return 1;
+    }
+
+    ModuleInfo module_info = {
+        .abi = MODULE_ABI,
+        .description = "Un módulo que saluda al cargarse",
+        .init = hello_init,
+    };
+
+Eso es un módulo completo.  Guardado como modules/misc/hello.c, el build
+lo encuentra solo (no hay que listarlo en ningún CMakeLists.txt) y genera
+build/modules/misc/hello.so; se carga con
+
+    loadmodule misc/hello;
+
+Dos tipos de módulo, con la misma API:
+
+  - Con pseudo-cliente: NickServ, ChanServ, MemoServ, OperServ, StatServ,
+    HelpServ, DevNull.  Declaran una o varias struct Service (sección 5).
+  - Sin pseudo-cliente: encryption/argon2 (un cifrado de contraseñas),
+    httpd/main (el servidor HTTP), mail/main (la cola de correo), los
+    submódulos que añaden comandos a un servicio (nickserv/access,
+    operserv/akill...).  Simplemente no declaran servicios.
+
+
+2. Dónde vive el código
+-----------------------
+
+    modules/<tipo>/<nombre>.c      un módulo de un solo fichero
+    modules/<tipo>/<nombre>/       un módulo de varios ficheros: todos los
+                                   .c de debajo se compilan juntos, y
+                                   <nombre>/<nombre>.c es el principal
+    modules/<tipo>/<nombre>/migrations/
+                                   sus migraciones SQL (readme.migrations)
+    modules/<tipo>/*.h             cabeceras compartidas por los módulos
+                                   de <tipo> y por quien hable con ellos:
+                                   #include "modules/<tipo>/<fichero>.h"
+
+El nombre del módulo es "<tipo>/<nombre>" ("nickserv/main"): es lo que se
+escribe en `loadmodule`, en `module "<nombre>" { }`, en `requires` y en
+module_find().  Si el módulo necesita una biblioteca o un flag, lo declara
+en <nombre>.cmake o <nombre>/module.cmake (cmake/ServicesModules.cmake;
+ejemplo: modules/httpd/main/module.cmake).
+
+El build define MODULE, MODULE_ID (el nombre del target) y, solo en el
+fichero principal, MODULE_MAIN_FILE.  No hay que tocarlos: sirven para que
+THIS_MODULE funcione (sección 3.4).
+
+
+3. El descriptor: ModuleInfo
+----------------------------
+
+3.1. Campos
+
+    ModuleInfo module_info = {
+        .abi         = MODULE_ABI,
+        .description = "Una línea que dice qué hace",
+        .requires    = MODULE_REQUIRES("nickserv/main", "mail/main"),
+        .config      = mi_config,
+        .services    = MODULE_SERVICES(&mi_service),
+        .flags       = MODULE_APPLY_MIGRATIONS,
+        .init        = mi_init,
+        .fini        = mi_fini,
+        .rehash      = mi_rehash,
+    };
+
+  abi          Siempre MODULE_ABI.  Un módulo compilado con otro valor se
+               rechaza al cargarlo: hay que recompilarlo.
+  description  Una línea para los logs y los listados.
+  requires     Módulos que tienen que estar cargados antes que este,
+               terminados en NULL; MODULE_REQUIRES() arma la lista.  Cada
+               uno queda retenido mientras este esté cargado: no se puede
+               descargar por debajo (sección 7).
+  config       La tabla ConfigDirective de `module "<nombre>" { }`, o
+               NULL.  Se lee antes de init y en cada REHASH (readme.api).
+  services     Los pseudo-clientes del módulo, terminados en NULL
+               (MODULE_SERVICES()), o NULL si no tiene (sección 5).
+  flags        MODULE_APPLY_MIGRATIONS: aplicar sus migraciones
+               pendientes al cargarlo, antes de init (solo para los
+               módulos que guardan los datos propios de Services; ver
+               readme.migrations).  0 si no.
+  init         Arranca el módulo.  Devuelve distinto de 0 si todo fue
+               bien; 0 aborta la carga.  Puede ser NULL.
+  fini         Para el módulo.  `shutdown` es distinto de 0 cuando
+               Services se están cerrando.  Devuelve distinto de 0 para
+               permitir la descarga; 0 la rechaza (salvo en el cierre, que
+               no se puede rechazar).  Puede ser NULL.
+  rehash       Se llama después de un REHASH, con la configuración nueva
+               ya en sus variables.  Puede ser NULL.
+
+Todo lo que no se usa se omite: los inicializadores designados de C99
+dejan a cero (NULL) los campos que no se nombran.
+
+3.2. Convenciones de nombres
+
+  - Funciones del módulo: <prefijo>_init, <prefijo>_fini, <prefijo>_rehash;
+    la tabla de configuración, <prefijo>_config.  Todo `static`: lo único
+    que se exporta por obligación es module_info.
+  - Un pseudo-cliente: struct Service <nombre>_service (nickserv_service).
+    Si otros módulos necesitan su nick, se declara en la cabecera pública
+    (`extern struct Service nickserv_service;`) y no es `static`.
+  - Un evento propio: la constante <MÓDULO>_EVENT_<QUÉ> con el nombre
+    "<módulo>.<qué>" (NICKSERV_EVENT_IDENTIFIED, "nickserv.identified"),
+    en la cabecera pública del módulo.
+  - Variables y funciones nuevas: snake_case.  Los nombres de las
+    directivas del fichero de configuración (NickServName, NSRegDelay...)
+    no cambian: son la interfaz con quien administra la red.
+
+3.3. Qué pasa al cargar un módulo
+
+    loadmodule "misc/mi_servicio"
+      1. dlopen() de modules/misc/mi_servicio.so
+      2. module_info: ¿existe?, ¿abi == MODULE_ABI?
+      3. requires: ¿están cargados?  Se retienen
+      4. migraciones: se aplican (MODULE_APPLY_MIGRATIONS) o se avisa de
+         las pendientes
+      5. configuración: `config` + la directiva de cada pseudo-cliente
+      6. pseudo-clientes: se comprueba que tengan nick y que no lo use
+         otro
+      7. init(module)
+      8. si Services ya están enlazados, sus pseudo-clientes entran en la
+         red (NICK y JOIN al canal de serverinfo)
+      9. evento "module.loaded"
+
+Si algo falla, el módulo no se carga y todo lo hecho se deshace.  Si lo
+que falla es init, el cargador llama antes a fini(module, 0) para que el
+módulo libere lo que llegó a preparar: fini tiene que aguantar un init a
+medias (comprobar punteros antes de usarlos, por ejemplo).  Así init no
+necesita limpiar nada al fallar: basta con `return 0;`.
+
+    static int mi_init(Module *module)
+    {
+        if (!new_commandlist(module) || !register_commands(module, cmds)) {
+            module_log("Unable to register commands");
+            return 0;               /* el cargador llama a mi_fini() */
+        }
+        timer = add_timeout(60, mi_tick, 1);
+        return 1;
+    }
+
+    static int mi_fini(Module *module, int shutdown)
+    {
+        if (timer) {                /* puede que init no llegara aquí */
+            del_timeout(timer);
+            timer = NULL;
+        }
+        unregister_commands(module, cmds);   /* sin efecto si no estaban */
+        del_commandlist(module);
+        return 1;
+    }
+
+3.4. Qué pasa al descargarlo
+
+    1. ¿Lo retiene otro módulo?  Entonces no se descarga (se registra por
+       qué: "Cannot unload nickserv/main: nickserv/access needs it").
+    2. fini(module, shutdown); si devuelve 0 fuera del cierre, no se
+       descarga.
+    3. evento "module.unloaded"
+    4. el cargador deshace, aunque fini no lo haya hecho:
+         - los handlers que el módulo enganchó a cualquier evento, y los
+           eventos que declaró (los handlers de otros módulos a esos
+           eventos se quedan esperando a que vuelva: sección 6.4);
+         - sus pseudo-clientes, que salen de la red con QUIT;
+         - sus retenciones de otros módulos;
+         - su trabajo en curso: tareas de hilos, consultas a la base de
+           datos, llamadas a la caché, migraciones, lecturas del store y
+           contraseñas pendientes;
+         - su configuración (deconfigure());
+       y hace dlclose().
+
+Lo que el cargador NO deshace, y por tanto es tarea de fini: las listas
+de comandos (commands.h), las tablas registradas con register_dbtable(),
+los tipos del store (store_unregister()), los temporizadores
+(del_timeout()), los mapstring() de textos, los cifrados
+(unregister_cipher()) y la memoria propia.  httpd/main retira además las
+rutas HTTP de un módulo que se descarga, pero lo limpio es hacerlo en
+fini con http_del_routes(module).
+
+3.5. REHASH
+
+    1. se descargan los módulos cuyo `loadmodule` ya no está (los que
+       otro módulo requiere se quedan, y el log lo dice)
+    2. se recuerdan el nick y la descripción de cada pseudo-cliente
+    3. se lee la configuración de todos los módulos (si alguno tiene
+       errores, no cambia la de ninguno)
+    4. se aplica
+    5. los pseudo-clientes cuyo nick cambió se renombran en la red (NICK)
+    6. rehash(module) de cada módulo, en el orden en que se cargaron
+    7. se cargan los módulos que tienen `loadmodule` y no están cargados
+
+rehash recibe la configuración ya aplicada; si tiene que comparar con la
+anterior (activar un comando que antes estaba desactivado, por ejemplo),
+guarda él mismo el valor que tenía aplicado.
+
+3.6. THIS_MODULE, MODULE_NAME y el log
+
+  THIS_MODULE   El handle del propio módulo (un Module *), válido en
+                cualquier fichero del módulo.  Es el mismo puntero que
+                init, fini y rehash reciben como `module`.  En el núcleo
+                vale NULL.
+  MODULE_NAME   Su nombre ("misc/mi_servicio").
+  module_log(fmt, ...), module_log_debug(nivel, fmt, ...),
+  module_log_perror(fmt, ...)
+                Escriben en el log con el nombre del módulo delante:
+                "(misc/mi_servicio) ...".
+
+
+4. Configuración del módulo
+---------------------------
+
+La tabla de `config` se enlaza con el bloque `module "<nombre>" { }`:
+
+    static int32 mi_maximo;
+    static time_t mi_retardo;
+    static int mi_opcion;
+
+    static ConfigDirective mi_config[] = {
+        { "MiMaximo",  { { CD_POSINT, CF_DIRREQ, &mi_maximo } } },
+        { "MiRetardo", { { CD_TIME, 0, &mi_retardo } } },
+        { "MiOpcion",  { { CD_SET, 0, &mi_opcion } } },
+        { NULL }
+    };
+
+    module "misc/mi_servicio" {
+        MiMaximo = 10;
+        MiRetardo = 5m;
+        MiOpcion;
+    };
+
+Los tipos (CD_*), los flags (CF_*), las funciones CD_FUNC y la lectura
+directa del árbol con conf_this_module() están en readme.api.  El nick y
+la descripción de un pseudo-cliente no van en esta tabla: los pone el
+cargador a partir de la struct Service (sección 5).
+
+
+5. Pseudo-clientes: struct Service
+----------------------------------
+
+5.1. Declararlo
+
+    static void mi_mensaje(struct Service *service, User *u, char *texto);
+
+    struct Service mi_service = {
+        .directive  = "MiServName",
+        .flags      = SERVICE_OPER,
+        .on_message = mi_mensaje,
+    };
+
+    ModuleInfo module_info = {
+        ...
+        .services = MODULE_SERVICES(&mi_service),
+    };
+
+  directive   La directiva del bloque del módulo que da el nick y la
+              descripción.  Es obligatoria en el fichero de configuración:
+
+                  module "misc/mi_servicio" {
+                      MiServName = "MiServ", "Mi servicio";
+                  };
+
+  flags       SERVICE_OPER (necesita privilegios de IRCop, +o),
+              SERVICE_INVISIBLE (+i), o 0.  Todo pseudo-cliente lleva
+              además +k y +S en P10.
+  on_message  Recibe los PRIVMSG dirigidos al pseudo-cliente.  `u` es el
+              usuario que lo envía (nunca NULL) y `texto` se puede
+              modificar (strtok()).  NULL para un pseudo-cliente que no
+              contesta nada (misc/devnull, el Global de OperServ).
+  nick, description
+              Los rellena el núcleo desde la configuración y son válidos
+              mientras el módulo esté cargado: se usan como
+              `mi_service.nick` en todo el módulo.  Pueden cambiar en un
+              REHASH, así que no guardes copias del puntero.
+
+Un módulo puede tener varios pseudo-clientes (operserv/main declara
+OperServ y el Global), cada uno con su directiva.
+
+5.2. Lo que el núcleo hace por él
+
+Nada de esto lo programa el módulo:
+
+  - Lo presenta al enlazar con el uplink, o al cargarse el módulo si ya
+    se está enlazado (NICK con sus modos).
+  - Lo une al canal de serverinfo { channel }, si hay uno configurado.
+  - Si alguien lo mata (KILL) o hay una colisión de nick, lo vuelve a
+    presentar.
+  - Si un REHASH cambia su nick, lo renombra en la red.
+  - Contesta el WHOIS por él (311, 312, 313 "is a network service",
+    318).
+  - Contesta el CTCP PING que le envíen.
+  - Busca el User del remitente antes de llamar a on_message; si no
+    existe, contesta INTERNAL_ERROR y no llama.
+  - Impide que se registre su nick en NickServ (REGISTER/LINK).
+  - Lo saca de la red (QUIT) cuando se descarga el módulo.
+
+5.3. Atender mensajes y comandos
+
+Lo habitual es que on_message saque el primer argumento y ejecute el
+comando correspondiente de la lista de comandos del módulo (commands.h):
+
+    static void do_hola(User *u);
+
+    static Command cmds[] = {
+        { "HOLA", do_hola, NULL, -1, -1, -1 },
+        { NULL }
+    };
+
+    static void mi_mensaje(struct Service *service, User *u, char *texto)
+    {
+        char *comando = strtok(texto, " ");
+
+        if (comando)
+            run_cmd(service->nick, u, THIS_MODULE, comando);
+    }
+
+    static void do_hola(User *u)
+    {
+        notice(mi_service.nick, u->nick, "Hola, %s", u->nick);
+    }
+
+La lista se crea en init (new_commandlist(module) y register_commands())
+y se borra en fini.  run_cmd() contesta "comando desconocido" y comprueba
+los privilegios (has_priv) por ti; help_cmd() muestra la ayuda de un
+comando.  Los argumentos del comando se leen con strtok(NULL, " ") y
+strtok_remaining().
+
+Un submódulo que añade comandos a un servicio de otro módulo los registra
+en la lista de ese módulo (así hacen nickserv/access, operserv/akill...):
+
+    .requires = MODULE_REQUIRES("nickserv/main"),
+    ...
+    register_commands(module_find("nickserv/main"), cmds);     /* init */
+    unregister_commands(module_find("nickserv/main"), cmds);   /* fini */
+
+5.4. Hablar como el pseudo-cliente
+
+    notice(mi_service.nick, u->nick, "texto %d", n);
+    notice_lang(mi_service.nick, u, MENSAJE_TRADUCIDO, ...);
+    privmsg(mi_service.nick, "#canal", "texto");
+    send_cmd(mi_service.nick, "MODE %s +o %s", canal, nick);
+    wallops(mi_service.nick, "texto");
+
+Funciones de consulta:
+
+    struct Service *service_find(const char *nick);
+        El pseudo-cliente con ese nick (sin distinguir mayúsculas), o NULL.
+    struct Service *service_first(void);
+    struct Service *service_next(const struct Service *service);
+        Recorren todos los pseudo-clientes.
+
+
+6. Eventos
+----------
+
+6.1. Qué es un evento
+
+Un evento es un punto con nombre en el que el núcleo o un módulo avisa de
+que algo ha pasado ("user.create": un usuario se ha conectado;
+"nickserv.identified": alguien se ha identificado).  Tiene un dueño, que
+lo declara y lo emite, y cualquier número de handlers, que otros módulos
+enganchan por su nombre.
+
+Los nombres son "<dueño>.<qué>": "user.create" y "channel.join" son del
+núcleo; "nickserv.identified", de NickServ.  Para no escribir cadenas a
+mano, cada nombre tiene una constante: EVENT_USER_CREATE en events.h
+para los del núcleo, NICKSERV_EVENT_IDENTIFIED en
+modules/nickserv/nickserv.h para los de NickServ, etc.
+
+6.2. Engancharse a un evento
+
+    static int on_user_create(User *user, int ac, char **av, int reconnect)
+    {
+        ...
+        return EVENT_CONTINUE;
+    }
+
+    /* en init: */
+    if (!event_attach(module, EVENT_USER_CREATE, on_user_create))
+        return 0;
+
+  - El handler se declara con los parámetros del evento, que están
+    documentados junto a su constante (events.h para los del núcleo, la
+    cabecera del módulo para los demás).  Cada argumento viaja con el
+    tamaño de un puntero, así que parámetros de tipo puntero, int, long
+    y time_t funcionan.
+  - Devuelve EVENT_CONTINUE (0) para que siga el siguiente handler, o un
+    valor distinto de 0, normalmente EVENT_STOP, para cortar la cadena:
+    ningún handler posterior se ejecuta.  Qué significa cortar lo dice
+    cada evento: en "message.privmsg", que el mensaje no llega a su
+    pseudo-cliente; en "nickserv.register_check", que el registro se
+    rechaza.
+  - event_attach_priority(module, nombre, handler, prioridad) fija el
+    orden: los de prioridad mayor van antes; con igual prioridad, en el
+    orden en que se engancharon.  Límites: EVENT_PRIORITY_FIRST (10000),
+    EVENT_PRIORITY_DEFAULT (0), EVENT_PRIORITY_LAST (-10000).
+  - event_detach(module, nombre, handler) lo suelta.  No hace falta
+    hacerlo en fini: el cargador suelta todos los handlers de un módulo
+    al descargarlo.  Sirve para desactivar un handler con el módulo
+    cargado.
+
+6.3. Declarar y emitir un evento propio
+
+En la cabecera pública del módulo, con su documentación:
+
+    /* echoserv.echoed: (User *u, const char *text)  alguien usó ECHO */
+    #define ECHOSERV_EVENT_ECHOED "echoserv.echoed"
+
+En el módulo:
+
+    static Event *echoed_event;
+
+    /* init */
+    echoed_event = event_declare(module, ECHOSERV_EVENT_ECHOED);
+    if (!echoed_event)
+        return 0;
+
+    /* donde ocurre */
+    event_emit(echoed_event, u, text);
+
+event_emit() admite hasta EVENT_MAX_ARGS (6) argumentos de cualquier tipo
+escalar o puntero, y devuelve:
+
+    0     ningún handler cortó la cadena
+    > 0   el valor que devolvió el handler que la cortó (algunos eventos
+          usan valores concretos: "chanserv.check_kick" distingue 1 y 2;
+          "memoserv.receive_memo" devuelve un número de mensaje)
+    -1    el evento no está declarado
+
+No hace falta retirar el evento en fini: el cargador retira los eventos
+del módulo al descargarlo.  event_retract(evento) existe para dejar de
+ofrecer un evento con el módulo cargado.
+
+6.4. Handlers que esperan
+
+Un handler se puede enganchar a un evento que todavía no está declarado:
+por un módulo que se carga antes que el dueño del evento, o que funciona
+tanto si el dueño está cargado como si no.  El handler se guarda y
+empieza a ejecutarse cuando el dueño declara el evento.  Si el dueño se
+descarga, sus eventos se retiran y los handlers vuelven a esperar a que
+se cargue de nuevo.
+
+Por eso un módulo nunca necesita vigilar qué otros módulos se cargan solo
+para engancharse a sus eventos.  operserv/sline, por ejemplo, se carga
+antes que NickServ y engancha su comprobación de SQLINE directamente:
+
+    event_attach(module, NICKSERV_EVENT_REGISTER_CHECK, do_reglink_check);
+
+Con `-debug` el log avisa de los eventos que tienen handlers y nadie
+declara, lo que ayuda a encontrar un nombre mal escrito.
+
+6.5. Eventos del núcleo
+
+La lista completa, con los argumentos de cada uno, está en
+include/events.h.  Resumen:
+
+    core.command_line          opciones de la línea de órdenes
+    core.uplink_linked         Services se han enlazado
+    core.save_complete         terminó un guardado de la base de datos
+    module.loaded              se cargó un módulo
+    module.unloaded            se va a descargar un módulo
+    message.receive            cualquier línea del uplink, antes de tratarla
+    message.privmsg            un PRIVMSG a Services, antes de entregarlo
+    message.whois              un WHOIS a un nick de Services
+    user.check                 un NICK nuevo, antes de crear el usuario
+    user.create                un usuario nuevo
+    user.servicestamp_change   cambió el servicestamp de un usuario
+    user.nick_change_before    un usuario va a cambiar de nick
+    user.nick_change_after     un usuario cambió de nick
+    user.delete                un usuario sale (QUIT o KILL)
+    user.mode                  un cambio de modo de usuario
+    channel.join_check         alguien va a entrar en un canal
+    channel.create             se creó un canal
+    channel.join               alguien entró en un canal
+    channel.part               alguien salió de un canal
+    channel.kick               alguien fue expulsado de un canal
+    channel.delete             un canal se quedó vacío y desaparece
+    channel.mode               un modo de canal, uno a uno
+    channel.mode_change        terminó un MODE de canal
+    channel.user_mode_change   cambió el modo de un miembro (+o, +v...)
+    channel.topic              cambió el topic
+    channel.clear              Services limpian un canal (clear_channel())
+    channel.set_topic          Services ponen un topic
+    server.create              un servidor nuevo
+    server.delete              un servidor sale (SQUIT)
+
+6.6. Eventos de los módulos
+
+Cada módulo documenta los suyos en su cabecera pública:
+
+    modules/nickserv/nickserv.h     nickserv.*, autojoin.*, mail_auth.*
+    modules/chanserv/chanserv.h     chanserv.*
+    modules/memoserv/memoserv.h     memoserv.*
+    modules/operserv/operserv.h     operserv.*
+    modules/operserv/akill.h        akill.*
+    modules/operserv/sline.h        sline.*
+    modules/statserv/statserv.h     statserv.*
+    modules/httpd/http.h            httpd.auth
+
+Los más útiles para un servicio nuevo: nickserv.identified (alguien se
+identificó), nickserv.user_validated (ya se sabe si su nick está
+registrado), nickserv.register_check (vetar un nick),
+operserv.stats_all (añadir líneas a STATS ALL) y los .help de cada
+servicio (añadir ayuda a un servicio ajeno).
+
+
+7. Dependencias entre módulos
+-----------------------------
+
+7.1. Obligatorias: requires
+
+    .requires = MODULE_REQUIRES("nickserv/main"),
+
+  - El módulo requerido tiene que estar cargado antes (su `loadmodule`,
+    más arriba en el fichero); si no, la carga falla con un mensaje que
+    lo dice.
+  - Mientras este módulo esté cargado, el requerido no se puede
+    descargar.
+  - Como el requerido ya está cargado, sus símbolos exportados se usan
+    directamente: funciones (get_nickinfo()), variables
+    (nickserv_service.nick) y todo lo que declare su cabecera pública.
+    Si un módulo usa esos símbolos y se carga antes que su dependencia,
+    dlopen() falla con "undefined symbol"; el log sugiere entonces
+    revisar el orden de las líneas loadmodule.
+
+7.2. Opcionales
+
+Si el módulo puede funcionar sin el otro, no lo pone en requires; busca
+sus símbolos mientras esté cargado, con los eventos module.loaded y
+module.unloaded:
+
+    static Module *module_chanserv;          /* NULL si no está */
+    static typeof(get_channelinfo) *p_get_channelinfo;
+
+    static int on_module_loaded(Module *mod, const char *name)
+    {
+        if (strcmp(name, "chanserv/main") == 0) {
+            module_chanserv = mod;
+            p_get_channelinfo = module_symbol(mod, "get_channelinfo");
+        }
+        return 0;
+    }
+
+    static int on_module_unloaded(Module *mod)
+    {
+        if (mod == module_chanserv) {
+            module_chanserv = NULL;
+            p_get_channelinfo = NULL;
+        }
+        return 0;
+    }
+
+    /* init: los eventos, y el caso de que ya estuviera cargado */
+    event_attach(module, EVENT_MODULE_LOADED, on_module_loaded);
+    event_attach(module, EVENT_MODULE_UNLOADED, on_module_unloaded);
+    if ((mod = module_find("chanserv/main")) != NULL)
+        on_module_loaded(mod, "chanserv/main");
+
+El nick de un servicio opcional se obtiene igual:
+
+    struct Service *chanserv = module_symbol(module_chanserv,
+                                             "chanserv_service");
+    const char *nick = chanserv ? chanserv->nick : "ChanServ";
+
+Para engancharse a los eventos de un módulo opcional no hace falta nada
+de esto: basta con event_attach() (sección 6.4).
+
+7.3. Retener un módulo a mano
+
+    module_hold(module, otro);      /* otro ya no se puede descargar */
+    module_release(module, otro);
+
+Para dependencias que se descubren con el módulo en marcha.  Las
+retenciones de requires las gestiona el cargador, y todas las de un
+módulo se liberan al descargarlo.
+
+
+8. Referencia rápida
+--------------------
+
+modules.h
+
+    Module *module_find(const char *name);
+    const char *module_name(const Module *module);
+    unsigned int module_flags(const Module *module);
+    const struct MigrationSet *module_migrations(const Module *module);
+    void *module_symbol(Module *module, const char *symbol);
+    int module_has_symbol(Module *module, const char *symbol, void **value);
+    int module_hold(Module *holder, Module *held);
+    void module_release(Module *holder, Module *held);
+    MODULE_REQUIRES(...), MODULE_SERVICES(...), THIS_MODULE, MODULE_NAME
+
+    Para el núcleo: module_load(), module_unload(), module_unload_all(),
+    module_reconfigure_all(), module_system_init(),
+    module_system_cleanup().
+
+events.h
+
+    Event *event_declare(Module *owner, const char *name);
+    void event_retract(Event *event);
+    int event_emit(Event *event, ...);
+    int event_attach(Module *module, const char *name, EventHandler handler);
+    int event_attach_priority(Module *module, const char *name,
+                              EventHandler handler, int priority);
+    int event_detach(Module *module, const char *name, EventHandler handler);
+    EVENT_CONTINUE, EVENT_STOP, EVENT_PRIORITY_*, EVENT_MAX_ARGS,
+    EVENT_<nombre> (los eventos del núcleo)
+
+service.h
+
+    struct Service { directive, flags, on_message, nick, description }
+    SERVICE_OPER, SERVICE_INVISIBLE
+    struct Service *service_find(const char *nick);
+    struct Service *service_first(void);
+    struct Service *service_next(const struct Service *service);
+
+    Para el núcleo: service_introduce(), service_deliver_message(),
+    service_answer_whois(), service_attach_module(),
+    service_introduce_module(), service_detach_module(),
+    service_reconfigure_begin(), service_reconfigure_end().
+
+
+9. Ejemplo completo: EchoServ
+-----------------------------
+
+Un pseudo-cliente que repite lo que se le dice, con configuración, dos
+comandos, un evento propio y un handler de un evento del núcleo.  Está en
+el árbol como modules/misc/echoserv.c (sin cargar por defecto): cópialo
+como punto de partida para un servicio nuevo.
+
+modules/misc/echoserv.c (sin los comentarios de cabecera):
+
+    #include "services.h"
+    #include "modules.h"
+    #include "commands.h"
+    #include "language.h"
+
+    /*************************************************************************/
+
+    /* Settings of the module block. */
+    static int32 echo_max_length;
+    static int echo_greet;
+
+    /* Our event: someone was echoed.  (In a module with a public header,
+     * the constant and its documentation go there.) */
+    #define ECHOSERV_EVENT_ECHOED "echoserv.echoed"
+    static Event *echoed_event;
+
+    /*************************************************************************/
+
+    /* Commands. */
+
+    static void do_help(User *u);
+    static void do_echo(User *u);
+
+    static Command echoserv_commands[] = {
+        { "HELP", do_help, NULL, -1, -1, -1 },
+        { "ECHO", do_echo, NULL, -1, -1, -1 },
+        { NULL }
+    };
+
+    /* Declared here, defined at the end with the module description. */
+    static struct Service echoserv_service;
+
+    static void do_help(User *u)
+    {
+        notice(echoserv_service.nick, u->nick,
+               "Commands: ECHO <text> (at most %d characters)",
+               (int)echo_max_length);
+    }
+
+    static void do_echo(User *u)
+    {
+        char *text = strtok_remaining();
+
+        if (!text) {
+            notice(echoserv_service.nick, u->nick, "Syntax: ECHO <text>");
+            return;
+        }
+        if (strlen(text) > (size_t)echo_max_length)
+            text[echo_max_length] = 0;
+        notice(echoserv_service.nick, u->nick, "%s", text);
+        event_emit(echoed_event, u, text);
+    }
+
+    /*************************************************************************/
+
+    /* A PRIVMSG to EchoServ: the first word is the command. */
+
+    static void echoserv_message(struct Service *service, User *u, char *text)
+    {
+        char *command = strtok(text, " ");
+
+        if (command)
+            run_cmd(service->nick, u, THIS_MODULE, command);
+    }
+
+    /*************************************************************************/
+
+    /* Core event: a user connected. */
+
+    static int on_user_create(User *user, int ac, char **av, int reconnect)
+    {
+        if (echo_greet && linked)
+            notice(echoserv_service.nick, user->nick, "Hello, %s!",
+                   user->nick);
+        return EVENT_CONTINUE;
+    }
+
+    /*************************************************************************/
+    /***************************** Module stuff ******************************/
+    /*************************************************************************/
+
+    static ConfigDirective echoserv_config[] = {
+        { "EchoMaxLength", { { CD_POSINT, 0, &echo_max_length } } },
+        { "EchoGreet",     { { CD_SET, 0, &echo_greet } } },
+        { NULL }
+    };
+
+    static void echoserv_rehash(Module *module)
+    {
+        if (!echo_max_length)
+            echo_max_length = 100;
+    }
+
+    static int echoserv_init(Module *module)
+    {
+        echoserv_rehash(module);
+
+        if (!new_commandlist(module)
+         || !register_commands(module, echoserv_commands)) {
+            module_log("Unable to register commands");
+            return 0;
+        }
+        echoed_event = event_declare(module, ECHOSERV_EVENT_ECHOED);
+        if (!echoed_event) {
+            module_log("Unable to declare " ECHOSERV_EVENT_ECHOED);
+            return 0;
+        }
+        if (!event_attach(module, EVENT_USER_CREATE, on_user_create)) {
+            module_log("Unable to attach to " EVENT_USER_CREATE);
+            return 0;
+        }
+        return 1;
+    }
+
+    static int echoserv_fini(Module *module, int shutdown)
+    {
+        unregister_commands(module, echoserv_commands);
+        del_commandlist(module);
+        return 1;
+    }
+
+    /* EchoServName = <nick>, <description>; in the module block. */
+    static struct Service echoserv_service = {
+        .directive = "EchoServName",
+        .on_message = echoserv_message,
+    };
+
+    ModuleInfo module_info = {
+        .abi = MODULE_ABI,
+        .description = "EchoServ: repeats what it is told (example)",
+        .config = echoserv_config,
+        .services = MODULE_SERVICES(&echoserv_service),
+        .init = echoserv_init,
+        .fini = echoserv_fini,
+        .rehash = echoserv_rehash,
+    };
+
+ircservices.conf:
+
+    loadmodule misc/echoserv;
+
+    module "misc/echoserv" {
+        EchoServName = "EchoServ", "Echo Service";
+        EchoMaxLength = 200;
+        EchoGreet;
+    };
+
+Lo que se ve en la red:
+
+    -EchoServ- Hello, carol!                  (al conectarse carol)
+    /msg EchoServ ECHO hola
+    -EchoServ- hola
+    /whois EchoServ
+    EchoServ is services@services.example.net * Echo Service
+    EchoServ is a network service
+
+Otro módulo que quiera enterarse de cada ECHO no necesita que EchoServ
+esté cargado antes; basta con
+
+    event_attach(module, "echoserv.echoed", on_echoed);
+
+    static int on_echoed(User *u, const char *text) { ... return 0; }
+
+Los mensajes se envían en inglés en este ejemplo para que se vea el
+mecanismo; un servicio real usa notice_lang() con textos de lang/ para
+que cada usuario los reciba en su idioma.
+
+
+10. De la API anterior a esta
+-----------------------------
+
+Para quien lea código antiguo o documentación de IRC Services 5.1:
+
+    Antes                                 Ahora
+    -----                                 -----
+    int init_module(void)                 ModuleInfo.init(Module *)
+    int exit_module(int shutdown)         ModuleInfo.fini(Module *, int)
+    ConfigDirective module_config[]       ModuleInfo.config
+    MODULE_MIGRATIONS_AUTO;               .flags = MODULE_APPLY_MIGRATIONS
+    const int32 module_version            .abi = MODULE_ABI
+    callback "reconfigure"                ModuleInfo.rehash(Module *)
+    find_module() + use_module()          .requires = MODULE_REQUIRES(...)
+    use_module() / unuse_module()         module_hold() / module_release()
+    find_module(), get_module_name()      module_find(), module_name()
+    get_module_symbol()                   module_symbol()
+    check_module_symbol()                 module_has_symbol()
+    load_module(), unload_module()        module_load(), module_unload()
+    register_callback("x")                event_declare(module, "dueño.x")
+    unregister_callback(id)               event_retract(evento), o nada
+    add_callback(mod, "x", fn)            event_attach(module, NOMBRE, fn)
+    add_callback_pri(..., pri)            event_attach_priority(...)
+    remove_callback(...)                  event_detach(...), o nada
+    call_callback_N(id, a, b, ...)        event_emit(evento, a, b, ...)
+    CBPRI_MAX / CBPRI_MIN                 EVENT_PRIORITY_FIRST / _LAST
+    "load module" / "unload module"       module.loaded / module.unloaded
+    char *s_NickServ, *desc_NickServ      nickserv_service.nick,
+                                          nickserv_service.description
+    "NickServName" en module_config       struct Service .directive
+    callback "introduce_user"             lo hace el núcleo
+    callback "m_privmsg" + comparar nick  struct Service .on_message
+    callback "m_whois"                    lo hace el núcleo
+    "REGISTER/LINK check" por el nick     lo hace NickServ (service_find)
+    send_cmd(s_X, "QUIT :") en exit       lo hace el núcleo
+    introduce_user(nick)                  service_introduce(nick)
+    EXPORT_FUNC(), EXPORT_VAR()           nada (no hacían nada)
+
+Los nombres de los eventos cambiaron al formato "<dueño>.<qué>"
+("user create" es "user.create"; "identified" de NickServ es
+"nickserv.identified"; "STATS ALL" de OperServ es "operserv.stats_all").
+Las constantes EVENT_* y <MÓDULO>_EVENT_* evitan tener que recordarlos.
+
+Diferencias de comportamiento de los pseudo-clientes, ahora que el núcleo
+hace lo común:
+
+  - El WHOIS de todos incluye la línea 313 "is a network service" (antes
+    solo en OperServ, NickServ y StatServ).
+  - El CTCP PING lo contesta el núcleo por todos, antes de entregar el
+    mensaje: OperServ contesta un PING también a quien no es IRCop.
+  - Si no se encuentra el User del remitente, todos contestan
+    INTERNAL_ERROR (OperServ contestaba "Access denied." y avisaba por
+    WALLOPS).
+  - Un REHASH en el que no se puede descargar un módulo (porque otro lo
+    requiere) ya no impide cargar los módulos nuevos; y un módulo que no
+    se pudo cargar en un REHASH se vuelve a intentar en el siguiente.

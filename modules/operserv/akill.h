@@ -12,6 +12,18 @@
 
 #include "services.h"
 
+/* Events of operserv/akill (see include/events.h), for the protocol:
+ *     akill.send_akill:     (const char *username, const char *host,
+ *                           time_t expires, const char *who,
+ *                           const char *reason)
+ *     akill.cancel_akill:   (const char *username, const char *host)
+ *     akill.send_exclude:   as send_akill, for an exclusion
+ *     akill.cancel_exclude: as cancel_akill, for an exclusion */
+#define AKILL_EVENT_SEND_AKILL     "akill.send_akill"
+#define AKILL_EVENT_CANCEL_AKILL   "akill.cancel_akill"
+#define AKILL_EVENT_SEND_EXCLUDE   "akill.send_exclude"
+#define AKILL_EVENT_CANCEL_EXCLUDE "akill.cancel_exclude"
+
 E void create_akill(char *mask, const char *reason, const char *who,
                     time_t expiry);
 

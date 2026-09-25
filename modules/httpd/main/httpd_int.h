@@ -11,7 +11,7 @@
  *     server.c   the server thread: Mongoose, the only file that knows it
  *                exists.  Does not include services.h (see worker.h).
  *     routes.c   the routes, the requests waiting for an answer and their
- *                deadline, the "auth" callback.  Main thread.
+ *                deadline, the "httpd.auth" event.  Main thread.
  *     util.c     building responses, reading requests.  Main thread.
  *     main.c     configuration, starting and stopping.  Main thread.
  *

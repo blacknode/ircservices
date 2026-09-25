@@ -14,6 +14,18 @@
 
 /*************************************************************************/
 
+/* Events of operserv/sline (see include/events.h), for the protocol:
+ *     sline.send_sgline:   (const char *mask, time_t expires,
+ *                          const char *who, const char *reason)
+ *     sline.cancel_sgline: (const char *mask)
+ * and the same for SQLINE (sqline) and SZLINE (szline). */
+#define SLINE_EVENT_SEND_SGLINE   "sline.send_sgline"
+#define SLINE_EVENT_CANCEL_SGLINE "sline.cancel_sgline"
+#define SLINE_EVENT_SEND_SQLINE   "sline.send_sqline"
+#define SLINE_EVENT_CANCEL_SQLINE "sline.cancel_sqline"
+#define SLINE_EVENT_SEND_SZLINE   "sline.send_szline"
+#define SLINE_EVENT_CANCEL_SZLINE "sline.cancel_szline"
+
 E void create_sline(uint8 type, char *mask, const char *reason,
                     const char *who, time_t expiry);
 

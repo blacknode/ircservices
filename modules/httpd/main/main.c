@@ -46,7 +46,6 @@ static Timeout* expire_timeout;
 /*************************************************************************/
 /*************************************************************************/
 
-EXPORT_FUNC(http_available)
 int http_available(void)
 {
     return ListenTo_count > 0;
@@ -153,17 +152,16 @@ static void do_expire(Timeout* t)
     httpd_routes_expire();
 }
 
-static int do_unload_module(Module* mod)
+/* A module going drops its routes, whether or not it gave them up. */
+static int do_module_unloaded(Module* module)
 {
-    httpd_routes_drop_module(mod);
+    httpd_routes_drop_module(module);
     return 0;
 }
 
-static int do_reconfigure(int after_configure)
+static void httpd_rehash(Module* module)
 {
-    if (after_configure)
-        httpd_apply();
-    return 0;
+    httpd_apply();
 }
 
 /*************************************************************************/
@@ -173,7 +171,7 @@ static int do_reconfigure(int after_configure)
 static int do_ListenTo(const char* filename, int linenum, char* param);
 static int do_ListenTo_tls(const char* filename, int linenum, char* param);
 
-ConfigDirective module_config[] = {
+static ConfigDirective httpd_config[] = {
     {"ListenTo",
      {{CD_FUNC, 0, do_ListenTo}, {CD_FUNC, CF_OPTIONAL, do_ListenTo_tls}}},
     {"MaxConnections", {{CD_POSINT, 0, &MaxConnections}}},
@@ -293,17 +291,14 @@ static int do_ListenTo_tls(const char* filename, int linenum, char* param)
 
 /*************************************************************************/
 
-int init_module(void)
+static int httpd_init(Module* module)
 {
     if (!httpd_routes_init()) {
-        module_log("Unable to register callbacks");
-        exit_module(0);
+        module_log("Unable to declare " HTTPD_EVENT_AUTH);
         return 0;
     }
-    if (!add_callback(NULL, "unload module", do_unload_module) ||
-        !add_callback(NULL, "reconfigure", do_reconfigure)) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+    if (!event_attach(module, EVENT_MODULE_UNLOADED, do_module_unloaded)) {
+        module_log("Unable to attach to " EVENT_MODULE_UNLOADED);
         return 0;
     }
     expire_timeout = add_timeout(1, do_expire, 1);
@@ -315,7 +310,7 @@ int init_module(void)
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int httpd_fini(Module* module, int shutdown)
 {
     httpd_server_stop();
     httpd_routes_cleanup();
@@ -323,14 +318,25 @@ int exit_module(int shutdown_unused)
         del_timeout(expire_timeout);
         expire_timeout = NULL;
     }
-    remove_callback(NULL, "reconfigure", do_reconfigure);
-    remove_callback(NULL, "unload module", do_unload_module);
     memset(&current_args, 0, sizeof(current_args));
     free(ListenTo);
     ListenTo = NULL;
     ListenTo_count = 0;
     return 1;
 }
+
+/*************************************************************************/
+
+/* A module without a pseudo-client: the HTTP server the httpd/ modules
+ * claim routes on (see http.h). */
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "HTTP server (routes for the httpd/ modules)",
+    .config = httpd_config,
+    .init = httpd_init,
+    .fini = httpd_fini,
+    .rehash = httpd_rehash,
+};
 
 /*************************************************************************/
 

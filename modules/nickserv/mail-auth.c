@@ -41,12 +41,11 @@
 /*************************************************************************/
 
 static Module *module_nickserv;
-static Module *module_mail;
 
 static time_t NSNoAuthExpire = 0;
 static time_t NSSendauthDelay = 0;
 
-static int cb_authed = -1;
+static Event* authed_event;
 
 
 static void do_auth(User *u);
@@ -160,11 +159,11 @@ static int send_auth_(User *u, NickGroupInfo *ngi, const char *nick,
     if (what == IS_SETAUTH) {
         snprintf(body, sizeof(body),
                  getstring(ngi,NICK_AUTH_MAIL_BODY_SETAUTH),
-                 nick, ngi->authcode, s_NickServ, s_NickServ, ngi->authcode);
+                 nick, ngi->authcode, nickserv_service.nick, nickserv_service.nick, ngi->authcode);
     } else {
         snprintf(body, sizeof(body), getstring(ngi,NICK_AUTH_MAIL_BODY),
-                 nick, ngi->authcode, s_NickServ, s_NickServ, ngi->authcode,
-                 s_NickServ, text, u->username, u->host);
+                 nick, ngi->authcode, nickserv_service.nick, nickserv_service.nick, ngi->authcode,
+                 nickserv_service.nick, text, u->username, u->host);
     }
     sad = smalloc(sizeof(*sad));
     LIST_INSERT(sad, sendauth_list);
@@ -206,9 +205,9 @@ static void send_auth_callback(int status, void *data)
           case IS_REAUTH:
             if (status != MAIL_STATUS_SENT) {
                 if (status == MAIL_STATUS_NORSRC)
-                    notice_lang(s_NickServ, sad->u, NICK_SENDAUTH_NORESOURCES);
+                    notice_lang(nickserv_service.nick, sad->u, NICK_SENDAUTH_NORESOURCES);
                 else
-                    notice_lang(s_NickServ, sad->u, NICK_SENDAUTH_ERROR);
+                    notice_lang(nickserv_service.nick, sad->u, NICK_SENDAUTH_ERROR);
             }
             break;
           case IS_SETAUTH:
@@ -217,19 +216,19 @@ static void send_auth_callback(int status, void *data)
                 /* No message */
                 break;
               case MAIL_STATUS_REFUSED:
-                notice_lang(s_NickServ, sad->u, NICK_SETAUTH_SEND_REFUSED,
+                notice_lang(nickserv_service.nick, sad->u, NICK_SETAUTH_SEND_REFUSED,
                             sad->email);
                 break;
               case MAIL_STATUS_TIMEOUT:
-                notice_lang(s_NickServ, sad->u, NICK_SETAUTH_SEND_REFUSED,
+                notice_lang(nickserv_service.nick, sad->u, NICK_SETAUTH_SEND_REFUSED,
                             sad->email);
                 break;
               case MAIL_STATUS_NORSRC:
-                notice_lang(s_NickServ, sad->u, NICK_SETAUTH_SEND_NORESOURCES,
+                notice_lang(nickserv_service.nick, sad->u, NICK_SETAUTH_SEND_NORESOURCES,
                             sad->email);
                 break;
               default:
-                notice_lang(s_NickServ, sad->u, NICK_SETAUTH_SEND_ERROR,
+                notice_lang(nickserv_service.nick, sad->u, NICK_SETAUTH_SEND_ERROR,
                             sad->email);
                 break;
             }
@@ -270,21 +269,21 @@ static void do_auth(User *u)
     NickGroupInfo *ngi;
 
     if (!s || !*s) {
-        syntax_error(s_NickServ, u, "AUTH", NICK_AUTH_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "AUTH", NICK_AUTH_SYNTAX);
     } else if (readonly) {
-        notice_lang(s_NickServ, u, NICK_AUTH_DISABLED);
+        notice_lang(nickserv_service.nick, u, NICK_AUTH_DISABLED);
     } else if (!(ni = u->ni)) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, u->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, u->nick);
     } else if (!(ngi = u->ngi) || ngi == NICKGROUPINFO_INVALID) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (!ngi->authcode) {
-        notice_lang(s_NickServ, u, NICK_AUTH_NOT_NEEDED);
+        notice_lang(nickserv_service.nick, u, NICK_AUTH_NOT_NEEDED);
     } else if (!ngi->email) {
         module_log("BUG: do_auth() for %s[%u]: authcode set but no email!",
                    ni->nick, ngi->id);
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else {
         int32 code;
         const char *what = "(unknown)";
@@ -294,12 +293,12 @@ static void do_auth(User *u)
         if (code != ngi->authcode) {
             char buf[BUFSIZE];
             snprintf(buf, sizeof(buf), "AUTH for %s", ni->nick);
-            notice_lang(s_NickServ, u, NICK_AUTH_FAILED);
+            notice_lang(nickserv_service.nick, u, NICK_AUTH_FAILED);
             if (bad_password(NULL, u, buf) == 1)
-                notice_lang(s_NickServ, u, PASSWORD_WARNING_FOR_AUTH);
+                notice_lang(nickserv_service.nick, u, PASSWORD_WARNING_FOR_AUTH);
             ngi->bad_auths++;
             if (BadPassWarning && ngi->bad_auths >= BadPassWarning) {
-                wallops(s_NickServ, "\2Warning:\2 Repeated bad AUTH attempts"
+                wallops(nickserv_service.nick, "\2Warning:\2 Repeated bad AUTH attempts"
                         " for nick %s", ni->nick);
             }
             return;
@@ -308,15 +307,15 @@ static void do_auth(User *u)
         set_identified(u);
         switch (authreason) {
           case NICKAUTH_REGISTER:
-            notice_lang(s_NickServ, u, NICK_AUTH_SUCCEEDED_REGISTER);
+            notice_lang(nickserv_service.nick, u, NICK_AUTH_SUCCEEDED_REGISTER);
             what = "REGISTER";
             break;
           case NICKAUTH_SET_EMAIL:
-            notice_lang(s_NickServ, u, NICK_AUTH_SUCCEEDED_SET_EMAIL);
+            notice_lang(nickserv_service.nick, u, NICK_AUTH_SUCCEEDED_SET_EMAIL);
             what = "SET EMAIL";
             break;
           case NICKAUTH_REAUTH:
-            notice_lang(s_NickServ, u, NICK_AUTH_SUCCEEDED_REAUTH);
+            notice_lang(nickserv_service.nick, u, NICK_AUTH_SUCCEEDED_REAUTH);
             what = "REAUTH";
             break;
           case NICKAUTH_SETAUTH:
@@ -324,12 +323,12 @@ static void do_auth(User *u)
             /* fall through */
           default:
             /* "you may now continue using your nick", good for a default */
-            notice_lang(s_NickServ, u, NICK_AUTH_SUCCEEDED_SETAUTH);
+            notice_lang(nickserv_service.nick, u, NICK_AUTH_SUCCEEDED_SETAUTH);
             break;
         }
         module_log("%s@%s authenticated %s for %s", u->username, u->host,
                    what, ni->nick);
-        call_callback_4(cb_authed, u, ni, ngi, authreason);
+        event_emit(authed_event, u, ni, ngi, authreason);
     }
 }
 
@@ -347,29 +346,29 @@ static void do_sendauth(User *u)
     time_t now = time(NULL);
 
     if (s) {
-        syntax_error(s_NickServ, u, "SENDAUTH", NICK_SENDAUTH_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SENDAUTH", NICK_SENDAUTH_SYNTAX);
     } else if (!(ni = u->ni)) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, u->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, u->nick);
     } else if (!(ngi = u->ngi) || ngi == NICKGROUPINFO_INVALID) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (!ngi->authcode) {
-        notice_lang(s_NickServ, u, NICK_AUTH_NOT_NEEDED);
+        notice_lang(nickserv_service.nick, u, NICK_AUTH_NOT_NEEDED);
     } else if (ngi->last_sendauth
                && now - ngi->last_sendauth < NSSendauthDelay) {
-        notice_lang(s_NickServ, u, NICK_SENDAUTH_TOO_SOON,
+        notice_lang(nickserv_service.nick, u, NICK_SENDAUTH_TOO_SOON,
                     maketime(ngi,NSSendauthDelay-(now-ngi->last_sendauth),0));
     } else if (!ngi->email) {
         module_log("BUG: do_sendauth() for %s[%u]: authcode set but no email!",
                    ni->nick, ngi->id);
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else {
-        notice_lang(s_NickServ, u, NICK_AUTH_SENDING, ngi->email);
+        notice_lang(nickserv_service.nick, u, NICK_AUTH_SENDING, ngi->email);
         if (!send_auth(u, ngi, ni->nick, IS_SENDAUTH)) {
             module_log("Valid SENDAUTH by %s!%s@%s failed",
                        u->nick, u->username, u->host);
-            notice_lang(s_NickServ, u, NICK_SENDAUTH_ERROR);
+            notice_lang(nickserv_service.nick, u, NICK_SENDAUTH_ERROR);
         } else {
             ngi->last_sendauth = time(NULL);
         }
@@ -386,23 +385,23 @@ static void do_reauth(User *u)
     NickGroupInfo *ngi;
 
     if (strtok_remaining()) {
-        syntax_error(s_NickServ, u, "REAUTH", NICK_REAUTH_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "REAUTH", NICK_REAUTH_SYNTAX);
     } else if (!(ni = u->ni)) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, u->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, u->nick);
     } else if (!(ngi = u->ngi) || ngi == NICKGROUPINFO_INVALID) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (ngi->authcode) {
-        notice_lang(s_NickServ, u, NICK_REAUTH_HAVE_AUTHCODE);
+        notice_lang(nickserv_service.nick, u, NICK_REAUTH_HAVE_AUTHCODE);
     } else if (!ngi->email) {
-        notice_lang(s_NickServ, u, NICK_REAUTH_NO_EMAIL);
+        notice_lang(nickserv_service.nick, u, NICK_REAUTH_NO_EMAIL);
     } else {
         make_auth(ngi, NICKAUTH_REAUTH);
-        notice_lang(s_NickServ, u, NICK_REAUTH_AUTHCODE_SET);
+        notice_lang(nickserv_service.nick, u, NICK_REAUTH_AUTHCODE_SET);
         if (!send_auth(u, ngi, ni->nick, IS_REAUTH)) {
             module_log("send_auth() failed for REAUTH by %s", u->nick);
-            notice_lang(s_NickServ, u, NICK_SENDAUTH_ERROR);
+            notice_lang(nickserv_service.nick, u, NICK_SENDAUTH_ERROR);
         }
         ngi->last_sendauth = 0;
     }
@@ -419,16 +418,16 @@ static void do_restoremail(User *u)
     NickGroupInfo *ngi;
 
     if (!password) {
-        syntax_error(s_NickServ, u, "RESTOREMAIL", NICK_RESTOREMAIL_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "RESTOREMAIL", NICK_RESTOREMAIL_SYNTAX);
     } else if (!(ni = u->ni)) {
-        notice_lang(s_NickServ, u, NICK_NOT_REGISTERED);
+        notice_lang(nickserv_service.nick, u, NICK_NOT_REGISTERED);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, u->nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, u->nick);
     } else if (!(ngi = u->ngi) || ngi == NICKGROUPINFO_INVALID) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (!ngi->last_email || !ngi->authcode
                || ngi->authreason != NICKAUTH_SET_EMAIL) {
-        notice_lang(s_NickServ, u, NICK_RESTOREMAIL_NOT_NOW);
+        notice_lang(nickserv_service.nick, u, NICK_RESTOREMAIL_NOT_NOW);
     } else if (!nick_check_password(u, u->ni, password, "IDENTIFY",
                                     INTERNAL_ERROR)) {
         /* Nothing, error message has already been sent */
@@ -439,7 +438,7 @@ static void do_restoremail(User *u)
         ngi->last_email = NULL;
         clear_auth(ngi);
         set_identified(u);
-        notice_lang(s_NickServ, u, NICK_RESTOREMAIL_DONE, ngi->email);
+        notice_lang(nickserv_service.nick, u, NICK_RESTOREMAIL_DONE, ngi->email);
     }
 }
 
@@ -454,17 +453,17 @@ static void do_setauth(User *u)
     NickGroupInfo *ngi = NULL;
 
     if (!nick) {
-        syntax_error(s_NickServ, u, "SETAUTH", NICK_SETAUTH_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "SETAUTH", NICK_SETAUTH_SYNTAX);
     } else if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (ngi->authcode && ngi->authreason != NICKAUTH_REAUTH) {
-        notice_lang(s_NickServ, u, NICK_AUTH_HAS_AUTHCODE, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_AUTH_HAS_AUTHCODE, ni->nick);
     } else if (!ngi->email) {
-        notice_lang(s_NickServ, u, NICK_SETAUTH_NO_EMAIL, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_SETAUTH_NO_EMAIL, ni->nick);
     } else {
         int i;
         if (ngi->authcode) {
@@ -473,12 +472,12 @@ static void do_setauth(User *u)
         } else {
             make_auth(ngi, NICKAUTH_SETAUTH);
         }
-        notice_lang(s_NickServ, u, NICK_SETAUTH_AUTHCODE_SET,
+        notice_lang(nickserv_service.nick, u, NICK_SETAUTH_AUTHCODE_SET,
                     ngi->authcode, ni->nick);
         if (!send_auth(u, ngi, ni->nick, IS_SETAUTH)) {
             module_log("send_auth() failed for SETAUTH on %s by %s",
                        nick, u->nick);
-            notice_lang(s_NickServ, u, NICK_SETAUTH_SEND_ERROR, ngi->email);
+            notice_lang(nickserv_service.nick, u, NICK_SETAUTH_SEND_ERROR, ngi->email);
         }
         ngi->last_sendauth = 0;
         ARRAY_FOREACH (i, ngi->nicks) {
@@ -487,8 +486,8 @@ static void do_setauth(User *u)
                 continue;
             ni2->authstat &= ~NA_IDENTIFIED;
             if (ni2->user) {
-                notice_lang(s_NickServ, ni2->user, NICK_SETAUTH_USER_NOTICE,
-                            ngi->email, s_NickServ);
+                notice_lang(nickserv_service.nick, ni2->user, NICK_SETAUTH_USER_NOTICE,
+                            ngi->email, nickserv_service.nick);
             }
             put_nickinfo(ni2);
         }
@@ -508,21 +507,21 @@ static void do_getauth(User *u)
     NickGroupInfo *ngi = NULL;
 
     if (!nick) {
-        syntax_error(s_NickServ, u, "GETAUTH", NICK_GETAUTH_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "GETAUTH", NICK_GETAUTH_SYNTAX);
     } else if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (!ngi->authcode) {
-        notice_lang(s_NickServ, u, NICK_AUTH_NO_AUTHCODE, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_AUTH_NO_AUTHCODE, ni->nick);
     } else {
         if (WallAdminPrivs) {
-            wallops(s_NickServ, "\2%s\2 used GETAUTH on \2%s\2",
+            wallops(nickserv_service.nick, "\2%s\2 used GETAUTH on \2%s\2",
                     u->nick, nick);
         }
-        notice_lang(s_NickServ, u, NICK_GETAUTH_AUTHCODE_IS,
+        notice_lang(nickserv_service.nick, u, NICK_GETAUTH_AUTHCODE_IS,
                     ni->nick, ngi->authcode);
     }
     put_nickinfo(ni);
@@ -540,24 +539,24 @@ static void do_clearauth(User *u)
     NickGroupInfo *ngi = NULL;
 
     if (!nick) {
-        syntax_error(s_NickServ, u, "CLEARAUTH", NICK_CLEARAUTH_SYNTAX);
+        syntax_error(nickserv_service.nick, u, "CLEARAUTH", NICK_CLEARAUTH_SYNTAX);
     } else if (!(ni = get_nickinfo(nick))) {
-        notice_lang(s_NickServ, u, NICK_X_NOT_REGISTERED, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_NOT_REGISTERED, nick);
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, nick);
+        notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, nick);
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_NickServ, u, INTERNAL_ERROR);
+        notice_lang(nickserv_service.nick, u, INTERNAL_ERROR);
     } else if (!ngi->authcode) {
-        notice_lang(s_NickServ, u, NICK_AUTH_NO_AUTHCODE, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_AUTH_NO_AUTHCODE, ni->nick);
     } else {
         if (WallAdminPrivs) {
-            wallops(s_NickServ, "\2%s\2 used CLEARAUTH on \2%s\2",
+            wallops(nickserv_service.nick, "\2%s\2 used CLEARAUTH on \2%s\2",
                     u->nick, nick);
         }
         clear_auth(ngi);
-        notice_lang(s_NickServ, u, NICK_CLEARAUTH_CLEARED, ni->nick);
+        notice_lang(nickserv_service.nick, u, NICK_CLEARAUTH_CLEARED, ni->nick);
         if (readonly)
-            notice_lang(s_NickServ, u, READ_ONLY_MODE);
+            notice_lang(nickserv_service.nick, u, READ_ONLY_MODE);
     }
     put_nickinfo(ni);
     put_nickgroupinfo(ngi);
@@ -567,7 +566,7 @@ static void do_clearauth(User *u)
 /*************************** Callback routines ***************************/
 /*************************************************************************/
 
-/* Nick-registration callback: clear IDENTIFIED flag, set nick flags
+/* Nick-registration handler: clear IDENTIFIED flag, set nick flags
  * appropriately (no kill, secure), send authcode mail.
  */
 
@@ -578,21 +577,21 @@ static int do_registered(User *u, NickInfo *ni, NickGroupInfo *ngi,
     ngi->last_sendauth = 0;
     make_auth(ngi, NICKAUTH_REGISTER);
     if (!*replied) {
-        notice_lang(s_NickServ, u, NICK_REGISTERED, u->nick);
+        notice_lang(nickserv_service.nick, u, NICK_REGISTERED, u->nick);
         *replied = 1;
     }
-    notice_lang(s_NickServ, u, NICK_AUTH_SENDING, ngi->email);
-    notice_lang(s_NickServ, u, NICK_AUTH_FOR_REGISTER, s_NickServ);
+    notice_lang(nickserv_service.nick, u, NICK_AUTH_SENDING, ngi->email);
+    notice_lang(nickserv_service.nick, u, NICK_AUTH_FOR_REGISTER, nickserv_service.nick);
     if (!send_auth(u, ngi, ni->nick, IS_REGISTRATION)) {
         module_log("send_auth() failed for registration (%s)", u->nick);
-        notice_lang(s_NickServ, u, NICK_SENDAUTH_ERROR);
+        notice_lang(nickserv_service.nick, u, NICK_SENDAUTH_ERROR);
     }
     return 0;
 }
 
 /*************************************************************************/
 
-/* SET EMAIL callback: clear IDENTIFIED flag, send authcode mail. */
+/* SET EMAIL handler: clear IDENTIFIED flag, send authcode mail. */
 
 static int do_set_email(User *u, NickGroupInfo *ngi, const char *last_email)
 {
@@ -604,11 +603,11 @@ static int do_set_email(User *u, NickGroupInfo *ngi, const char *last_email)
             ngi->last_email = sstrdup(last_email);
         ngi->last_sendauth = 0;
         make_auth(ngi, NICKAUTH_SET_EMAIL);
-        notice_lang(s_NickServ, u, NICK_AUTH_SENDING, ngi->email);
-        notice_lang(s_NickServ, u, NICK_AUTH_FOR_SET_EMAIL, s_NickServ);
+        notice_lang(nickserv_service.nick, u, NICK_AUTH_SENDING, ngi->email);
+        notice_lang(nickserv_service.nick, u, NICK_AUTH_FOR_SET_EMAIL, nickserv_service.nick);
         if (!send_auth(u, ngi, u->nick, IS_EMAIL_CHANGE)) {
             module_log("send_auth() failed for E-mail change (%s)", u->nick);
-            notice_lang(s_NickServ, u, NICK_SENDAUTH_ERROR);
+            notice_lang(nickserv_service.nick, u, NICK_SENDAUTH_ERROR);
         }
     }
     return 0;
@@ -622,8 +621,8 @@ static int do_set_email(User *u, NickGroupInfo *ngi, const char *last_email)
 static int do_identify_check(const User *u, const char *pass)
 {
     if (u->ngi && u->ngi != NICKGROUPINFO_INVALID && ngi_unauthed(u->ngi)) {
-        notice_lang(s_NickServ, u, NICK_PLEASE_AUTH, u->ngi->email);
-        notice_lang(s_NickServ, u, MORE_INFO, s_NickServ, "AUTH");
+        notice_lang(nickserv_service.nick, u, NICK_PLEASE_AUTH, u->ngi->email);
+        notice_lang(nickserv_service.nick, u, MORE_INFO, nickserv_service.nick, "AUTH");
         return 1;
     }
     return 0;
@@ -631,7 +630,7 @@ static int do_identify_check(const User *u, const char *pass)
 
 /*************************************************************************/
 
-/* Expiration check callback. */
+/* Expiration check handler. */
 
 static int do_check_expire(NickInfo *ni, NickGroupInfo *ngi)
 {
@@ -702,7 +701,7 @@ static void noauth_check(Timeout *t_unused)
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective mail_auth_config[] = {
     { "NSNoAuthExpire",   { { CD_TIME, 0, &NSNoAuthExpire } } },
     { "NSSendauthDelay",  { { CD_TIME, 0, &NSSendauthDelay } } },
     { NULL }
@@ -715,21 +714,9 @@ static int old_OPER_HELP_LIST = -1;
 
 /*************************************************************************/
 
-int init_module(void)
+static int mail_auth_init(Module *module)
 {
-    module_nickserv = find_module("nickserv/main");
-    if (!module_nickserv) {
-        module_log("Main NickServ module not loaded");
-        return 0;
-    }
-    use_module(module_nickserv);
-
-    module_mail = find_module("mail/main");
-    if (!module_mail) {
-        module_log("Mail module not loaded");
-        return 0;
-    }
-    use_module(module_mail);
+    module_nickserv = module_find("nickserv/main");
 
     if (!NSRequireEmail) {
         module_log("NSRequireEmail must be set to use nickname"
@@ -739,25 +726,22 @@ int init_module(void)
 
     if (!register_commands(module_nickserv, commands)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
 
-    cb_authed = register_callback("authed");
-    if (cb_authed < 0) {
-        module_log("Unable to register callback");
-        exit_module(0);
+    authed_event = event_declare(module, MAIL_AUTH_EVENT_AUTHED);
+    if (!authed_event) {
+        module_log("Unable to declare events");
         return 0;
     }
 
-    if (!add_callback(NULL, "user delete", sendauth_userdel)
-     || !add_callback(module_nickserv, "registered", do_registered)
-     || !add_callback(module_nickserv, "SET EMAIL", do_set_email)
-     || !add_callback(module_nickserv, "IDENTIFY check", do_identify_check)
-     || !add_callback(module_nickserv, "check_expire", do_check_expire)
+    if (!event_attach(module, EVENT_USER_DELETE, sendauth_userdel)
+     || !event_attach(module, NICKSERV_EVENT_REGISTERED, do_registered)
+     || !event_attach(module, NICKSERV_EVENT_SET_EMAIL, do_set_email)
+     || !event_attach(module, NICKSERV_EVENT_IDENTIFY_CHECK, do_identify_check)
+     || !event_attach(module, NICKSERV_EVENT_CHECK_EXPIRE, do_check_expire)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
@@ -775,7 +759,7 @@ int init_module(void)
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int mail_auth_fini(Module *module, int shutdown)
 {
     if (noauth_timeout) {
         del_timeout(noauth_timeout);
@@ -794,26 +778,24 @@ int exit_module(int shutdown_unused)
         old_LIST_OPER_SYNTAX = -1;
     }
 
-    if (module_mail) {
-        unuse_module(module_mail);
-        module_mail = NULL;
-    }
     if (module_nickserv) {
-        remove_callback(module_nickserv, "check_expire", do_check_expire);
-        remove_callback(module_nickserv, "IDENTIFY check", do_identify_check);
-        remove_callback(module_nickserv, "SET EMAIL", do_set_email);
-        remove_callback(module_nickserv, "registered", do_registered);
         unregister_commands(module_nickserv, commands);
-        unuse_module(module_nickserv);
         module_nickserv = NULL;
     }
 
-    remove_callback(NULL, "user delete", sendauth_userdel);
-
-    unregister_callback(cb_authed);
-
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "NickServ AUTH: verify the address of a nick by mail",
+    .requires = MODULE_REQUIRES("nickserv/main", "mail/main"),
+    .config = mail_auth_config,
+    .init = mail_auth_init,
+    .fini = mail_auth_fini,
+};
 
 /*************************************************************************/
 

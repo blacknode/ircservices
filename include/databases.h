@@ -99,7 +99,7 @@ extern void unregister_dbtable(DBTable* table);
 
 /* Save all registered database tables.  The tables are snapshotted now and
  * written to the database in the background, every one that changed in one
- * transaction; the "save data complete" callback is called with 1 or 0
+ * transaction; the "core.save_complete" event is emitted with 1 or 0
  * when the save is over (possibly before this returns).  A save requested
  * while one is running is done when that one ends.  Returns 1 if the save
  * was started or queued, 0 if it could not be. */

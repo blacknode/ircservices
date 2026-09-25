@@ -14,6 +14,7 @@
 #include "databases.h"
 #include "language.h"
 
+#include "modules/nickserv/nickserv.h"
 #include "modules/operserv/operserv.h"
 #define NEED_MAKE_REASON
 #include "modules/operserv/maskdata.h"
@@ -21,15 +22,13 @@
 
 /*************************************************************************/
 
-static Module *module_operserv;
-static Module *module_nickserv;
 
-static int cb_send_sgline   = -1;
-static int cb_send_sqline   = -1;
-static int cb_send_szline   = -1;
-static int cb_cancel_sgline = -1;
-static int cb_cancel_sqline = -1;
-static int cb_cancel_szline = -1;
+static Event* send_sgline_event;
+static Event* send_sqline_event;
+static Event* send_szline_event;
+static Event* cancel_sgline_event;
+static Event* cancel_sqline_event;
+static Event* cancel_szline_event;
 
 static char * SGlineReason;
 static char * SQlineReason;
@@ -70,23 +69,23 @@ static Command cmds[] = {
 
 static void send_sline(uint8 type, const MaskData *sline)
 {
-    int cb;
+    Event *event;
     const char *reason;
 
     if (type == MD_SGLINE) {
-        cb = cb_send_sgline;
+        event = send_sgline_event;
         reason = SGlineReason;
     } else if (type == MD_SQLINE && !SQlineKill) {
-        cb = cb_send_sqline;
+        event = send_sqline_event;
         reason = SQlineReason;
     } else if (type == MD_SZLINE) {
-        cb = cb_send_szline;
+        event = send_szline_event;
         reason = SZlineReason;
     } else {
         return;
     }
-    call_callback_4(cb, sline->mask, sline->expires, sline->who,
-                    make_reason(reason, sline));
+    event_emit(event, sline->mask, sline->expires, sline->who,
+               make_reason(reason, sline));
 }
 
 /*************************************************************************/
@@ -95,18 +94,18 @@ static void send_sline(uint8 type, const MaskData *sline)
 
 static void cancel_sline(uint8 type, char *mask)
 {
-    int cb;
+    Event *event;
 
     if (type == MD_SGLINE) {
-        cb = cb_cancel_sgline;
+        event = cancel_sgline_event;
     } else if (type == MD_SQLINE) {
-        cb = cb_cancel_sqline;
+        event = cancel_sqline_event;
     } else if (type == MD_SZLINE) {
-        cb = cb_cancel_szline;
+        event = cancel_szline_event;
     } else {
         return;
     }
-    call_callback_1(cb, mask);
+    event_emit(event, mask);
 }
 
 /*************************************************************************/
@@ -173,7 +172,7 @@ static int do_user_check(int ac, char **av)
     if (ip) {
         sline = get_matching_maskdata(MD_SZLINE, ip);
         if (sline) {
-            send_cmd(s_OperServ, "KILL %s :%s (%s)", nick, s_OperServ,
+            send_cmd(operserv_service.nick, "KILL %s :%s (%s)", nick, operserv_service.nick,
                      make_reason(SZlineReason, sline));
             send_sline(MD_SZLINE, sline);
             time(&sline->lastused);
@@ -184,7 +183,7 @@ static int do_user_check(int ac, char **av)
         if (!no_szline) {
             if (protocol_features & PF_SZLINE) {
                 if (!ImmediatelySendSline) {
-                    wallops(s_OperServ,
+                    wallops(operserv_service.nick,
                             "\2WARNING\2: Client IP addresses are not"
                             " available with this IRC server; SZLINEs"
                             " cannot be used unless ImmediatelySendSline"
@@ -194,7 +193,7 @@ static int do_user_check(int ac, char **av)
                     no_szline = 1;
                 }
             } else {
-                wallops(s_OperServ,
+                wallops(operserv_service.nick,
                         "\2WARNING:\2 Client IP addresses are not available"
                         " with this IRC server; SZLINEs cannot be used.");
                 no_szline = -1;
@@ -208,7 +207,7 @@ static int do_user_check(int ac, char **av)
     if (sline) {
         /* Don't use kill_user(); that's for people who have already signed
          * on.  This is called before the User structure is created. */
-        send_cmd(s_OperServ, "KILL %s :%s (%s)", nick, s_OperServ,
+        send_cmd(operserv_service.nick, "KILL %s :%s (%s)", nick, operserv_service.nick,
                  make_reason(SGlineReason, sline));
         send_sline(MD_SGLINE, sline);
         time(&sline->lastused);
@@ -219,7 +218,7 @@ static int do_user_check(int ac, char **av)
 
     reason = check_sqline(nick, new_oper);
     if (reason) {
-        send_cmd(s_OperServ, "KILL %s :%s (%s)", nick, s_OperServ, reason);
+        send_cmd(operserv_service.nick, "KILL %s :%s (%s)", nick, operserv_service.nick, reason);
         return 1;
     }
 
@@ -237,7 +236,7 @@ static int do_user_nickchange_after(User *u, const char *oldnick)
 {
     char *reason = check_sqline(u->nick, 0);
     if (reason) {
-        kill_user(s_OperServ, u->nick, reason);
+        kill_user(operserv_service.nick, u->nick, reason);
         return 1;
     }
     return 0;
@@ -245,7 +244,7 @@ static int do_user_nickchange_after(User *u, const char *oldnick)
 
 /*************************************************************************/
 
-/* Callback for NickServ REGISTER/LINK check; we disallow
+/* Handler for NickServ REGISTER/LINK check; we disallow
  * registration/linking of SQlined nicknames.
  */
 
@@ -266,7 +265,6 @@ static int do_reglink_check(const User *u, const char *nick,
  * is converted to lowercase on return.
  */
 
-EXPORT_FUNC(create_sline)
 void create_sline(uint8 type, char *mask, const char *reason,
                   const char *who, time_t expiry)
 {
@@ -297,7 +295,7 @@ static void do_sgline(User *u) { do_sline(MD_SGLINE, u); }
 static void do_sqline(User *u) { do_sline(MD_SQLINE, u); }
 static void do_szline(User *u) {
     if (no_szline < 0)
-        notice_lang(s_OperServ, u, OPER_SZLINE_NOT_AVAIL);
+        notice_lang(operserv_service.nick, u, OPER_SZLINE_NOT_AVAIL);
     else
         do_sline(MD_SZLINE, u);
 }
@@ -354,7 +352,7 @@ static void do_sline(uint8 type, User *u)
         break;
       default:
         module_log("do_sline(): bad type value (%u)", type);
-        notice_lang(s_OperServ, u, INTERNAL_ERROR);
+        notice_lang(operserv_service.nick, u, INTERNAL_ERROR);
         return;
     }
     do_maskdata_cmd(&sline_cmd_info, u);
@@ -373,7 +371,7 @@ static int check_add_sline(const User *u, uint8 type, char *mask,
     ) {
         char cmdname[7];
         snprintf(cmdname, sizeof(cmdname), "S%cLINE", (char)type);
-        notice_lang(s_OperServ, u, OPER_SLINE_MASK_TOO_GENERAL, cmdname);
+        notice_lang(operserv_service.nick, u, OPER_SLINE_MASK_TOO_GENERAL, cmdname);
         return 0;
     }
 
@@ -387,7 +385,7 @@ static void do_add_sline(const User *u, uint8 type, MaskData *md)
     if (WallOSSline) {
         char buf[128];
         expires_in_lang(buf, sizeof(buf), NULL, md->expires);
-        wallops(s_OperServ, "%s added an S%cLINE for \2%s\2 (%s)",
+        wallops(operserv_service.nick, "%s added an S%cLINE for \2%s\2 (%s)",
                 u->nick, type, md->mask, buf);
     }
     if (ImmediatelySendSline)
@@ -426,7 +424,7 @@ static int do_connect(void)
 
 /*************************************************************************/
 
-/* Callback for S-line expiration. */
+/* Handler for S-line expiration. */
 
 static int do_expire_maskdata(uint32 type, MaskData *md)
 {
@@ -434,7 +432,7 @@ static int do_expire_maskdata(uint32 type, MaskData *md)
     for (i = 0; i < lenof(sline_types); i++) {
         if (type == sline_types[i]) {
             if (WallSlineExpire)
-                wallops(s_OperServ, "S%cLINE on %s has expired",
+                wallops(operserv_service.nick, "S%cLINE on %s has expired",
                         sline_types[i], md->mask);
             cancel_sline((uint8)type, md->mask);
         }
@@ -444,20 +442,20 @@ static int do_expire_maskdata(uint32 type, MaskData *md)
 
 /*************************************************************************/
 
-/* OperServ HELP callback, to handle HELP SQLINE (complex). */
+/* OperServ HELP handler, to handle HELP SQLINE (complex). */
 
 static int do_help(User *u, char *param)
 {
     /* param should always be non-NULL here, but let's be paranoid */
     if (param && stricmp(param,"SQLINE") == 0) {
-        notice_help(s_OperServ, u, OPER_HELP_SQLINE);
+        notice_help(operserv_service.nick, u, OPER_HELP_SQLINE);
         if (SQlineKill)
-            notice_help(s_OperServ, u, OPER_HELP_SQLINE_KILL);
+            notice_help(operserv_service.nick, u, OPER_HELP_SQLINE_KILL);
         else
-            notice_help(s_OperServ, u, OPER_HELP_SQLINE_NOKILL);
+            notice_help(operserv_service.nick, u, OPER_HELP_SQLINE_NOKILL);
         if (SQlineIgnoreOpers)
-            notice_help(s_OperServ, u, OPER_HELP_SQLINE_IGNOREOPERS);
-        notice_help(s_OperServ, u, OPER_HELP_SQLINE_END);
+            notice_help(operserv_service.nick, u, OPER_HELP_SQLINE_IGNOREOPERS);
+        notice_help(operserv_service.nick, u, OPER_HELP_SQLINE_END);
         return 1;
     }
     return 0;
@@ -465,7 +463,7 @@ static int do_help(User *u, char *param)
 
 /*************************************************************************/
 
-static int do_stats_all(User *user, const char *s_OperServ)
+static int do_stats_all(User *user, const char *operserv_nick)
 {
     int32 count, mem;
     MaskData *md;
@@ -479,7 +477,7 @@ static int do_stats_all(User *user, const char *s_OperServ)
         if (md->reason)
             mem += strlen(md->reason)+1;
     }
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_SGLINE_MEM,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_SGLINE_MEM,
                 count, (mem+512) / 1024);
 
     count = mem = 0;
@@ -491,7 +489,7 @@ static int do_stats_all(User *user, const char *s_OperServ)
         if (md->reason)
             mem += strlen(md->reason)+1;
     }
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_SQLINE_MEM,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_SQLINE_MEM,
                 count, (mem+512) / 1024);
 
     count = mem = 0;
@@ -503,7 +501,7 @@ static int do_stats_all(User *user, const char *s_OperServ)
         if (md->reason)
             mem += strlen(md->reason)+1;
     }
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_SZLINE_MEM,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_SZLINE_MEM,
                 count, (mem+512) / 1024);
 
     return 0;
@@ -566,7 +564,7 @@ static DBTable szline_dbtable = {
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective sline_config[] = {
     { "ImmediatelySendSline",{{CD_SET, 0, &ImmediatelySendSline } } },
     { "SGlineExpiry",     { { CD_TIME, 0, &SGlineExpiry } } },
     { "SGlineReason",     { { CD_STRING, CF_DIRREQ, &SGlineReason } } },
@@ -583,69 +581,41 @@ ConfigDirective module_config[] = {
 
 /*************************************************************************/
 
-static int do_load_module(Module *mod, const char *modname)
+/* SGLINE, SQLINE and SZLINE go into OperServ's command list. */
+
+static int sline_init(Module *module)
 {
-    if (strcmp(modname, "nickserv/main") == 0) {
-        module_nickserv = mod;
-        if (!add_callback(mod, "REGISTER/LINK check", do_reglink_check))
-            module_log("Unable to register NickServ REGISTER/LINK check"
-                       " callback");
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-static int do_unload_module(Module *mod)
-{
-    if (mod == module_nickserv) {
-        module_nickserv = NULL;
-    }
-    return 0;
-}
-
-/*************************************************************************/
-
-int init_module(void)
-{
-    module_operserv = find_module("operserv/main");
-    if (!module_operserv) {
-        module_log("Main OperServ module not loaded");
-        return 0;
-    }
-    use_module(module_operserv);
-
-    if (!register_commands(module_operserv, cmds)) {
+    if (!register_commands(module_find("operserv/main"), cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
 
-    cb_send_sgline   = register_callback("send_sgline");
-    cb_send_sqline   = register_callback("send_sqline");
-    cb_send_szline   = register_callback("send_szline");
-    cb_cancel_sgline = register_callback("cancel_sgline");
-    cb_cancel_sqline = register_callback("cancel_sqline");
-    cb_cancel_szline = register_callback("cancel_szline");
-    if (cb_send_sgline < 0 || cb_send_sqline < 0 || cb_send_szline < 0
-     || cb_cancel_sgline < 0 || cb_cancel_sqline < 0 || cb_cancel_szline < 0
+    send_sgline_event = event_declare(module, SLINE_EVENT_SEND_SGLINE);
+    send_sqline_event = event_declare(module, SLINE_EVENT_SEND_SQLINE);
+    send_szline_event = event_declare(module, SLINE_EVENT_SEND_SZLINE);
+    cancel_sgline_event = event_declare(module, SLINE_EVENT_CANCEL_SGLINE);
+    cancel_sqline_event = event_declare(module, SLINE_EVENT_CANCEL_SQLINE);
+    cancel_szline_event = event_declare(module, SLINE_EVENT_CANCEL_SZLINE);
+    if (!send_sgline_event || !send_sqline_event || !send_szline_event
+     || !cancel_sgline_event || !cancel_sqline_event || !cancel_szline_event
     ) {
-        module_log("Unable to register callbacks");
-        exit_module(0);
+        module_log("Unable to declare events");
         return 0;
     }
 
-    if (!add_callback(NULL, "load module", do_load_module)
-     || !add_callback(NULL, "unload module", do_unload_module)
-     || !add_callback(NULL, "connect", do_connect)
-     || !add_callback(NULL, "user check", do_user_check)
-     || !add_callback(NULL, "user nickchange (after)", do_user_nickchange_after)
-     || !add_callback(module_operserv, "expire maskdata", do_expire_maskdata)
-     || !add_callback(module_operserv, "HELP", do_help)
-     || !add_callback(module_operserv, "STATS ALL", do_stats_all)
+    /* The REGISTER check is NickServ's, which may be loaded later (or not
+     * at all): the handler waits for it (see events.h). */
+    if (!event_attach(module, EVENT_UPLINK_LINKED, do_connect)
+     || !event_attach(module, EVENT_USER_CHECK, do_user_check)
+     || !event_attach(module, EVENT_USER_NICK_CHANGE_AFTER,
+                      do_user_nickchange_after)
+     || !event_attach(module, OPERSERV_EVENT_EXPIRE_MASKDATA,
+                      do_expire_maskdata)
+     || !event_attach(module, OPERSERV_EVENT_HELP, do_help)
+     || !event_attach(module, OPERSERV_EVENT_STATS_ALL, do_stats_all)
+     || !event_attach(module, NICKSERV_EVENT_REGISTER_CHECK, do_reglink_check)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
@@ -654,7 +624,6 @@ int init_module(void)
      || !register_dbtable(&szline_dbtable)
     ) {
         module_log("Unable to register database tables");
-        exit_module(0);
         return 0;
     }
 
@@ -663,40 +632,25 @@ int init_module(void)
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int sline_fini(Module *module, int shutdown)
 {
-
     unregister_dbtable(&szline_dbtable);
     unregister_dbtable(&sqline_dbtable);
     unregister_dbtable(&sgline_dbtable);
-
-    if (module_nickserv)
-        do_unload_module(module_nickserv);
-
-    remove_callback(NULL, "user nickchange (after)", do_user_nickchange_after);
-    remove_callback(NULL, "user check", do_user_check);
-    remove_callback(NULL, "connect", do_connect);
-    remove_callback(NULL, "unload module", do_unload_module);
-    remove_callback(NULL, "load module", do_load_module);
-
-    unregister_callback(cb_cancel_szline);
-    unregister_callback(cb_cancel_sqline);
-    unregister_callback(cb_cancel_sgline);
-    unregister_callback(cb_send_szline);
-    unregister_callback(cb_send_sqline);
-    unregister_callback(cb_send_sgline);
-
-    if (module_operserv) {
-        remove_callback(module_operserv, "STATS ALL", do_stats_all);
-        remove_callback(module_operserv, "HELP", do_help);
-        remove_callback(module_operserv,"expire maskdata",do_expire_maskdata);
-        unregister_commands(module_operserv, cmds);
-        unuse_module(module_operserv);
-        module_operserv = NULL;
-    }
-
+    unregister_commands(module_find("operserv/main"), cmds);
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "OperServ SGLINE, SQLINE and SZLINE",
+    .requires = MODULE_REQUIRES("operserv/main"),
+    .config = sline_config,
+    .init = sline_init,
+    .fini = sline_fini,
+};
 
 /*************************************************************************/
 

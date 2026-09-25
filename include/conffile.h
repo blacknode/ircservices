@@ -23,9 +23,9 @@
  * any module:
  *
  *   - Declare a table of ConfigDirective and let configure() copy the
- *     values into variables.  This is what a module's `module_config'
+ *     values into variables.  This is what a module's ModuleInfo.config
  *     table does: the loader binds it to the module's `module "<name>"'
- *     block(s) before init_module() runs, and again on REHASH.
+ *     block(s) before the module's `init' runs, and again on REHASH.
  *
  *   - Read the tree directly with the conf_*() functions below, e.g.
  *
@@ -34,8 +34,8 @@
  *
  * Block and entry names are case-insensitive; block labels (module
  * names) are case-sensitive.  Nodes belong to the tree and are freed when
- * the configuration is reloaded: do not keep pointers to them across the
- * "reconfigure" callback.
+ * the configuration is reloaded: do not keep pointers to them across a
+ * REHASH (ModuleInfo.rehash).
  */
 
 #ifndef CONFFILE_H
@@ -117,7 +117,7 @@ extern const ConfNode* conf_next_block(const ConfNode* block,
 extern const ConfNode* conf_module_block(const char* modulename);
 
 /* The calling module's own block (use from inside a module). */
-#define conf_this_module() conf_module_block(get_module_name(THIS_MODULE))
+#define conf_this_module() conf_module_block(module_name(THIS_MODULE))
 
 /* Last entry called `key' in `block' -- the one in effect when an entry is
  * repeated -- or NULL if there is none. */
@@ -161,10 +161,9 @@ extern int conf_parse_bool(const char* s);
  * CD_TIME and CD_SET take an int32 value pointer (including CD_TIMEMSEC).
  * Each value of an entry fills the next parameter of its directive:
  *
- *     { "NickServName", { { CD_STRING, CF_DIRREQ, &s_NickServ },
- *                         { CD_STRING, 0, &desc_NickServ } } },
+ *     { "NSRegDelay", { { CD_TIME, 0, &NSRegDelay } } },
  *
- * binds `NickServName = "NickServ", "Nickname Server";'.
+ * binds `NSRegDelay = 30s;'.
  */
 
 /* Information about a configuration parameter's value: */

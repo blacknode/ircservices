@@ -65,7 +65,6 @@ E int check_access_cumode(const User *user, const ChannelInfo *ci,
 E int access_add(ChannelInfo *ci, const char *nick, int level, int uacc);
 E int access_del(ChannelInfo *ci, const char *nick, int uacc);
 E int init_access(void);
-E void exit_access(void);
 
 
 /**** check.c ****/
@@ -104,19 +103,16 @@ E ChanOpt chanopts[];
 #define do_set do_set_cs
 #define do_unset do_unset_cs
 #define init_set init_set_cs
-#define exit_set exit_set_cs
 
 E void do_set(User *u);
 E void do_unset(User *u);
 E int init_set(void);
-E void exit_set(void);
 
 
 /**** util.c ****/
 
 /* Avoid conflicts with nickserv/util.c */
 #define init_util init_util_cs
-#define exit_util exit_util_cs
 
 E ChannelInfo *makechan(const char *chan);
 E int delchan(ChannelInfo *ci);

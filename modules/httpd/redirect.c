@@ -23,7 +23,6 @@
 
 /*************************************************************************/
 
-static Module *module_httpd;
 static Module *module_nickserv;
 static Module *module_chanserv;
 
@@ -230,7 +229,7 @@ static int route_chan(http_req_t id, const struct HttpRequest *req,
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective redirect_config[] = {
     { "NicknamePrefix",   { { CD_STRING, 0, &NicknamePrefix } } },
     { "ChannelPrefix",    { { CD_STRING, 0, &ChannelPrefix } } },
     { NULL }
@@ -269,27 +268,28 @@ static void claim_all(void)
     claim(&claimed_chan, ChannelPrefix, route_chan, "ChannelPrefix");
 }
 
-static int do_reconfigure(int after_configure)
+static void redirect_rehash(Module *module)
 {
-    if (after_configure)
-        claim_all();
-    return 0;
+    claim_all();
 }
 
 /*************************************************************************/
 
-static int do_load_module(Module *mod, const char *modname)
+/* NickServ and ChanServ are optional: their records are looked up
+ * through their symbols while they are loaded. */
+
+static int do_module_loaded(Module *mod, const char *modname)
 {
     if (strcmp(modname, "nickserv/main") == 0) {
-        p_get_nickinfo = get_module_symbol(mod, "get_nickinfo");
+        p_get_nickinfo = module_symbol(mod, "get_nickinfo");
         p_get_nickinfo_noexpire =
-            get_module_symbol(mod, "get_nickinfo_noexpire");
-        p_put_nickinfo = get_module_symbol(mod, "put_nickinfo");
-        p__get_ngi = get_module_symbol(mod, "_get_ngi");
-        p_put_nickgroupinfo = get_module_symbol(mod, "put_nickgroupinfo");
-        p_prefetch_nickinfo = get_module_symbol(mod, "prefetch_nickinfo");
+            module_symbol(mod, "get_nickinfo_noexpire");
+        p_put_nickinfo = module_symbol(mod, "put_nickinfo");
+        p__get_ngi = module_symbol(mod, "_get_ngi");
+        p_put_nickgroupinfo = module_symbol(mod, "put_nickgroupinfo");
+        p_prefetch_nickinfo = module_symbol(mod, "prefetch_nickinfo");
         p_prefetch_nickgroupinfo =
-            get_module_symbol(mod, "prefetch_nickgroupinfo");
+            module_symbol(mod, "prefetch_nickgroupinfo");
         if (p_get_nickinfo && p_get_nickinfo_noexpire && p_put_nickinfo
          && p__get_ngi && p_put_nickgroupinfo && p_prefetch_nickinfo
          && p_prefetch_nickgroupinfo
@@ -301,10 +301,10 @@ static int do_load_module(Module *mod, const char *modname)
             module_nickserv = NULL;
         }
     } else if (strcmp(modname, "chanserv/main") == 0) {
-        p_get_channelinfo = get_module_symbol(mod, "get_channelinfo");
-        p_put_channelinfo = get_module_symbol(mod, "put_channelinfo");
+        p_get_channelinfo = module_symbol(mod, "get_channelinfo");
+        p_put_channelinfo = module_symbol(mod, "put_channelinfo");
         p_prefetch_channelinfo =
-            get_module_symbol(mod, "prefetch_channelinfo");
+            module_symbol(mod, "prefetch_channelinfo");
         if (p_get_channelinfo && p_put_channelinfo
          && p_prefetch_channelinfo) {
             module_chanserv = mod;
@@ -320,7 +320,7 @@ static int do_load_module(Module *mod, const char *modname)
 
 /*************************************************************************/
 
-static int do_unload_module(Module *mod)
+static int do_module_unloaded(Module *mod)
 {
     /* Its fetches in flight are dropped with it (the store cancels them
      * by type); the requests they were for time out. */
@@ -333,33 +333,21 @@ static int do_unload_module(Module *mod)
 
 /*************************************************************************/
 
-int init_module(void)
+static int redirect_init(Module *module)
 {
-    Module *tmpmod;
+    Module *other;
 
-    module_httpd = find_module("httpd/main");
-    if (!module_httpd) {
-        module_log("Main httpd module not loaded");
-        exit_module(0);
-        return 0;
-    }
-    use_module(module_httpd);
-
-    if (!add_callback(NULL, "load module", do_load_module)
-     || !add_callback(NULL, "unload module", do_unload_module)
-     || !add_callback(NULL, "reconfigure", do_reconfigure)
+    if (!event_attach(module, EVENT_MODULE_LOADED, do_module_loaded)
+     || !event_attach(module, EVENT_MODULE_UNLOADED, do_module_unloaded)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
-    tmpmod = find_module("nickserv/main");
-    if (tmpmod)
-        do_load_module(tmpmod, "nickserv/main");
-    tmpmod = find_module("chanserv/main");
-    if (tmpmod)
-        do_load_module(tmpmod, "chanserv/main");
+    if ((other = module_find("nickserv/main")) != NULL)
+        do_module_loaded(other, "nickserv/main");
+    if ((other = module_find("chanserv/main")) != NULL)
+        do_module_loaded(other, "chanserv/main");
 
     claim_all();
     return 1;
@@ -367,27 +355,30 @@ int init_module(void)
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int redirect_fini(Module *module, int shutdown)
 {
-    remove_callback(NULL, "reconfigure", do_reconfigure);
-    remove_callback(NULL, "unload module", do_unload_module);
-    remove_callback(NULL, "load module", do_load_module);
-
     /* Our fetches in flight are dropped with this module; so are the
      * requests they were for. */
     while (lookups)
         lookup_free(lookups);
-    if (module_httpd) {
-        http_del_routes(THIS_MODULE);
-        unuse_module(module_httpd);
-        module_httpd = NULL;
-    }
+    http_del_routes(module);
     free(claimed_nick);
     free(claimed_chan);
     claimed_nick = claimed_chan = NULL;
-
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "HTTP: redirects to the URL of a nickname or a channel",
+    .requires = MODULE_REQUIRES("httpd/main"),
+    .config = redirect_config,
+    .init = redirect_init,
+    .fini = redirect_fini,
+    .rehash = redirect_rehash,
+};
 
 /*************************************************************************/
 

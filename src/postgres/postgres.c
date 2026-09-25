@@ -10,7 +10,7 @@
  * is a module that registers itself as the database driver from its
  * mi_init; in Services the driver is part of the core, and init() registers
  * it before any module is loaded, so that db_query() works from every
- * module's init_module() on.
+ * module's `init' on.
  *
  * The files beside this one are the parts: pg_pool.c is the queue and the
  * copying, pg_conn.c is one connection and its deadline, pg_json.c turns a

@@ -20,7 +20,6 @@
 /*************************************************************************/
 
 /* Array of all access levels: */
-EXPORT_ARRAY(levelinfo)
 LevelInfo levelinfo[] = {
     { CA_AUTOPROTECT,   ACCLEV_SOP, "AUTOPROTECT", CHAN_LEVEL_AUTOPROTECT,
           CL_SET_MODE,   { .cumode = {"a",0} } },
@@ -89,7 +88,6 @@ static int get_access_if_idented(const User *user, const ChannelInfo *ci);
  * parameters (`ci' NULL or `what' out of range).
  */
 
-EXPORT_FUNC(get_ci_level)
 int get_ci_level(const ChannelInfo *ci, int what)
 {
     int level;
@@ -116,7 +114,6 @@ int get_ci_level(const ChannelInfo *ci, int what)
  * criterion).
  */
 
-EXPORT_FUNC(check_access)
 int check_access(const User *user, const ChannelInfo *ci, int what)
 {
     int level = get_access(user, ci);
@@ -145,7 +142,6 @@ int check_access(const User *user, const ChannelInfo *ci, int what)
  * not registered, returns the same value as check_access().
  */
 
-EXPORT_FUNC(check_access_if_idented)
 int check_access_if_idented(const User *user, const ChannelInfo *ci, int what)
 {
     int level = get_access_if_idented(user, ci);
@@ -174,7 +170,6 @@ int check_access_if_idented(const User *user, const ChannelInfo *ci, int what)
  * corresponds to the given command, return -1.
  */
 
-EXPORT_FUNC(check_access_cmd)
 int check_access_cmd(const User *user, const ChannelInfo *ci,
                      const char *command, const char *subcommand)
 {
@@ -441,12 +436,6 @@ int init_access(void)
     }
 
     return 1;
-}
-
-/*************************************************************************/
-
-void exit_access(void)
-{
 }
 
 /*************************************************************************/

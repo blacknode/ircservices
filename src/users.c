@@ -28,33 +28,33 @@ DEFINE_HASH(user, User, nick)
 
 int32 usercnt = 0, opcnt = 0;
 
-static int cb_check = -1;
-static int cb_create = -1;
-static int cb_servicestamp_change = -1;
-static int cb_nickchange1 = -1;
-static int cb_nickchange2 = -1;
-static int cb_delete = -1;
-static int cb_mode = -1;
-static int cb_chan_part = -1;
-static int cb_chan_kick = -1;
+static Event* user_check_event;
+static Event* user_create_event;
+static Event* user_servicestamp_event;
+static Event* user_nick_change_before_event;
+static Event* user_nick_change_after_event;
+static Event* user_delete_event;
+static Event* user_mode_event;
+static Event* channel_part_event;
+static Event* channel_kick_event;
 
 /*************************************************************************/
 
 int user_init(int ac, char** av)
 {
-    cb_check = register_callback("user check");
-    cb_create = register_callback("user create");
-    cb_servicestamp_change = register_callback("user servicestamp change");
-    cb_nickchange1 = register_callback("user nickchange (before)");
-    cb_nickchange2 = register_callback("user nickchange (after)");
-    cb_delete = register_callback("user delete");
-    cb_mode = register_callback("user MODE");
-    cb_chan_part = register_callback("channel PART");
-    cb_chan_kick = register_callback("channel KICK");
-    if (cb_check < 0 || cb_create < 0 || cb_servicestamp_change < 0 ||
-        cb_nickchange1 < 0 || cb_nickchange2 < 0 || cb_delete < 0 ||
-        cb_mode < 0 || cb_chan_part < 0 || cb_chan_kick < 0) {
-        log("user_init: register_callback() failed\n");
+    user_check_event = event_declare(NULL, EVENT_USER_CHECK);
+    user_create_event = event_declare(NULL, EVENT_USER_CREATE);
+    user_servicestamp_event = event_declare(NULL, EVENT_USER_SERVICESTAMP);
+    user_nick_change_before_event = event_declare(NULL, EVENT_USER_NICK_CHANGE_BEFORE);
+    user_nick_change_after_event = event_declare(NULL, EVENT_USER_NICK_CHANGE_AFTER);
+    user_delete_event = event_declare(NULL, EVENT_USER_DELETE);
+    user_mode_event = event_declare(NULL, EVENT_USER_MODE);
+    channel_part_event = event_declare(NULL, EVENT_CHANNEL_PART);
+    channel_kick_event = event_declare(NULL, EVENT_CHANNEL_KICK);
+    if (!user_check_event || !user_create_event || !user_servicestamp_event ||
+        !user_nick_change_before_event || !user_nick_change_after_event || !user_delete_event ||
+        !user_mode_event || !channel_part_event || !channel_kick_event) {
+        log("user_init: event_declare() failed");
         return 0;
     }
     return 1;
@@ -68,15 +68,15 @@ void user_cleanup(void)
 
     for (u = first_user(); u; u = next_user())
         del_user(u);
-    unregister_callback(cb_chan_kick);
-    unregister_callback(cb_chan_part);
-    unregister_callback(cb_mode);
-    unregister_callback(cb_delete);
-    unregister_callback(cb_nickchange2);
-    unregister_callback(cb_nickchange1);
-    unregister_callback(cb_servicestamp_change);
-    unregister_callback(cb_create);
-    unregister_callback(cb_check);
+    event_retract(channel_kick_event);
+    event_retract(channel_part_event);
+    event_retract(user_mode_event);
+    event_retract(user_delete_event);
+    event_retract(user_nick_change_after_event);
+    event_retract(user_nick_change_before_event);
+    event_retract(user_servicestamp_event);
+    event_retract(user_create_event);
+    event_retract(user_check_event);
 }
 
 /*************************************************************************/
@@ -157,7 +157,7 @@ static void delete_user(User* user)
 
 void quit_user(User* user, const char* quitmsg, int is_kill)
 {
-    call_callback_3(cb_delete, user, quitmsg, is_kill);
+    event_emit(user_delete_event, user, quitmsg, is_kill);
     delete_user(user);
 }
 
@@ -197,10 +197,10 @@ void get_user_stats(long* nusers, long* memuse)
 /* Part a user from a channel given the user's u_chanlist entry for the
  * channel. */
 
-static void part_channel_uc(User* user, struct u_chanlist* uc, int callback,
+static void part_channel_uc(User* user, struct u_chanlist* uc, Event* event,
                             const char* param, const char* source)
 {
-    call_callback_4(callback, uc->chan, user, param, source);
+    event_emit(event, uc->chan, user, param, source);
     chan_deluser(user, uc->chan);
     LIST_REMOVE(uc, user->chans);
     free(uc);
@@ -247,7 +247,7 @@ int do_nick(const char* source, int ac, char** av)
          * on the result of an identd lookup. */
 
         /* First check whether the user should be allowed on. */
-        if (call_callback_2(cb_check, ac, av))
+        if (event_emit(user_check_event, ac, av) > 0)
             return 0;
 
         /* User was accepted; allocate User structure and fill it in. */
@@ -279,7 +279,7 @@ int do_nick(const char* source, int ac, char** av)
 #undef prev
         ignore_init(user);
 
-        call_callback_4(cb_create, user, ac, av, reconnect);
+        event_emit(user_create_event, user, ac, av, reconnect);
 
         if (ac >= 8 && av[7] && !user->servicestamp) {
             /* A servicestamp was provided, but it was zero, so assign one.
@@ -323,7 +323,7 @@ int do_nick(const char* source, int ac, char** av)
             user->servicestamp = servstamp++;
             if (servstamp <= 0)
                 servstamp = 1;
-            call_callback_1(cb_servicestamp_change, user);
+            event_emit(user_servicestamp_event, user);
         }
 
         if (ac >= 10 && av[9] && *av[9]) {
@@ -356,13 +356,13 @@ int do_nick(const char* source, int ac, char** av)
         log_debug(1, "%s changes nick to %s", source, av[0]);
 
         strbcpy(oldnick, user->nick);
-        call_callback_2(cb_nickchange1, user, av[0]);
+        event_emit(user_nick_change_before_event, user, av[0]);
         /* Flush out all mode changes; necessary to avoid desynch (otherwise
          * we can't find the user when the mode goes out later).  The IRC
          * servers will take care of translating the old nick to the new one */
         set_cmode(NULL, NULL);
         change_user_nick(user, av[0]);
-        call_callback_2(cb_nickchange2, user, oldnick);
+        event_emit(user_nick_change_after_event, user, oldnick);
     }
 
     return 1;
@@ -423,7 +423,7 @@ void do_part(const char* source, int ac, char** av)
         if (*t)
             *t++ = 0;
         log_debug(1, "%s leaves %s", source, s);
-        if (!part_channel(user, s, cb_chan_part, av[1], source)) {
+        if (!part_channel(user, s, channel_part_event, av[1], source)) {
             log("user: do_part: no channel record for %s on %s (bug?)",
                 user->nick, av[0]);
         }
@@ -458,7 +458,7 @@ void do_kick(const char* source, int ac, char** av)
             continue;
         }
         log_debug(1, "kicking %s from %s", s, av[0]);
-        if (!part_channel(user, av[0], cb_chan_kick, av[2], source)) {
+        if (!part_channel(user, av[0], channel_kick_event, av[2], source)) {
             log("user: do_kick: no channel record for %s on %s (bug?)",
                 user->nick, av[0]);
         }
@@ -519,7 +519,7 @@ void do_umode(const char* source, int ac, char** av)
             break;
         }
 
-        if (call_callback_4(cb_mode, user, modechar, add, av) <= 0) {
+        if (event_emit(user_mode_event, user, modechar, add, av) <= 0) {
             if (modechar == 'o') {
                 if (add)
                     opcnt++;
@@ -602,26 +602,26 @@ Channel* join_channel(User* user, const char* channel, int32 modes)
 
 /* Part a user from a channel. */
 
-int part_channel(User* user, const char* channel, int callback,
+int part_channel(User* user, const char* channel, Event* event,
                  const char* param, const char* source)
 {
     struct u_chanlist* uc;
     LIST_SEARCH(user->chans, chan->name, channel, irc_stricmp, uc);
     if (uc)
-        part_channel_uc(user, uc, callback, param, source);
+        part_channel_uc(user, uc, event, param, source);
     return uc != NULL;
 }
 
 /*************************************************************************/
 
-/* Part a user from all channels s/he is in.  Assumes cb_chan_part, an
+/* Part a user from all channels s/he is in.  Assumes channel_part_event, an
  * empty `param' string, and the user as source. */
 
 void part_all_channels(User* user)
 {
     struct u_chanlist *uc, *nextuc;
     LIST_FOREACH_SAFE(uc, user->chans, nextuc)
-    part_channel_uc(user, uc, cb_chan_part, "", user->nick);
+    part_channel_uc(user, uc, channel_part_event, "", user->nick);
 }
 
 /*************************************************************************/

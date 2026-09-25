@@ -1,4 +1,4 @@
-/* Module support.
+/* The module loader (modules.h).
  *
  * IRC Services is copyright (c) 1996-2009 Andrew Church.
  *     E-mail: <achurch@achurch.org>
@@ -7,259 +7,272 @@
  * details.
  */
 
+#include "services.h"
 #include "modules.h"
 #include "cache.h"
 #include "conffile.h"
 #include "db.h"
 #include "encrypt.h"
 #include "migration.h"
-#include "services.h"
 #include "store.h"
 #include "worker.h"
-#undef use_module
-#undef unuse_module
 
 #include <dlfcn.h>
 
 /*************************************************************************/
 
-/* Internal structure for callbacks. */
-typedef struct callbackinfo_ CallbackInfo;
-struct callbackinfo_ {
-    char* name;
-    int calling; /* used by {call,remove}_callback() for safe callback
-                  * removal from inside the callback */
-    struct {
-        callback_t func;
-        const Module* adder;
-        int pri;
-    }* funcs;
-    int funcs_count;
-};
-
-/* Structure for module data. */
 struct Module_ {
     Module *next, *prev;
-    char* name;                 /* Module name (path passed to load_module())*/
-    ConfigDirective* modconfig; /* `module_config' in this module */
-    Module*** this_module_pptr; /* `_this_module_ptr' in this module */
-    const int32* module_version_ptr; /* `module_version' in this module */
-    void* dllhandle;                 /* Handle used by dynamic linker */
-    CallbackInfo* callbacks;
-    int callbacks_count;
-    const Module** users; /* Array of module's users (use_module()) */
-    int users_count;
-    struct MigrationSet* migrations; /* `module_migrations', checked */
+    char* name;              /* As loadmodule gave it: "nickserv/main" */
+    void* dll_handle;        /* From dlopen() */
+    const ModuleInfo* info;  /* Its `module_info' */
+    ConfigDirective* config; /* ModuleInfo.config plus one directive per
+                              * pseudo-client, or NULL (allocated) */
+    Module** holders;        /* Modules holding this one, one entry per
+                              * hold (module_hold()) */
+    int holders_count;
+    struct MigrationSet* migrations; /* Its `module_migrations', checked */
 };
 
-/* Module data for Services core. */
-static Module coremodule = {.name = "core"};
+/* Loaded modules, the most recently loaded first. */
+static Module* module_list;
 
-/* Global list of modules. */
-static Module* modulelist = &coremodule;
+/* Handle of the main program, for symbol lookups. */
+static void* program_handle;
 
-/* Callbacks for loading, unloading, and reconfiguring modules. */
-static int cb_load_module = -1;
-static int cb_unload_module = -1;
-static int cb_reconfigure = -1;
+static Event* module_loaded_event;
+static Event* module_unloaded_event;
 
 /*************************************************************************/
-
-static void* program_handle; /* Handle for the main program */
-
 /*************************************************************************/
 
-/* Internal routine declarations: */
-
-static Module* internal_load_module(const char* modulename);
-static int internal_init_module(Module* module);
-static int internal_unload_module(Module* module, int shutdown);
-
-/*************************************************************************/
-
-/* Translate the NULL module to &coremodule, and ensure that any given
- * module is in fact on the module list, aborting the function otherwise.
- * Call as:
- *     VALIDATE_MOD(module)
- * or
- *     VALIDATE_MOD(module, return_value)
- * where `module' is a variable holding a module handle.
- */
-
-#define VALIDATE_MOD(__m, ...)                                                \
-    do {                                                                      \
-        if (!__m) {                                                           \
-            __m = &coremodule;                                                \
-        }                                                                     \
-        else {                                                                \
-            Module* __tmp;                                                    \
-            LIST_FOREACH(__tmp, modulelist)                                   \
-            {                                                                 \
-                if (__tmp == __m)                                             \
-                    break;                                                    \
-            }                                                                 \
-            if (!__tmp) {                                                     \
-                log("%s(): module %p not on module list", __FUNCTION__, __m); \
-                return __VA_ARGS__;                                           \
-            }                                                                 \
-        }                                                                     \
-    } while (0)
-
-/*************************************************************************/
-/********************* Initialization and cleanup ************************/
-/*************************************************************************/
-
-int modules_init(int ac, char** av)
+int module_system_init(void)
 {
-    program_handle = dlopen(NULL, 0);
-    cb_load_module = register_callback("load module");
-    cb_unload_module = register_callback("unload module");
-    cb_reconfigure = register_callback("reconfigure");
-    if (cb_load_module < 0 || cb_unload_module < 0 || cb_reconfigure < 0) {
-        log("modules_init: register_callback() failed\n");
+    program_handle = dlopen(NULL, RTLD_NOW);
+    module_loaded_event = event_declare(NULL, EVENT_MODULE_LOADED);
+    module_unloaded_event = event_declare(NULL, EVENT_MODULE_UNLOADED);
+    if (!module_loaded_event || !module_unloaded_event) {
+        log("modules: unable to declare the module events");
         return 0;
     }
     return 1;
 }
 
+void module_system_cleanup(void)
+{
+    module_unload_all();
+    event_retract(module_unloaded_event);
+    event_retract(module_loaded_event);
+    module_unloaded_event = module_loaded_event = NULL;
+}
+
+/*************************************************************************/
 /*************************************************************************/
 
-void modules_cleanup(void)
+Module* module_find(const char* name)
+{
+    Module* module;
+
+    if (!name)
+        return NULL;
+    LIST_SEARCH(module_list, name, name, strcmp, module);
+    return module;
+}
+
+const char* module_name(const Module* module)
+{
+    return module ? module->name : "core";
+}
+
+unsigned int module_flags(const Module* module)
+{
+    return module ? module->info->flags : 0;
+}
+
+const struct MigrationSet* module_migrations(const Module* module)
+{
+    return module ? module->migrations : NULL;
+}
+
+/*************************************************************************/
+
+int module_has_symbol(Module* module, const char* symbol, void** value)
+{
+    void* found = NULL;
+
+    (void)dlerror(); /* Clear any previous error */
+    if (module) {
+        found = dlsym(module->dll_handle, symbol);
+    }
+    else {
+        Module* other;
+        LIST_FOREACH(other, module_list)
+        {
+            found = dlsym(other->dll_handle, symbol);
+            if (found)
+                break;
+        }
+        if (!found)
+            found = dlsym(program_handle, symbol);
+    }
+    if (dlerror() != NULL || !found)
+        return 0;
+    if (value)
+        *value = found;
+    return 1;
+}
+
+void* module_symbol(Module* module, const char* symbol)
+{
+    void* value;
+
+    if (!module_has_symbol(module, symbol, &value)) {
+        log("modules: symbol `%s' not found in %s", symbol,
+            module ? module->name : "any module");
+        return NULL;
+    }
+    return value;
+}
+
+/*************************************************************************/
+
+/* Nonzero if `module' holds `other', directly or through the modules it
+ * holds. */
+static int holds_through(const Module* module, const Module* other)
+{
+    const Module* held;
+    int i;
+
+    LIST_FOREACH(held, module_list)
+    {
+        ARRAY_FOREACH(i, held->holders)
+        {
+            if (held->holders[i] == module &&
+                (held == other || holds_through(held, other)))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+int module_hold(Module* holder, Module* held)
+{
+    if (!held) {
+        log("BUG: module_hold() from %s without a module",
+            module_name(holder));
+        return 0;
+    }
+    if (holder == held) {
+        log("BUG: module_hold(): %s tried to hold itself", held->name);
+        return 0;
+    }
+    if (holder && holds_through(held, holder)) {
+        log("BUG: module_hold(): %s and %s would hold each other",
+            module_name(holder), held->name);
+        return 0;
+    }
+    ARRAY_EXTEND(held->holders);
+    held->holders[held->holders_count - 1] = holder;
+    return 1;
+}
+
+void module_release(Module* holder, Module* held)
 {
     int i;
 
-    unload_all_modules();
-    unregister_callback(cb_reconfigure);
-    unregister_callback(cb_unload_module);
-    unregister_callback(cb_load_module);
-    ARRAY_FOREACH(i, coremodule.callbacks)
+    if (!held)
+        return;
+    ARRAY_SEARCH_PLAIN_SCALAR(held->holders, holder, i);
+    if (i >= held->holders_count) {
+        log("BUG: module_release(): %s does not hold %s",
+            module_name(holder), held->name);
+        return;
+    }
+    ARRAY_REMOVE(held->holders, i);
+}
+
+/* Release every hold `module' has on other modules. */
+static void release_all_holds(Module* module)
+{
+    Module* held;
+    int i;
+
+    LIST_FOREACH(held, module_list)
     {
-        if (coremodule.callbacks[i].name) {
-            log("modules: Core forgot to unregister callback `%s'",
-                coremodule.callbacks[i].name);
-            free(coremodule.callbacks[i].name);
-            free(coremodule.callbacks[i].funcs);
-        }
-    }
-    free(coremodule.callbacks);
-}
-
-/*************************************************************************/
-
-void unload_all_modules(void)
-{
-    /* Normally it would be sufficient to iterate through the module list,
-     * since new modules are always inserted at the front of the list, but
-     * it is possible for an older module to lock a newer module via the
-     * "load module" callback, resulting in unload failures if that simple
-     * method was used.  Instead, we repeatedly search the module list for
-     * the first unloadable module (a module that is not the core module
-     * and is not locked), unload that module, and repeat until no
-     * unloadable modules are left.  (In theory, since a module's locks are
-     * forcibly when the module is unloaded, this should only leave the
-     * core module, but we check anyway just to be safe.) */
-
-    for (;;) {
-        Module* mod;
-        LIST_FOREACH(mod, modulelist)
+        ARRAY_FOREACH(i, held->holders)
         {
-            if (strcmp(mod->name, "core") != 0) {
-                int i;
-                ARRAY_FOREACH(i, mod->users)
-                {
-                    if (mod->users[i] != mod)
-                        break;
-                }
-                if (i >= mod->users_count) {
-                    /* This module has no users (except possibly itself),
-                     * so unload it */
-                    break;
-                }
-            }
-        }
-        if (!mod)
-            break;
-        if (!internal_unload_module(mod, 1)) {
-            log("modules: Failed to unload `%s' on exit", mod->name);
-            /* Unlink it anyway, but don't free the structure to avoid
-             * segfaults in the module.  This is an impossible case
-             * anyway, so we don't worry about the leak. */
-            LIST_REMOVE(mod, modulelist);
-        }
-    }
-
-    if (!modulelist) {
-        log("modules: BUG: core module got removed from module list during"
-            " shutdown!");
-    }
-    else if (modulelist != &coremodule || modulelist->next != NULL) {
-        Module* mod;
-        log("modules: BUG: failed to unload some modules during shutdown"
-            " (circular lock?)");
-        LIST_FOREACH(mod, modulelist)
-        {
-            if (strcmp(mod->name, "core") != 0) {
-                log("modules: -- module %s not unloaded", mod->name);
+            if (held->holders[i] == module) {
+                ARRAY_REMOVE(held->holders, i);
+                i--;
             }
         }
     }
 }
 
 /*************************************************************************/
-/*********************** Low-level module routines ***********************/
 /*************************************************************************/
 
-/* These low-level routines take care of all changes in processing with
- * regard to dynamic vs. static modules and different platforms. */
-
-/* Common variables: */
-
-/*************************************************************************/
-
-/* Low-level routine to open a module and return a handle. */
-
-static void* my_dlopen(const char* name)
+/* Build the directive table the module's block is read with: the
+ * module's own directives, then `<directive> = <nick>, <description>;'
+ * for each of its pseudo-clients.  NULL if there are none. */
+static ConfigDirective* build_config(const ModuleInfo* info)
 {
+    ConfigDirective* table;
+    int own = 0, services = 0, i;
 
-    char pathname[PATH_MAX + 1];
-    snprintf(pathname, sizeof(pathname), "%s/modules/%s.so", services_dir,
-             name);
-    return dlopen(pathname, RTLD_NOW | RTLD_GLOBAL);
+    while (info->config && info->config[own].name)
+        own++;
+    while (info->services && info->services[services])
+        services++;
+    if (!own && !services)
+        return NULL;
 
-} /* my_dlopen() */
+    table = scalloc(own + services + 1, sizeof(*table));
+    for (i = 0; i < own; i++)
+        table[i] = info->config[i];
+    for (i = 0; i < services; i++) {
+        struct Service* service = info->services[i];
+        ConfigDirective* directive = &table[own + i];
+        directive->name = service->directive;
+        directive->params[0].type = CD_STRING;
+        directive->params[0].flags = CF_DIRREQ;
+        directive->params[0].ptr = &service->nick;
+        directive->params[1].type = CD_STRING;
+        directive->params[1].ptr = &service->description;
+    }
+    return table;
+}
 
 /*************************************************************************/
 
 /* Check the migrations a module ships (the array `module_migrations',
  * embedded by the build from its migrations/ directory), and apply the
- * pending ones if it declares MODULE_MIGRATIONS_AUTO; otherwise only say
- * that some are pending.  Returns zero if the module must not load: its
- * migrations break a rule, or it needed them applied and they could not
- * be. */
-static int load_module_migrations(Module* module)
+ * pending ones if it has MODULE_APPLY_MIGRATIONS; otherwise only say that
+ * some are pending.  Returns zero if the module must not load. */
+static int load_migrations(Module* module)
 {
     const struct MigrationFile* files = NULL;
-    const char* err = NULL;
+    const char* error = NULL;
 
     if (migration_reserved_name(module->name)) {
         log("modules: `%s' is a reserved name", module->name);
         return 0;
     }
-    if (!check_module_symbol(module, "module_migrations", (void**)&files,
-                             NULL) ||
+    if (!module_has_symbol(module, "module_migrations", (void**)&files) ||
         !files)
         return 1;
-    module->migrations = migration_build(module->name, files, &err);
+    module->migrations = migration_build(module->name, files, &error);
     if (!module->migrations) {
-        if (!err)
-            return 1; /* no migrations at all */
-        log("modules: Could not load %s: %s", module->name, err);
+        if (!error)
+            return 1; /* No migrations at all */
+        log("modules: Could not load %s: %s", module->name, error);
         return 0;
     }
-    if (check_module_symbol(module, "module_migrations_auto", NULL, NULL)) {
+    if (module->info->flags & MODULE_APPLY_MIGRATIONS) {
         if (!migration_apply_now(module->migrations)) {
             log("modules: Could not load %s: its migrations could not be"
-                " applied", module->name);
+                " applied",
+                module->name);
             return 0;
         }
     }
@@ -269,7 +282,7 @@ static int load_module_migrations(Module* module)
     return 1;
 }
 
-/************************************/
+/*************************************************************************/
 
 /* Drop everything a module has in flight -- worker tasks and threads,
  * database queries, cache calls -- so that nothing calls into its code once
@@ -285,728 +298,257 @@ static void drop_module_work(Module* module)
     password_drop_module(module);
 }
 
-/************************************/
+/*************************************************************************/
 
-/* Low-level routine to close a module. */
-
-static void my_dlclose(void* handle)
+/* Undo whatever module_load() or a module had set up, and free it.  The
+ * module must already be off the module list. */
+static void free_module(Module* module, int services_introduced)
 {
-
-    dlclose(handle);
-
-} /* my_dlclose() */
+    event_forget_module(module);
+    service_detach_module(module, services_introduced);
+    drop_module_work(module);
+    release_all_holds(module);
+    deconfigure(module->config);
+    free(module->config);
+    migration_free(module->migrations);
+    if (module->dll_handle)
+        dlclose(module->dll_handle);
+    free(module->holders);
+    free(module->name);
+    free(module);
+}
 
 /*************************************************************************/
 
-/* Low-level routine to retrieve a symbol from a module given its handle. */
-
-static void* my_dlsym(void* handle, const char* symname)
+/* Open the shared object and check its description.  Returns the module,
+ * not yet on the module list, or NULL. */
+static Module* open_module(const char* name)
 {
+    char path[PATH_MAX + 1];
+    Module *module, *other;
+    const ModuleInfo* info = NULL;
+    Module*** self_slot = NULL; /* Address of its `module_self_slot' */
+    void* handle;
 
-    if (handle) {
-        return dlsym(handle, symname);
-    }
-    else {
-        Module* mod;
-        void* ptr;
-        LIST_FOREACH(mod, modulelist)
-        {
-            ptr = dlsym(mod->dllhandle ? mod->dllhandle : program_handle,
-                        symname);
-            if (ptr)
-                return ptr;
-        }
+    snprintf(path, sizeof(path), "%s/modules/%s.so", services_dir, name);
+    handle = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
+    if (!handle) {
+        const char* error = dlerror();
+        /* A module using the symbols of one it requires cannot even be
+         * opened before that one is loaded, so its `requires' is never
+         * read: say what it most likely means. */
+        log("modules: Unable to load module `%s': %s%s", name,
+            error ? error : "unknown error",
+            error && strstr(error, "undefined symbol")
+                ? " (is a module it requires loaded after it? check the"
+                  " order of the loadmodule lines)"
+                : "");
         return NULL;
     }
+    module = scalloc(sizeof(*module), 1);
+    module->name = sstrdup(name);
+    module->dll_handle = handle;
 
-} /* my_dlsym() */
-
-/*************************************************************************/
-
-/* Low-level routine to return the error message (if any) from the previous
- * call. */
-
-static const char* my_dlerror(void)
-{
-
-    return dlerror();
-
-} /* my_dlerror() */
-
-/*************************************************************************/
-/************************ Module-level functions *************************/
-/*************************************************************************/
-
-/* Load a new module and return the Module pointer, or NULL on error.
- * (External interface to the above functions.)
- */
-
-Module* load_module(const char* modulename)
-{
-    Module* module;
-
-    if (!modulename) {
-        log("load_module(): modulename is NULL!");
-        return NULL;
+    /* A symbol found at the same address as one of an already loaded
+     * module's is that module's, not this one's. */
+    if (module_has_symbol(module, "module_info", (void**)&info)) {
+        LIST_SEARCH_SCALAR(module_list, info, info, other);
+        if (other)
+            info = NULL;
     }
-
-    log_debug(1, "Loading module `%s'", modulename);
-
-    module = internal_load_module(modulename);
-    if (!module)
-        return NULL;
-    LIST_INSERT(module, modulelist);
-
-    /* Its migrations: checked now, and applied now if the module cannot
-     * work without them (see migration.h). */
-    if (!load_module_migrations(module))
-        goto fail;
-
-    if (!configure(module->name, module->modconfig,
-                   CONFIGURE_READ | CONFIGURE_SET)) {
-        log("modules: configure() failed for %s", modulename);
+    if (!info) {
+        log("modules: Unable to load module `%s': it has no `module_info'",
+            name);
         goto fail;
     }
-
-    if (!internal_init_module(module)) {
-        log("modules: init_module() failed for %s", modulename);
-        deconfigure(module->modconfig);
+    if (info->abi != MODULE_ABI) {
+        log("modules: Unable to load module `%s': built for module interface"
+            " %u, Services have %u; recompile it",
+            name, info->abi, MODULE_ABI);
         goto fail;
     }
-
-    log_debug(1, "Successfully loaded module `%s'", modulename);
-    call_callback_2(cb_load_module, module, module->name);
-
+    if (!module_has_symbol(module, "module_self_slot", (void**)&self_slot) ||
+        !self_slot || !*self_slot) {
+        log("modules: Unable to load module `%s': no `module_self_slot'"
+            " (was it built with the Services build system?)",
+            name);
+        goto fail;
+    }
+    module->info = info;
+    **self_slot = module; /* The module's THIS_MODULE */
     return module;
 
 fail:
-    drop_module_work(module);
-    migration_free(module->migrations);
+    dlclose(handle);
     free(module->name);
-    my_dlclose(module->dllhandle);
-    LIST_REMOVE(module, modulelist);
     free(module);
     return NULL;
 }
 
-/************************************/
+/*************************************************************************/
 
-/* Internal routine to load a module.  Returns the module pointer or NULL
- * on error.
- */
-
-static Module* internal_load_module(const char* modulename)
+Module* module_load(const char* name)
 {
-    void* handle;
-    Module *module, *mptr;
-    int32* verptr;
-    Module*** thisptr;
-    ConfigDirective* confptr;
+    Module* module;
+    const ModuleInfo* info;
+    int i;
 
-    if (strstr(modulename, "../")) {
-        log("modules: Attempt to load bad module name: %s", modulename);
-        goto err_return;
+    if (!name || !*name || strstr(name, "../")) {
+        log("modules: Attempt to load bad module name: %s",
+            name ? name : "(null)");
+        return NULL;
     }
-    LIST_SEARCH(modulelist, name, modulename, strcmp, mptr);
-    if (mptr) {
-        log("modules: Attempt to load module `%s' twice", modulename);
-        goto err_return;
+    if (module_find(name)) {
+        log("modules: Attempt to load module `%s' twice", name);
+        return NULL;
+    }
+    log_debug(1, "Loading module `%s'", name);
+
+    module = open_module(name);
+    if (!module)
+        return NULL;
+    info = module->info;
+    LIST_INSERT(module, module_list);
+
+    for (i = 0; info->requires && info->requires[i]; i++) {
+        Module* required = module_find(info->requires[i]);
+        if (!required) {
+            log("modules: %s requires %s: load it first (loadmodule \"%s\""
+                " before loadmodule \"%s\")",
+                name, info->requires[i], info->requires[i], name);
+            goto fail;
+        }
+        if (!module_hold(module, required))
+            goto fail;
     }
 
-    handle = my_dlopen(modulename);
-    if (!handle) {
-        const char* error = my_dlerror();
-        if (!error)
-            error = "Unknown error";
-        log("modules: Unable to load module `%s': %s", modulename, error);
-        goto err_return;
+    /* Its migrations: checked now, and applied now if the module cannot
+     * work without them (see migration.h). */
+    if (!load_migrations(module))
+        goto fail;
+
+    module->config = build_config(info);
+    if (!configure(name, module->config, CONFIGURE_READ | CONFIGURE_SET)) {
+        log("modules: Could not load %s: its configuration has errors",
+            name);
+        goto fail;
+    }
+    if (!service_attach_module(module, info->services))
+        goto fail;
+
+    if (info->init && !info->init(module)) {
+        log("modules: Could not load %s: it failed to start", name);
+        /* Let it undo whatever it did before failing. */
+        if (info->fini)
+            info->fini(module, 0);
+        goto fail;
     }
 
-    module = scalloc(sizeof(*module), 1);
-    module->dllhandle = handle;
-    module->name = sstrdup(modulename);
-
-    thisptr = NULL;
-    if (check_module_symbol(module, "_this_module_ptr", (void**)&thisptr,
-                            NULL)) {
-        /* When using dynamic linking, the above may return the first
-         * instance of `_this_module_ptr' found in _any_ module (though
-         * giving priority to the given module), so we need to check if
-         * we've seen this address before.  With static linking, the result
-         * will be NULL if the symbol does not exist in this specific
-         * module, so the extra check is unnecessary. */
-        LIST_SEARCH_SCALAR(modulelist, this_module_pptr, thisptr, mptr);
-        if (mptr)
-            thisptr = NULL;
-    }
-    if (!thisptr) {
-        log("modules: Unable to load module `%s': No `_this_module_ptr' symbol"
-            " found",
-            modulename);
-        goto err_freemod;
-    }
-    module->this_module_pptr = thisptr;
-    **thisptr = module;
-
-    verptr = NULL; /* as above */
-    if (check_module_symbol(module, "module_version", (void**)&verptr, NULL)) {
-        LIST_SEARCH_SCALAR(modulelist, module_version_ptr, verptr, mptr);
-        if (mptr)
-            verptr = NULL;
-    }
-    if (!verptr) {
-        log("modules: Unable to load module `%s': No `module_version'"
-            " symbol found",
-            modulename);
-        goto err_freemod;
-    }
-    else if (*verptr != MODULE_VERSION_CODE) {
-        log("modules: Unable to load module `%s': Version mismatch"
-            " (module version = %08X, core version = %08X)",
-            modulename, *verptr, MODULE_VERSION_CODE);
-        goto err_freemod;
-    }
-    module->module_version_ptr = verptr;
-
-    confptr = NULL; /* as above */
-    if (check_module_symbol(module, "module_config", (void**)&confptr, NULL)) {
-        LIST_SEARCH_SCALAR(modulelist, modconfig, confptr, mptr);
-        if (mptr)
-            confptr = NULL;
-    }
-    module->modconfig = confptr;
-
+    service_introduce_module(module);
+    log_debug(1, "Successfully loaded module `%s'", name);
+    event_emit(module_loaded_event, module, module->name);
     return module;
 
-err_freemod:
-    free(module->name);
-    free(module);
-    my_dlclose(handle);
-err_return:
+fail:
+    LIST_REMOVE(module, module_list);
+    free_module(module, 0);
     return NULL;
 }
 
-/************************************/
-
-/* Initialize a module.  Return the module's init_module() return value, or
- * 1 if the module does not have an init_module() function.
- */
-
-static int internal_init_module(Module* module)
-{
-    int (*initfunc)(void);
-
-    initfunc = get_module_symbol(module, "init_module");
-    if (initfunc)
-        return initfunc();
-    else
-        return 1;
-}
-
 /*************************************************************************/
 
-/* Remove a module from memory.  Return nonzero on success, zero on
- * failure.
- */
-
-int unload_module(Module* module)
+/* Unload a module.  `shutdown' is nonzero when Services are exiting, in
+ * which case its `fini' cannot refuse. */
+static int unload_module(Module* module, int shutdown)
 {
-    return internal_unload_module(module, 0);
-}
-
-/************************************/
-
-/* Internal implementation of unload_module(), taking an additional
- * parameter indicating whether the unload is due to Services shutting down
- * or not.
- */
-
-static int internal_unload_module(Module* module, int shutdown)
-{
-    int (*exit_module)(int shutdown);
-    Module* tmp;
-    int i;
-
     if (!module) {
-        log("unload_module(): module is NULL!");
+        log("BUG: module_unload() with a NULL module");
         return 0;
     }
-
-    if (module->users_count > 0) {
-        log("modules: Attempt to unload in-use module `%s' (in use by %s%s)",
-            module->name, module->users[0]->name,
-            module->users_count > 1 ? " and others" : "");
+    if (module->holders_count > 0) {
+        log("modules: Cannot unload %s: %s needs it%s", module->name,
+            module_name(module->holders[0]),
+            module->holders_count > 1 ? " (and others)" : "");
         return 0;
     }
-
     log_debug(1, "Unloading module `%s'", module->name);
 
-    /* Call the module's exit routine */
-    exit_module = get_module_symbol(module, "exit_module");
-    if (exit_module && !(*exit_module)(shutdown)) {
-        if (shutdown) {
-            log("modules: exit_module() for module `%s' returned zero on"
-                " shutdown, unloading module anyway",
-                module->name);
+    if (module->info->fini && !module->info->fini(module, shutdown)) {
+        if (!shutdown) {
+            log("modules: %s refused to be unloaded", module->name);
+            return 0;
         }
-        else {
+        log("modules: %s failed to stop cleanly on shutdown; unloading it"
+            " anyway",
+            module->name);
+    }
+
+    /* Off the list first, so that nothing new reaches it. */
+    LIST_REMOVE(module, module_list);
+    event_emit(module_unloaded_event, module);
+    free_module(module, 1);
+    return 1;
+}
+
+int module_unload(Module* module)
+{
+    return unload_module(module, 0);
+}
+
+/*************************************************************************/
+
+void module_unload_all(void)
+{
+    /* The most recently loaded module that nothing holds, again and again:
+     * a module is always loaded after the ones it requires, but a hold
+     * taken at run time can point the other way. */
+    for (;;) {
+        Module* module;
+        LIST_FOREACH(module, module_list)
+        {
+            if (module->holders_count == 0)
+                break;
+        }
+        if (!module)
+            break;
+        unload_module(module, 1);
+    }
+    if (module_list) {
+        Module* module;
+        log("modules: BUG: modules still holding each other at shutdown:");
+        LIST_FOREACH(module, module_list)
+        log("modules: -- %s (held by %s)", module->name,
+            module_name(module->holders[0]));
+    }
+}
+
+/*************************************************************************/
+
+int module_reconfigure_all(void)
+{
+    Module *module, *oldest = NULL;
+
+    service_reconfigure_begin();
+    LIST_FOREACH(module, module_list)
+    {
+        if (!configure(module->name, module->config, CONFIGURE_READ)) {
+            service_reconfigure_end();
             return 0;
         }
     }
-
-    /* Remove the module from the global module list, ensuring that no
-     * new callbacks or the like can be added while we unload it */
-    LIST_REMOVE(module, modulelist);
-
-    /* Ensure that callbacks and use_module() calls are properly undone */
-    LIST_FOREACH(tmp, modulelist)
+    LIST_FOREACH(module, module_list)
     {
-        ARRAY_FOREACH(i, tmp->users)
-        {
-            if (tmp->users[i] == module) {
-                log("modules: Module `%s' forgot to unuse_module() for"
-                    " module `%s'",
-                    module->name, tmp->name);
-                ARRAY_REMOVE(tmp->users, i);
-                i--;
-            }
-        }
-        ARRAY_FOREACH(i, tmp->callbacks)
-        {
-            int j;
-            /* Don't warn for callbacks that couldn't have been removed
-             * because the callback was in use (e.g. for shutting down
-             * after a crash) */
-            if (tmp->callbacks[i].calling)
-                continue;
-            ARRAY_FOREACH(j, tmp->callbacks[i].funcs)
-            {
-                if (tmp->callbacks[i].funcs[j].adder == module) {
-                    log("modules: Module `%s' forgot to remove callback"
-                        " `%s' from module `%s'",
-                        module->name, tmp->callbacks[i].name, tmp->name);
-                    ARRAY_REMOVE(tmp->callbacks[i].funcs, j);
-                    j--;
-                }
-            }
-        }
+        configure(module->name, module->config, CONFIGURE_SET);
+        oldest = module;
     }
-    ARRAY_FOREACH(i, module->callbacks)
-    {
-        if (module->callbacks[i].name) {
-            log("modules: Module `%s' forgot to unregister callback `%s'",
-                module->name, module->callbacks[i].name);
-            free(module->callbacks[i].name);
-            free(module->callbacks[i].funcs);
-        }
+    service_reconfigure_end();
+
+    /* Tell the modules, in the order they were loaded. */
+    for (module = oldest; module; module = module->prev) {
+        if (module->info->rehash)
+            module->info->rehash(module);
     }
-    free(module->callbacks);
-
-    /* Clean up and free the module data */
-    call_callback_1(cb_unload_module, module);
-    drop_module_work(module);
-    deconfigure(module->modconfig);
-    migration_free(module->migrations);
-    free(module->name);
-    my_dlclose(module->dllhandle);
-    free(module);
-
-    return 1;
-}
-
-/*************************************************************************/
-
-/* Return the Module pointer for the named module, or NULL if no such
- * module exists.
- */
-
-Module* find_module(const char* modulename)
-{
-    Module* result;
-
-    if (!modulename) {
-        log("find_module(): modulename is NULL!");
-        return NULL;
-    }
-    LIST_SEARCH(modulelist, name, modulename, strcmp, result);
-    return result;
-}
-
-/*************************************************************************/
-
-/* Increment the use count for the given module.  A module cannot be
- * unloaded while its use count is nonzero.
- */
-
-static int use_module_loopcheck(const Module* module, const Module* check)
-{
-    /* Return whether `module' is used by `check' (self-references are
-     * ignored). */
-
-    int i;
-
-    ARRAY_FOREACH(i, module->users)
-    {
-        if (module->users[i] != module) {
-            if (module->users[i] == check ||
-                use_module_loopcheck(module->users[i], check))
-                return 1;
-        }
-    }
-    return 0;
-}
-
-void _use_module(Module* module, const Module* caller)
-{
-    VALIDATE_MOD(module);
-    VALIDATE_MOD(caller);
-    if (module == caller) {
-        log("modules: BUG: Module `%s' called use_module() for itself!",
-            module->name);
-        return;
-    }
-    if (use_module_loopcheck(caller, module)) {
-        log("modules: BUG: use_module loop detected (called by `%s' for `%s')",
-            caller->name, module->name);
-        return;
-    }
-    ARRAY_EXTEND(module->users);
-    module->users[module->users_count - 1] = caller;
-}
-
-/*************************************************************************/
-
-/* Decrement the use count for the given module.  `module' may be NULL, in
- * which case this routine does nothing.
- */
-
-void _unuse_module(Module* module, const Module* caller)
-{
-    int i;
-
-    if (!module)
-        return;
-    VALIDATE_MOD(module);
-    VALIDATE_MOD(caller);
-    if (module == caller) {
-        log("modules: BUG: Module `%s' called unuse_module() for itself!",
-            module->name);
-        return;
-    }
-    if (module->users_count == 0) {
-        log("modules: BUG: trying to unuse module `%s' with use count 0"
-            " from module `%s'",
-            module->name, caller->name);
-        return;
-    }
-    ARRAY_SEARCH_PLAIN_SCALAR(module->users, caller, i);
-    if (i >= module->users_count) {
-        log("modules: BUG: trying to unuse module `%s' from module `%s' but"
-            " caller not found in user list!",
-            module->name, caller->name);
-        return;
-    }
-    ARRAY_REMOVE(module->users, i);
-}
-
-/*************************************************************************/
-
-/* Reconfigure all modules.  The "reconfigure" callback is called with an
- * `int' parameter of 0 before reconfiguration and 1 after.  Returns 1 on
- * success, 0 on failure (on failure, all modules' configuration data will
- * be left alone).
- */
-
-int reconfigure_modules(void)
-{
-    Module* mod;
-
-    call_callback_1(cb_reconfigure, 0);
-    LIST_FOREACH(mod, modulelist)
-    {
-        if (!configure(mod->name, mod->modconfig, CONFIGURE_READ))
-            return 0;
-    }
-    LIST_FOREACH(mod, modulelist)
-    configure(mod->name, mod->modconfig, CONFIGURE_SET);
-    call_callback_1(cb_reconfigure, 1);
-    return 1;
-}
-
-/*************************************************************************/
-/****************** Module symbol/information retrieval ******************/
-/*************************************************************************/
-
-/* Retrieve the value of the named symbol in the given module.  Return NULL
- * if no such symbol exists.  Note that this function should not be used
- * for symbols whose value might be NULL, because there is no way to
- * distinguish a symbol value of NULL from an error return.  For such
- * symbols, or for cases where a symbol might legitimately not exist and
- * no error should be printed for nonexistence, use check_module_symbol().
- */
-
-void* _get_module_symbol(Module* module, const char* symname,
-                         const Module* caller)
-{
-    void* value;
-
-    if (!check_module_symbol(module, symname, &value, NULL)) {
-        if (module) {
-            log("%s: Unable to resolve symbol `%s' in module `%s'",
-                get_module_name(caller), symname, get_module_name(module));
-        }
-        else {
-            log("%s: Unable to resolve symbol `%s'", get_module_name(caller),
-                symname);
-        }
-        return NULL;
-    }
-    return value;
-}
-
-/*************************************************************************/
-
-/* Check whether the given symbol exists in the given module; return 1 if
- * so, 0 otherwise.  If `resultptr' is non-NULL and the symbol exists, the
- * value is stored in the variable it points to.  If `errorptr' is non-NULL
- * and the symbol does not exist, a human-readable error message is stored
- * in the variable it points to.
- */
-
-int check_module_symbol(Module* module, const char* symname, void** resultptr,
-                        const char** errorptr)
-{
-    void* value;
-    const char* error;
-
-    (void)my_dlerror(); /* clear any previous error */
-    value = my_dlsym(module ? module->dllhandle : NULL, symname);
-    error = my_dlerror();
-    if (error) {
-        if (errorptr)
-            *errorptr = error;
-        return 0;
-    }
-    else {
-        if (resultptr)
-            *resultptr = value;
-        return 1;
-    }
-}
-
-/*************************************************************************/
-
-/* The migrations a module ships, checked (NULL if none). */
-
-const struct MigrationSet* get_module_migrations(const Module* module)
-{
-    return module ? module->migrations : NULL;
-}
-
-/*************************************************************************/
-
-/* Retrieve the name of the given module.  If NULL is given, returns the
- * string "core".
- */
-
-const char* get_module_name(const Module* module)
-{
-    return module ? module->name : "core";
-}
-
-/*************************************************************************/
-/********************** Callback-related functions ***********************/
-/*************************************************************************/
-
-/* Local function to look up a callback for a module.  Returns NULL if not
- * found.
- */
-
-static CallbackInfo* find_callback(Module* module, const char* name)
-{
-    int i;
-
-    ARRAY_FOREACH(i, module->callbacks)
-    {
-        if (module->callbacks[i].name &&
-            strcmp(module->callbacks[i].name, name) == 0)
-            break;
-    }
-    if (i == module->callbacks_count)
-        return NULL;
-    return &module->callbacks[i];
-}
-
-/*************************************************************************/
-
-/* Register a new callback.  "module" is the calling module's own Module
- * pointer, or NULL for core Services callbacks (this is set by the
- * register_callback() macro).  Return the callback identifier (a
- * nonnegative integer) or -1 on error.
- */
-
-int _register_callback(Module* module, const char* name)
-{
-    int i;
-
-    log_debug(2, "register_callback(%s, \"%s\")",
-              module ? module->name : "core", name);
-    VALIDATE_MOD(module, -1);
-    if (find_callback(module, name)) {
-        log("BUG: register_callback(%s,\"%s\"): callback already registered",
-            module ? module->name : "core", name);
-        return -1;
-    }
-    i = module->callbacks_count;
-    ARRAY_EXTEND(module->callbacks);
-    module->callbacks[i].name = sstrdup(name);
-    module->callbacks[i].calling = 0;
-    module->callbacks[i].funcs_count = 0;
-    module->callbacks[i].funcs = NULL;
-    return i;
-}
-
-/*************************************************************************/
-
-/* Call all functions hooked into a callback.  Return 1 if a callback
- * returned nonzero, 0 if all callbacks returned zero, or -1 on error.
- */
-
-int _call_callback_5(Module* module, int id, void* arg1, void* arg2,
-                     void* arg3, void* arg4, void* arg5)
-{
-    CallbackInfo* cl;
-    int res = 0;
-    int i;
-
-    VALIDATE_MOD(module, -1);
-    if (id < 0 || id >= module->callbacks_count)
-        return -1;
-    cl = &module->callbacks[id];
-    cl->calling = 1;
-    ARRAY_FOREACH(i, cl->funcs)
-    {
-        res = cl->funcs[i].func(arg1, arg2, arg3, arg4, arg5);
-        if (res != 0)
-            break;
-    }
-    if (cl->calling == 2) { /* flag indicating some callbacks were removed */
-        ARRAY_FOREACH(i, cl->funcs)
-        {
-            if (!cl->funcs[i].func) {
-                ARRAY_REMOVE(cl->funcs, i);
-                i--;
-            }
-        }
-    }
-    cl->calling = 0;
-    return res;
-}
-
-/*************************************************************************/
-
-/* Delete a callback. */
-
-int _unregister_callback(Module* module, int id)
-{
-    CallbackInfo* cl;
-
-    VALIDATE_MOD(module, 0);
-    log_debug(2, "unregister_callback(%s, %d)", module->name, id);
-    if (id < 0 || id >= module->callbacks_count) {
-        log("unregister_callback(): BUG: invalid callback ID %d for module"
-            " `%s'",
-            id, module->name);
-        return 0;
-    }
-    cl = &module->callbacks[id];
-    if (!cl->name) {
-        log("unregister_callback(): BUG: callback ID %d for module `%s'"
-            " is unused (double unregister?)",
-            id, module->name);
-        return 0;
-    }
-    free(cl->funcs);
-    free(cl->name);
-    cl->funcs = NULL;
-    cl->name = NULL;
-    return 1;
-}
-
-/*************************************************************************/
-
-/* Add (hook) a function into to a callback with the given priority (higher
- * priority value = called sooner).  Callbacks with the same priority are
- * called in the order they were added.
- */
-
-int _add_callback_pri(Module* module, const char* name, callback_t callback,
-                      int priority, const Module* caller)
-{
-    CallbackInfo* cl;
-    int n;
-
-    log_debug(2, "add_callback_pri(%s, \"%s\", %p, %d)",
-              module ? module->name : "core", name ? name : "(null)", callback,
-              priority);
-    VALIDATE_MOD(module, 0);
-    VALIDATE_MOD(caller, 0);
-    cl = find_callback(module, name);
-    if (!cl) {
-        log_debug(2, "-- callback not found");
-        return 0;
-    }
-    if (priority < CBPRI_MIN || priority > CBPRI_MAX) {
-        log("add_callback_pri(): priority (%d) out of range for callback"
-            " `%s' in module `%s'",
-            priority, name, module ? module->name : "core");
-        return 0;
-    }
-    ARRAY_FOREACH(n, cl->funcs)
-    {
-        if (cl->funcs[n].pri < priority)
-            break;
-    }
-    ARRAY_INSERT(cl->funcs, n);
-    cl->funcs[n].func = callback;
-    cl->funcs[n].adder = caller;
-    cl->funcs[n].pri = priority;
-    return 1;
-}
-
-/*************************************************************************/
-
-/* Remove (unhook) a function from a callback. */
-int _remove_callback(Module* module, const char* name, callback_t callback,
-                     const Module* caller)
-{
-    CallbackInfo* cl;
-    int index;
-
-    log_debug(2, "remove_callback(%s, \"%s\", %p)",
-              module ? module->name : "core", name, callback);
-    VALIDATE_MOD(module, 0);
-    VALIDATE_MOD(caller, 0);
-    cl = find_callback(module, name);
-    if (!cl)
-        return 0;
-    ARRAY_SEARCH_SCALAR(cl->funcs, func, callback, index);
-    if (index == cl->funcs_count)
-        return 0;
-    if (cl->funcs[index].adder != caller) {
-        log("remove_callback(%s, \"%s\"): BUG: caller `%s' tried to remove"
-            " callback %p added by different module `%s'!",
-            get_module_name(module), name, get_module_name(caller), callback,
-            get_module_name(cl->funcs[index].adder));
-        return 0;
-    }
-    if (cl->calling) {
-        cl->funcs[index].func = NULL;
-        cl->calling = 2; /* flag to call_callback() indicating CB removed */
-    }
-    else {
-        ARRAY_REMOVE(cl->funcs, index);
-    }
+    event_report_undeclared();
     return 1;
 }
 

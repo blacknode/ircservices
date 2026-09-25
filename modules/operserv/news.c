@@ -20,7 +20,6 @@
 
 /*************************************************************************/
 
-static Module *module_operserv;
 
 static void do_logonnews(User *u);
 static void do_opernews(User *u);
@@ -287,7 +286,7 @@ static void display_news(User *u, int16 type, time_t min_time)
 
         strftime_lang(timebuf, sizeof(timebuf), u->ngi,
                       STRFTIME_SHORT_DATE_FORMAT, disp[count]->time);
-        notice_lang(s_GlobalNoticer, u, msg, timebuf, disp[count]->text);
+        notice_lang(global_noticer_service.nick, u, msg, timebuf, disp[count]->text);
     }
 }
 
@@ -330,18 +329,18 @@ static void do_news(User *u, int16 type)
         if (is_services_oper(u))
             do_news_add(u, type, msgs, typename);
         else
-            notice_lang(s_OperServ, u, PERMISSION_DENIED);
+            notice_lang(operserv_service.nick, u, PERMISSION_DENIED);
 
     } else if (stricmp(cmd, "DEL") == 0) {
         if (is_services_oper(u))
             do_news_del(u, type, msgs, typename);
         else
-            notice_lang(s_OperServ, u, PERMISSION_DENIED);
+            notice_lang(operserv_service.nick, u, PERMISSION_DENIED);
 
     } else {
         char buf[32];
         snprintf(buf, sizeof(buf), "%sNEWS", typename);
-        syntax_error(s_OperServ, u, buf, msgs[MSG_SYNTAX]);
+        syntax_error(operserv_service.nick, u, buf, msgs[MSG_SYNTAX]);
     }
 }
 
@@ -358,10 +357,10 @@ static void do_news_list(User *u, int16 type, int *msgs)
     for (news = first_news(); news; news = next_news()) {
         if (news->type == type) {
             if (count == 0)
-                notice_lang(s_OperServ, u, msgs[MSG_LIST_HEADER]);
+                notice_lang(operserv_service.nick, u, msgs[MSG_LIST_HEADER]);
             strftime_lang(timebuf, sizeof(timebuf), u->ngi,
                           STRFTIME_DATE_TIME_FORMAT, news->time);
-            notice_lang(s_OperServ, u, msgs[MSG_LIST_ENTRY],
+            notice_lang(operserv_service.nick, u, msgs[MSG_LIST_ENTRY],
                         news->num, timebuf,
                         *news->who ? news->who : "<unknown>",
                         news->text);
@@ -369,7 +368,7 @@ static void do_news_list(User *u, int16 type, int *msgs)
         }
     }
     if (count == 0)
-        notice_lang(s_OperServ, u, msgs[MSG_LIST_NONE]);
+        notice_lang(operserv_service.nick, u, msgs[MSG_LIST_NONE]);
 }
 
 /*************************************************************************/
@@ -383,15 +382,15 @@ static void do_news_add(User *u, int16 type, int *msgs, const char *typename)
     if (!text) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%sNEWS", typename);
-        syntax_error(s_OperServ, u, buf, msgs[MSG_ADD_SYNTAX]);
+        syntax_error(operserv_service.nick, u, buf, msgs[MSG_ADD_SYNTAX]);
     } else {
         int n = add_newsitem(u, text, type);
         if (n < 0)
-            notice_lang(s_OperServ, u, msgs[MSG_ADD_FULL]);
+            notice_lang(operserv_service.nick, u, msgs[MSG_ADD_FULL]);
         else
-            notice_lang(s_OperServ, u, msgs[MSG_ADDED], n);
+            notice_lang(operserv_service.nick, u, msgs[MSG_ADDED], n);
         if (readonly)
-            notice_lang(s_OperServ, u, READ_ONLY_MODE);
+            notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
     }
 }
 
@@ -439,22 +438,22 @@ static void do_news_del(User *u, int16 type, int *msgs, const char *typename)
     if (!text) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%sNEWS", typename);
-        syntax_error(s_OperServ, u, buf, msgs[MSG_DEL_SYNTAX]);
+        syntax_error(operserv_service.nick, u, buf, msgs[MSG_DEL_SYNTAX]);
     } else {
         if (stricmp(text, "ALL") != 0) {
             int num = atoi(text);
             if (num > 0 && del_newsitem(num, type))
-                notice_lang(s_OperServ, u, msgs[MSG_DELETED], num);
+                notice_lang(operserv_service.nick, u, msgs[MSG_DELETED], num);
             else
-                notice_lang(s_OperServ, u, msgs[MSG_DEL_NOT_FOUND], num);
+                notice_lang(operserv_service.nick, u, msgs[MSG_DEL_NOT_FOUND], num);
         } else {
             if (del_newsitem(0, type))
-                notice_lang(s_OperServ, u, msgs[MSG_DELETED_ALL]);
+                notice_lang(operserv_service.nick, u, msgs[MSG_DELETED_ALL]);
             else
-                notice_lang(s_OperServ, u, msgs[MSG_DEL_NONE]);
+                notice_lang(operserv_service.nick, u, msgs[MSG_DEL_NONE]);
         }
         if (readonly)
-            notice_lang(s_OperServ, u, READ_ONLY_MODE);
+            notice_lang(operserv_service.nick, u, READ_ONLY_MODE);
     }
 }
 
@@ -481,7 +480,7 @@ static int del_newsitem(int num, int16 type)
 /*************************** Callback routines ***************************/
 /*************************************************************************/
 
-/* Callback for users logging on. */
+/* Handler for users logging on. */
 
 static int new_user_callback(User *u, int ac, char **av, int reconnect)
 {
@@ -502,9 +501,9 @@ static int user_mode_callback(User *u, int modechar, int add)
 
 /*************************************************************************/
 
-/* OperServ STATS ALL callback. */
+/* OperServ STATS ALL handler. */
 
-static int do_stats_all(User *user, const char *s_OperServ)
+static int do_stats_all(User *user, const char *operserv_nick)
 {
     int32 count, mem;
     NewsItem *news;
@@ -516,7 +515,7 @@ static int do_stats_all(User *user, const char *s_OperServ)
         if (news->text)
             mem += strlen(news->text)+1;
     }
-    notice_lang(s_OperServ, user, OPER_STATS_ALL_NEWS_MEM,
+    notice_lang(operserv_nick, user, OPER_STATS_ALL_NEWS_MEM,
                 count, (mem+512) / 1024);
 
     return 0;
@@ -526,39 +525,25 @@ static int do_stats_all(User *user, const char *s_OperServ)
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
-    { NULL }
-};
+/* NEWS commands go into OperServ's command list. */
 
-/*************************************************************************/
-
-int init_module()
+static int news_init(Module *module)
 {
-    module_operserv = find_module("operserv/main");
-    if (!module_operserv) {
-        module_log("Main OperServ module not loaded");
-        return 0;
-    }
-    use_module(module_operserv);
-
-    if (!register_commands(module_operserv, cmds)) {
+    if (!register_commands(module_find("operserv/main"), cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
 
-    if (!add_callback(NULL, "user create", new_user_callback)
-     || !add_callback(NULL, "user MODE", user_mode_callback)
-     || !add_callback(module_operserv, "STATS ALL", do_stats_all)
+    if (!event_attach(module, EVENT_USER_CREATE, new_user_callback)
+     || !event_attach(module, EVENT_USER_MODE, user_mode_callback)
+     || !event_attach(module, OPERSERV_EVENT_STATS_ALL, do_stats_all)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
 
     if (!register_dbtable(&news_dbtable)) {
         module_log("Unable to register database table");
-        exit_module(0);
         return 0;
     }
 
@@ -567,23 +552,23 @@ int init_module()
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int news_fini(Module *module, int shutdown)
 {
     unregister_dbtable(&news_dbtable);
     clean_dbtables();
-
-    remove_callback(NULL, "user create", new_user_callback);
-    remove_callback(NULL, "user MODE", user_mode_callback);
-
-    if (module_operserv) {
-        remove_callback(module_operserv, "STATS ALL", do_stats_all);
-        unregister_commands(module_operserv, cmds);
-        unuse_module(module_operserv);
-        module_operserv = NULL;
-    }
-
+    unregister_commands(module_find("operserv/main"), cmds);
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "OperServ LOGONNEWS and OPERNEWS",
+    .requires = MODULE_REQUIRES("operserv/main"),
+    .init = news_init,
+    .fini = news_fini,
+};
 
 /*************************************************************************/
 

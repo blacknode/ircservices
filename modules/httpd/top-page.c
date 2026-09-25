@@ -18,8 +18,6 @@
 
 /*************************************************************************/
 
-static Module *module_httpd;
-
 static const char *Filename = NULL;
 static const char *ContentType = "text/html";
 static const char *Redirect = NULL;
@@ -51,7 +49,7 @@ static int do_request(http_req_t id, const struct HttpRequest *req,
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective top_page_config[] = {
     { "Filename",         { { CD_STRING, 0, &Filename },
                             { CD_STRING, CF_OPTIONAL, &ContentType } } },
     { "Redirect",         { { CD_STRING, 0, &Redirect } } },
@@ -60,37 +58,33 @@ ConfigDirective module_config[] = {
 
 /*************************************************************************/
 
-int init_module(void)
+static int top_page_init(Module *module)
 {
-    module_httpd = find_module("httpd/main");
-    if (!module_httpd) {
-        module_log("Main httpd module not loaded");
-        exit_module(0);
-        return 0;
-    }
-    use_module(module_httpd);
-
-    if (!http_add_route(THIS_MODULE, "GET", "/", do_request, NULL)) {
+    if (!http_add_route(module, "GET", "/", do_request, NULL)) {
         module_log("Unable to claim / (already claimed)");
-        exit_module(0);
         return 0;
     }
-
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int top_page_fini(Module *module, int shutdown)
 {
-    if (module_httpd) {
-        http_del_routes(THIS_MODULE);
-        unuse_module(module_httpd);
-        module_httpd = NULL;
-    }
-
+    http_del_routes(module);
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "HTTP: the top page (/)",
+    .requires = MODULE_REQUIRES("httpd/main"),
+    .config = top_page_config,
+    .init = top_page_init,
+    .fini = top_page_fini,
+};
 
 /*************************************************************************/
 

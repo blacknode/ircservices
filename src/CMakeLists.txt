@@ -12,6 +12,7 @@ set(core_sources
   databases.c   # database table registry
   db.c          # database API (db.h): calls in flight, the database block
   encrypt.c     # password encryption front-end
+  events.c      # events: declaring, attaching handlers, emitting
   ignore.c      # flood/ignore accounting
   init.c        # start-up, configuration, shutdown
   language.c    # message catalogs
@@ -23,10 +24,11 @@ set(core_sources
   messages.c    # IRC message dispatch tables
   misc.c        # string, mask and time helpers
   modes.c       # user/channel mode tables
-  modules.c     # module loader and callbacks
+  modules.c     # module loader
   p10.c         # P10 protocol (ircu2): numerics, tokens, burst
   process.c     # line splitting and dispatch
   send.c        # outgoing messages
+  service.c     # pseudo-clients: introducing, messages, WHOIS
   servers.c     # server tree
   signals.c     # signal handling
   sockets.c     # buffered sockets on top of the event engine

@@ -28,11 +28,12 @@ when they run.
   the schema (`instance') and the list of Redis keys to correct
   (`store_stale').  No module may be called "core".
 
-- The modules that keep Services' own data declare MODULE_MIGRATIONS_AUTO:
-  in this release nickserv/main (nicknames, nickname groups, access lists,
-  memos) and chanserv/main (channels, access lists, autokicks).  Their
-  pending migrations are applied when the module is loaded, before
-  init_module(): without their tables there would not even be an
+- The modules that keep Services' own data set MODULE_APPLY_MIGRATIONS
+  in their ModuleInfo.flags (readme.mod_api): in this release
+  nickserv/main (nicknames, nickname groups, access lists, memos) and
+  chanserv/main (channels, access lists, autokicks).  Their pending
+  migrations are applied when the module is loaded, before its `init':
+  without their tables there would not even be an
   identified operator to apply them by hand.  A module whose migrations
   cannot be applied does not load, and when it is one of these, Services
   do not start.
@@ -129,7 +130,7 @@ expected operation; going back destroys whatever the migration built, and
 LIST and STATUS are limited to Services admins; APPLY and REVERT to the
 Services super-user (ServicesRoot).  The module must be loaded.  Neither
 APPLY nor REVERT accepts "core", and REVERT refuses the modules that
-declare MODULE_MIGRATIONS_AUTO: reverting one would drop the tables from
+set MODULE_APPLY_MIGRATIONS: reverting one would drop the tables from
 under a module that is running.
 
 The replies come back when the database has answered, which may be after
@@ -218,9 +219,9 @@ Never edit a migration that has been applied anywhere; add the next one.
 An edited migration says one thing to the databases that ran it and
 another to those that have not.
 
-For a module that declares MODULE_MIGRATIONS_AUTO, step 5 is the restart
+For a module that sets MODULE_APPLY_MIGRATIONS, step 5 is the restart
 (or the module being loaded again): its new migrations are applied then,
-before its init_module() runs.  Its tables are the ones the entity store
+before its `init' runs.  Its tables are the ones the entity store
 reads and writes (readme.database, section 2), so a new column must also
 appear in the record's bundle -- and must have a default, since rows
 written by the previous version do not have it.

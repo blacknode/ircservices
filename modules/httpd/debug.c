@@ -17,7 +17,6 @@
 
 /*************************************************************************/
 
-static Module *module_httpd;
 
 static char *DebugURL;
 
@@ -55,7 +54,7 @@ static int do_request(http_req_t id, const struct HttpRequest *req,
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective debug_config[] = {
     { "DebugURL",         { { CD_STRING, CF_DIRREQ, &DebugURL } } },
     { NULL }
 };
@@ -87,29 +86,18 @@ static int claim(void)
     return 1;
 }
 
-static int do_reconfigure(int after_configure)
+static void debug_rehash(Module *module)
 {
-    if (after_configure && (!claimed || strcmp(claimed, DebugURL) != 0))
+    if (!claimed || strcmp(claimed, DebugURL) != 0)
         claim();
-    return 0;
 }
 
 /*************************************************************************/
 
-int init_module(void)
+static int debug_init(Module *module)
 {
-    module_httpd = find_module("httpd/main");
-    if (!module_httpd) {
-        module_log("Main httpd module not loaded");
-        exit_module(0);
+    if (!claim())
         return 0;
-    }
-    use_module(module_httpd);
-
-    if (!add_callback(NULL, "reconfigure", do_reconfigure) || !claim()) {
-        exit_module(0);
-        return 0;
-    }
     if (!http_available())
         module_log("httpd/main has no ListenTo: %s will not be reached",
                    DebugURL);
@@ -119,18 +107,24 @@ int init_module(void)
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int debug_fini(Module *module, int shutdown)
 {
-    remove_callback(NULL, "reconfigure", do_reconfigure);
-    if (module_httpd) {
-        unclaim();
-        http_del_routes(THIS_MODULE);
-        unuse_module(module_httpd);
-        module_httpd = NULL;
-    }
-
+    unclaim();
+    http_del_routes(module);
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "HTTP: a page that echoes the request, for debugging",
+    .requires = MODULE_REQUIRES("httpd/main"),
+    .config = debug_config,
+    .init = debug_init,
+    .fini = debug_fini,
+    .rehash = debug_rehash,
+};
 
 /*************************************************************************/
 

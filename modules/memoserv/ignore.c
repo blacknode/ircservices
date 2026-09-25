@@ -20,7 +20,6 @@
 
 /*************************************************************************/
 
-static Module *module_memoserv;
 
 static int MSIgnoreMax;
 
@@ -98,77 +97,77 @@ void do_ignore(User *u)
 
     if (cmd && mask && stricmp(cmd,"LIST") == 0 && is_services_admin(u)) {
         if (!(ni = get_nickinfo(mask))) {
-            notice_lang(s_MemoServ, u, NICK_X_NOT_REGISTERED, mask);
+            notice_lang(memoserv_service.nick, u, NICK_X_NOT_REGISTERED, mask);
         } else if (ni->status & NS_VERBOTEN) {
-            notice_lang(s_NickServ, u, NICK_X_FORBIDDEN, mask);
+            notice_lang(nickserv_service.nick, u, NICK_X_FORBIDDEN, mask);
         } else if (!(ngi = get_ngi(ni))) {
-            notice_lang(s_MemoServ, u, INTERNAL_ERROR);
+            notice_lang(memoserv_service.nick, u, INTERNAL_ERROR);
         } else if (ngi->ignore_count == 0) {
-            notice_lang(s_MemoServ, u, MEMO_IGNORE_LIST_X_EMPTY, mask);
+            notice_lang(memoserv_service.nick, u, MEMO_IGNORE_LIST_X_EMPTY, mask);
         } else {
-            notice_lang(s_MemoServ, u, MEMO_IGNORE_LIST_X, mask);
+            notice_lang(memoserv_service.nick, u, MEMO_IGNORE_LIST_X, mask);
             ARRAY_FOREACH (i, ngi->ignore)
-                notice(s_MemoServ, u->nick, "    %s", ngi->ignore[i]);
+                notice(memoserv_service.nick, u->nick, "    %s", ngi->ignore[i]);
         }
         put_nickinfo(ni);
         put_nickgroupinfo(ngi);
 
     } else if (!cmd || ((stricmp(cmd,"LIST")==0) && mask)) {
-        syntax_error(s_MemoServ, u, "IGNORE", MEMO_IGNORE_SYNTAX);
+        syntax_error(memoserv_service.nick, u, "IGNORE", MEMO_IGNORE_SYNTAX);
 
     } else if (!(ngi = u->ngi) || ngi == NICKGROUPINFO_INVALID) {
-        notice_lang(s_MemoServ, u, NICK_NOT_REGISTERED);
+        notice_lang(memoserv_service.nick, u, NICK_NOT_REGISTERED);
 
     } else if (!user_identified(u)) {
-        notice_lang(s_MemoServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
+        notice_lang(memoserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
 
     } else if (stricmp(cmd, "ADD") == 0) {
         if (!mask) {
-            syntax_error(s_MemoServ, u, "IGNORE", MEMO_IGNORE_ADD_SYNTAX);
+            syntax_error(memoserv_service.nick, u, "IGNORE", MEMO_IGNORE_ADD_SYNTAX);
             return;
         }
         if (ngi->ignore_count >= MSIgnoreMax) {
-            notice_lang(s_MemoServ, u, MEMO_IGNORE_LIST_FULL);
+            notice_lang(memoserv_service.nick, u, MEMO_IGNORE_LIST_FULL);
             return;
         }
         ARRAY_FOREACH (i, ngi->ignore) {
             if (stricmp(ngi->ignore[i], mask) == 0) {
-                notice_lang(s_MemoServ, u,
+                notice_lang(memoserv_service.nick, u,
                         MEMO_IGNORE_ALREADY_PRESENT, ngi->ignore[i]);
                 return;
             }
         }
         ARRAY_EXTEND(ngi->ignore);
         ngi->ignore[ngi->ignore_count-1] = sstrdup(mask);
-        notice_lang(s_MemoServ, u, MEMO_IGNORE_ADDED, mask);
+        notice_lang(memoserv_service.nick, u, MEMO_IGNORE_ADDED, mask);
 
    } else if (stricmp(cmd, "DEL") == 0) {
         if (!mask) {
-            syntax_error(s_MemoServ, u, "IGNORE", MEMO_IGNORE_DEL_SYNTAX);
+            syntax_error(memoserv_service.nick, u, "IGNORE", MEMO_IGNORE_DEL_SYNTAX);
             return;
         }
         ARRAY_SEARCH_PLAIN(ngi->ignore, mask, strcmp, i);
         if (i == ngi->ignore_count)
             ARRAY_SEARCH_PLAIN(ngi->ignore, mask, stricmp, i);
         if (i == ngi->ignore_count) {
-            notice_lang(s_MemoServ, u, MEMO_IGNORE_NOT_FOUND, mask);
+            notice_lang(memoserv_service.nick, u, MEMO_IGNORE_NOT_FOUND, mask);
             return;
         }
-        notice_lang(s_MemoServ, u, MEMO_IGNORE_DELETED, mask);
+        notice_lang(memoserv_service.nick, u, MEMO_IGNORE_DELETED, mask);
         free(ngi->ignore[i]);
         ARRAY_REMOVE(ngi->ignore, i);
 
     } else if (stricmp(cmd, "LIST") == 0) {
         if (ngi->ignore_count == 0) {
-            notice_lang(s_MemoServ, u, MEMO_IGNORE_LIST_EMPTY);
+            notice_lang(memoserv_service.nick, u, MEMO_IGNORE_LIST_EMPTY);
         } else {
-            notice_lang(s_MemoServ, u, MEMO_IGNORE_LIST);
+            notice_lang(memoserv_service.nick, u, MEMO_IGNORE_LIST);
             ARRAY_FOREACH (i, ngi->ignore)
-                notice(s_MemoServ, u->nick, "    %s", ngi->ignore[i]);
+                notice(memoserv_service.nick, u->nick, "    %s", ngi->ignore[i]);
         }
 
     } else {
-        syntax_error(s_MemoServ, u, "IGNORE", MEMO_IGNORE_SYNTAX);
+        syntax_error(memoserv_service.nick, u, "IGNORE", MEMO_IGNORE_SYNTAX);
     }
 }
 
@@ -176,54 +175,47 @@ void do_ignore(User *u)
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective memo_ignore_config[] = {
     { "MSIgnoreMax",      { { CD_POSINT, CF_DIRREQ, &MSIgnoreMax } } },
     { NULL }
 };
 
-
 /*************************************************************************/
 
-int init_module(void)
-{
-    module_memoserv = find_module("memoserv/main");
-    if (!module_memoserv) {
-        module_log("Main MemoServ module not loaded");
-        return 0;
-    }
-    use_module(module_memoserv);
+/* The IGNORE command goes into MemoServ's command list. */
 
-    if (!register_commands(module_memoserv, cmds)) {
+static int memo_ignore_init(Module *module)
+{
+    if (!register_commands(module_find("memoserv/main"), cmds)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
-
-    if (!add_callback_pri(module_memoserv, "receive memo",
-                          check_if_ignored, MS_RECEIVE_PRI_CHECK)
-    ) {
-        module_log("Unable to add callback");
-        exit_module(0);
+    if (!event_attach_priority(module, MEMOSERV_EVENT_RECEIVE_MEMO,
+                               check_if_ignored, MS_RECEIVE_PRI_CHECK)) {
+        module_log("Unable to attach to " MEMOSERV_EVENT_RECEIVE_MEMO);
         return 0;
     }
-
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int memo_ignore_fini(Module *module, int shutdown)
 {
-
-    if (module_memoserv) {
-        remove_callback(module_memoserv, "receive memo", check_if_ignored);
-        unregister_commands(module_memoserv, cmds);
-        unuse_module(module_memoserv);
-        module_memoserv = NULL;
-    }
-
+    unregister_commands(module_find("memoserv/main"), cmds);
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "MemoServ IGNORE: refuse memos from chosen senders",
+    .requires = MODULE_REQUIRES("memoserv/main"),
+    .config = memo_ignore_config,
+    .init = memo_ignore_init,
+    .fini = memo_ignore_fini,
+};
 
 /*************************************************************************/
 

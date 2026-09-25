@@ -21,9 +21,6 @@
 /*************************** Local variables *****************************/
 /*************************************************************************/
 
-static Module *module_memoserv;
-static Module *module_nickserv_mail_auth;
-static Module *module_mail;
 
 static int    MSAllowForward = 0;
 static time_t MSForwardDelay = 0;
@@ -57,17 +54,17 @@ static void do_forward(User *u)
     time_t now = time(NULL);
 
     if (!user_identified(u)) {
-        notice_lang(s_MemoServ, u, NICK_IDENTIFY_REQUIRED, s_NickServ);
+        notice_lang(memoserv_service.nick, u, NICK_IDENTIFY_REQUIRED, nickserv_service.nick);
         return;
     }
     mi = &u->ngi->memos;
     if (!numstr || (!isdigit(*numstr) && stricmp(numstr, "ALL") != 0)) {
-        syntax_error(s_MemoServ, u, "FORWARD", MEMO_FORWARD_SYNTAX);
+        syntax_error(memoserv_service.nick, u, "FORWARD", MEMO_FORWARD_SYNTAX);
     } else if (mi->memos_count == 0) {
-        notice_lang(s_MemoServ, u, MEMO_HAVE_NO_MEMOS);
+        notice_lang(memoserv_service.nick, u, MEMO_HAVE_NO_MEMOS);
     } else if (MSForwardDelay > 0 && u->lastmemofwd+MSForwardDelay > now) {
         u->lastmemofwd = now;
-        notice_lang(s_MemoServ, u, MEMO_FORWARD_PLEASE_WAIT,
+        notice_lang(memoserv_service.nick, u, MEMO_FORWARD_PLEASE_WAIT,
                     maketime(u->ngi,MSForwardDelay,MT_SECONDS));
     } else {
         int fwdcount, count, last, i;
@@ -106,17 +103,17 @@ static void do_forward(User *u)
                      getstring(u->ngi,LANG_CHARSET), NULL, NULL);
             free(body);
             if (fwdcount < 0)
-                notice_lang(s_MemoServ, u, MEMO_FORWARDED_ALL);
+                notice_lang(memoserv_service.nick, u, MEMO_FORWARDED_ALL);
             else if (fwdcount > 1)
-                notice_lang(s_MemoServ, u, MEMO_FORWARDED_SEVERAL, fwdcount);
+                notice_lang(memoserv_service.nick, u, MEMO_FORWARDED_SEVERAL, fwdcount);
             else
-                notice_lang(s_MemoServ, u, MEMO_FORWARDED_ONE, last);
+                notice_lang(memoserv_service.nick, u, MEMO_FORWARDED_ONE, last);
         } else {
             /* No memos were forwarded. */
             if (count == 1 && fwdcount == 0)
-                notice_lang(s_MemoServ, u, MEMO_DOES_NOT_EXIST, atoi(numstr));
+                notice_lang(memoserv_service.nick, u, MEMO_DOES_NOT_EXIST, atoi(numstr));
             else
-                notice_lang(s_MemoServ, u, MEMO_FORWARDED_NONE);
+                notice_lang(memoserv_service.nick, u, MEMO_FORWARDED_NONE);
         }
         u->lastmemofwd = now;
     }
@@ -194,19 +191,19 @@ static int do_set_forward(User *u, MemoInfo *mi, const char *option,
     if (stricmp(option, "FORWARD") != 0)
         return 0;
     if (!u->ngi->email) {
-        notice_lang(s_MemoServ, u, MEMO_FORWARD_NEED_EMAIL);
+        notice_lang(memoserv_service.nick, u, MEMO_FORWARD_NEED_EMAIL);
     } else if (stricmp(param, "ON") == 0) {
         u->ngi->flags |= NF_MEMO_FWD;
         u->ngi->flags &= ~NF_MEMO_FWDCOPY;
-        notice_lang(s_MemoServ, u, MEMO_SET_FORWARD_ON, u->ngi->email);
+        notice_lang(memoserv_service.nick, u, MEMO_SET_FORWARD_ON, u->ngi->email);
     } else if (stricmp(param, "COPY") == 0) {
         u->ngi->flags |= NF_MEMO_FWD | NF_MEMO_FWDCOPY;
-        notice_lang(s_MemoServ, u, MEMO_SET_FORWARD_COPY, u->ngi->email);
+        notice_lang(memoserv_service.nick, u, MEMO_SET_FORWARD_COPY, u->ngi->email);
     } else if (stricmp(param, "OFF") == 0) {
         u->ngi->flags &= ~(NF_MEMO_FWD | NF_MEMO_FWDCOPY);
-        notice_lang(s_MemoServ, u, MEMO_SET_FORWARD_OFF);
+        notice_lang(memoserv_service.nick, u, MEMO_SET_FORWARD_OFF);
     } else {
-        syntax_error(s_MemoServ, u, "SET FORWARD", MEMO_SET_FORWARD_SYNTAX);
+        syntax_error(memoserv_service.nick, u, "SET FORWARD", MEMO_SET_FORWARD_SYNTAX);
     }
     return 1;
 }
@@ -261,7 +258,7 @@ static int do_receive_memo(const User *sender, const char *target,
 /***************************** Module stuff ******************************/
 /*************************************************************************/
 
-ConfigDirective module_config[] = {
+static ConfigDirective forward_config[] = {
     { "MSAllowForward",   { { CD_SET, 0, &MSAllowForward } } },
     { "MSForwardDelay",   { { CD_TIME, 0, &MSForwardDelay } } },
     { NULL }
@@ -269,91 +266,57 @@ ConfigDirective module_config[] = {
 
 /*************************************************************************/
 
-static int do_reconfigure(int after_configure)
+static void forward_rehash(Module *module)
 {
-    if (after_configure) {
-        if (MSAllowForward)
-            commands[lenof(commands)-2].name = "FORWARD";
-        else
-            commands[lenof(commands)-2].name = NULL;
-    }
-    return 0;
+    if (MSAllowForward)
+        commands[lenof(commands)-2].name = "FORWARD";
+    else
+        commands[lenof(commands)-2].name = NULL;
 }
 
 /*************************************************************************/
 
-int init_module(void)
+/* The FORWARD command goes into MemoServ's command list. */
+
+static int forward_init(Module *module)
 {
-    module_memoserv = find_module("memoserv/main");
-    if (!module_memoserv) {
-        module_log("Main MemoServ module not loaded");
-        exit_module(0);
-        return 0;
-    }
-    use_module(module_memoserv);
-
-    module_nickserv_mail_auth = find_module("nickserv/mail-auth");
-    if (!module_nickserv_mail_auth) {
-        module_log("NickServ AUTH module (mail-auth) required for FORWARD");
-        exit_module(0);
-        return 0;
-    }
-    use_module(module_nickserv_mail_auth);
-
-    module_mail = find_module("mail/main");
-    if (!module_mail) {
-        module_log("Mail module not loaded");
-        exit_module(0);
-        return 0;
-    }
-    use_module(module_mail);
-
     if (!MSAllowForward)
         commands[lenof(commands)-2].name = NULL;
-    if (!register_commands(module_memoserv, commands)) {
+    if (!register_commands(module_find("memoserv/main"), commands)) {
         module_log("Unable to register commands");
-        exit_module(0);
         return 0;
     }
-
-    if (!add_callback(NULL, "reconfigure", do_reconfigure)
-     || !add_callback_pri(module_memoserv, "receive memo", do_receive_memo,
-                          MS_RECEIVE_PRI_DELIVER)
-     || !add_callback(module_memoserv, "SET", do_set_forward)
+    if (!event_attach_priority(module, MEMOSERV_EVENT_RECEIVE_MEMO,
+                               do_receive_memo, MS_RECEIVE_PRI_DELIVER)
+     || !event_attach(module, MEMOSERV_EVENT_SET, do_set_forward)
     ) {
-        module_log("Unable to add callbacks");
-        exit_module(0);
+        module_log("Unable to attach event handlers");
         return 0;
     }
-
     return 1;
 }
 
 /*************************************************************************/
 
-int exit_module(int shutdown_unused)
+static int forward_fini(Module *module, int shutdown)
 {
-    if (module_mail) {
-        unuse_module(module_mail);
-        module_mail = NULL;
-    }
-    if (module_nickserv_mail_auth) {
-        unuse_module(module_nickserv_mail_auth);
-        module_nickserv_mail_auth = NULL;
-    }
-    if (module_memoserv) {
-        remove_callback(module_memoserv, "SET", do_set_forward);
-        remove_callback(module_memoserv, "receive memo", do_receive_memo);
-        unregister_commands(module_memoserv, commands);
-        unuse_module(module_memoserv);
-        module_memoserv = NULL;
-    }
-    remove_callback(NULL, "reconfigure", do_reconfigure);
-
+    unregister_commands(module_find("memoserv/main"), commands);
     commands[lenof(commands)-2].name = "FORWARD";
-
     return 1;
 }
+
+/*************************************************************************/
+
+ModuleInfo module_info = {
+    .abi = MODULE_ABI,
+    .description = "MemoServ FORWARD: forward memos by mail",
+    .requires = MODULE_REQUIRES("memoserv/main", "nickserv/mail-auth",
+                                "mail/main"),
+    .config = forward_config,
+    .init = forward_init,
+    .fini = forward_fini,
+    .rehash = forward_rehash,
+};
 
 /*************************************************************************/
 

@@ -19,9 +19,9 @@
 
 /*************************************************************************/
 
-static int cb_set = -1;
-static int cb_set_mlock = -1;
-static int cb_unset = -1;
+static Event* set_event;
+static Event* set_mlock_event;
+static Event* unset_event;
 
 /*************************************************************************/
 
@@ -61,7 +61,7 @@ void do_set(User *u)
     int used_privs = 0;
 
     if (readonly) {
-        notice_lang(s_ChanServ, u, CHAN_SET_DISABLED);
+        notice_lang(chanserv_service.nick, u, CHAN_SET_DISABLED);
         return;
     }
 
@@ -78,23 +78,23 @@ void do_set(User *u)
     }
 
     if (!param || (stricmp(cmd,"MLOCK") != 0 && strtok_remaining())) {
-        syntax_error(s_ChanServ, u, "SET", CHAN_SET_SYNTAX);
+        syntax_error(chanserv_service.nick, u, "SET", CHAN_SET_SYNTAX);
     } else if (!(ci = get_channelinfo(chan))) {
-        notice_lang(s_ChanServ, u, CHAN_X_NOT_REGISTERED, chan);
+        notice_lang(chanserv_service.nick, u, CHAN_X_NOT_REGISTERED, chan);
     } else if (ci->flags & CF_VERBOTEN) {
-        notice_lang(s_ChanServ, u, CHAN_X_FORBIDDEN, chan);
+        notice_lang(chanserv_service.nick, u, CHAN_X_FORBIDDEN, chan);
     } else if (!check_access_cmd(u, ci, "SET", cmd)
                && (used_privs = 1, !is_servadmin)) {
-        notice_lang(s_ChanServ, u, ACCESS_DENIED);
-    } else if (call_callback_4(cb_set, u, ci, cmd, param) > 0) {
+        notice_lang(chanserv_service.nick, u, ACCESS_DENIED);
+    } else if (event_emit(set_event, u, ci, cmd, param) > 0) {
         return;
     } else if (stricmp(cmd, "FOUNDER") == 0) {
         used_privs = 0;
         if (!is_founder(u, ci) && (used_privs = 1, !is_servadmin)) {
-            notice_lang(s_ChanServ, u, CHAN_IDENTIFY_REQUIRED,s_ChanServ,chan);
+            notice_lang(chanserv_service.nick, u, CHAN_IDENTIFY_REQUIRED,chanserv_service.nick,chan);
         } else {
             if (WallAdminPrivs && used_privs) {
-                wallops(s_ChanServ, "\2%s\2 used SET FOUNDER as Services"
+                wallops(chanserv_service.nick, "\2%s\2 used SET FOUNDER as Services"
                         " admin on \2%s\2", u->nick, ci->name);
             }
             do_set_founder(u, ci, param);
@@ -102,57 +102,57 @@ void do_set(User *u)
     } else if (stricmp(cmd, "SUCCESSOR") == 0) {
         used_privs = 0;
         if (!is_founder(u, ci) && (used_privs = 1, !is_servadmin)) {
-            notice_lang(s_ChanServ, u, CHAN_IDENTIFY_REQUIRED,s_ChanServ,chan);
+            notice_lang(chanserv_service.nick, u, CHAN_IDENTIFY_REQUIRED,chanserv_service.nick,chan);
         } else {
             if (WallAdminPrivs && used_privs) {
-                wallops(s_ChanServ, "\2%s\2 used SET SUCCESSOR as Services"
+                wallops(chanserv_service.nick, "\2%s\2 used SET SUCCESSOR as Services"
                         " admin on \2%s\2", u->nick, ci->name);
             }
             do_set_successor(u, ci, param);
         }
     } else if (stricmp(cmd, "PASSWORD") == 0) {
         if (!is_servadmin && !is_founder(u, ci)) {
-            notice_lang(s_ChanServ, u, CHAN_IDENTIFY_REQUIRED,s_ChanServ,chan);
+            notice_lang(chanserv_service.nick, u, CHAN_IDENTIFY_REQUIRED,chanserv_service.nick,chan);
         } else {
             if (WallAdminPrivs && used_privs) {
-                wallops(s_ChanServ, "\2%s\2 used SET PASSWORD as Services"
+                wallops(chanserv_service.nick, "\2%s\2 used SET PASSWORD as Services"
                         " admin on \2%s\2", u->nick, ci->name);
             }
             do_set_password(u, ci, param);
         }
     } else if (stricmp(cmd, "DESC") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_ChanServ, "\2%s\2 used SET DESC as Services admin"
+            wallops(chanserv_service.nick, "\2%s\2 used SET DESC as Services admin"
                     " on \2%s\2", u->nick, ci->name);
         }
         do_set_desc(u, ci, param);
     } else if (stricmp(cmd, "URL") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_ChanServ, "\2%s\2 used SET URL as Services admin"
+            wallops(chanserv_service.nick, "\2%s\2 used SET URL as Services admin"
                     " on \2%s\2", u->nick, ci->name);
         }
         do_set_url(u, ci, param);
     } else if (stricmp(cmd, "EMAIL") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_ChanServ, "\2%s\2 used SET EMAIL as Services admin"
+            wallops(chanserv_service.nick, "\2%s\2 used SET EMAIL as Services admin"
                     " on \2%s\2", u->nick, ci->name);
         }
         do_set_email(u, ci, param);
     } else if (stricmp(cmd, "ENTRYMSG") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_ChanServ, "\2%s\2 used SET ENTRYMSG as Services admin"
+            wallops(chanserv_service.nick, "\2%s\2 used SET ENTRYMSG as Services admin"
                     " on \2%s\2", u->nick, ci->name);
         }
         do_set_entrymsg(u, ci, param);
     } else if (stricmp(cmd, "MLOCK") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_ChanServ, "\2%s\2 used SET MLOCK as Services admin"
+            wallops(chanserv_service.nick, "\2%s\2 used SET MLOCK as Services admin"
                     " on \2%s\2", u->nick, ci->name);
         }
         do_set_mlock(u, ci, param);
     } else if (stricmp(cmd, "HIDE") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_ChanServ, "\2%s\2 used SET HIDE as Services admin"
+            wallops(chanserv_service.nick, "\2%s\2 used SET HIDE as Services admin"
                     " on \2%s\2", u->nick, ci->name);
         }
         do_set_hide(u, ci, param, extra);
@@ -162,13 +162,13 @@ void do_set(User *u)
             co = NULL;
         if (co) {
             if (WallAdminPrivs && used_privs) {
-                wallops(s_ChanServ, "\2%s\2 used SET %s as Services admin"
+                wallops(chanserv_service.nick, "\2%s\2 used SET %s as Services admin"
                         " on \2%s\2", u->nick, co->name, ci->name);
             }
             do_set_boolean(u, ci, co, param);
         } else {
-            notice_lang(s_ChanServ, u, CHAN_SET_UNKNOWN_OPTION, strupper(cmd));
-            notice_lang(s_ChanServ, u, MORE_INFO, s_ChanServ, "SET");
+            notice_lang(chanserv_service.nick, u, CHAN_SET_UNKNOWN_OPTION, strupper(cmd));
+            notice_lang(chanserv_service.nick, u, MORE_INFO, chanserv_service.nick, "SET");
         }
     }
     put_channelinfo(ci);
@@ -187,51 +187,51 @@ void do_unset(User *u)
     int used_privs = 0;
 
     if (readonly) {
-        notice_lang(s_ChanServ, u, CHAN_SET_DISABLED);
+        notice_lang(chanserv_service.nick, u, CHAN_SET_DISABLED);
         return;
     }
 
     if (!chan || !cmd) {
-        syntax_error(s_ChanServ, u, "UNSET", CHAN_UNSET_SYNTAX);
+        syntax_error(chanserv_service.nick, u, "UNSET", CHAN_UNSET_SYNTAX);
     } else if (!(ci = get_channelinfo(chan))) {
-        notice_lang(s_ChanServ, u, CHAN_X_NOT_REGISTERED, chan);
+        notice_lang(chanserv_service.nick, u, CHAN_X_NOT_REGISTERED, chan);
     } else if (ci->flags & CF_VERBOTEN) {
-        notice_lang(s_ChanServ, u, CHAN_X_FORBIDDEN, chan);
+        notice_lang(chanserv_service.nick, u, CHAN_X_FORBIDDEN, chan);
     } else if (!check_access_cmd(u, ci, "SET", cmd)
                && (used_privs = 1, !is_servadmin)) {
-        notice_lang(s_ChanServ, u, ACCESS_DENIED);
-    } else if (call_callback_3(cb_unset, u, ci, cmd) > 0) {
+        notice_lang(chanserv_service.nick, u, ACCESS_DENIED);
+    } else if (event_emit(unset_event, u, ci, cmd) > 0) {
         return;
     } else if (stricmp(cmd, "SUCCESSOR") == 0) {
         if (!is_servadmin && !is_founder(u, ci)) {
-            notice_lang(s_ChanServ, u, CHAN_IDENTIFY_REQUIRED,s_ChanServ,chan);
+            notice_lang(chanserv_service.nick, u, CHAN_IDENTIFY_REQUIRED,chanserv_service.nick,chan);
         } else {
             if (WallAdminPrivs && !is_founder(u, ci)) {
-                wallops(s_ChanServ, "\2%s\2 used UNSET SUCCESSOR as"
+                wallops(chanserv_service.nick, "\2%s\2 used UNSET SUCCESSOR as"
                         " Services admin on \2%s\2", u->nick, ci->name);
             }
             do_set_successor(u, ci, NULL);
         }
     } else if (stricmp(cmd, "URL") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_ChanServ, "\2%s\2 used UNSET URL as Services admin"
+            wallops(chanserv_service.nick, "\2%s\2 used UNSET URL as Services admin"
                     " on \2%s\2", u->nick, ci->name);
         }
         do_set_url(u, ci, NULL);
     } else if (stricmp(cmd, "EMAIL") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_ChanServ, "\2%s\2 used UNSET EMAIL as Services admin"
+            wallops(chanserv_service.nick, "\2%s\2 used UNSET EMAIL as Services admin"
                     " on \2%s\2", u->nick, ci->name);
         }
         do_set_email(u, ci, NULL);
     } else if (stricmp(cmd, "ENTRYMSG") == 0) {
         if (WallAdminPrivs && used_privs) {
-            wallops(s_ChanServ, "\2%s\2 used UNSET ENTRYMSG as Services admin"
+            wallops(chanserv_service.nick, "\2%s\2 used UNSET ENTRYMSG as Services admin"
                     " on \2%s\2", u->nick, ci->name);
         }
         do_set_entrymsg(u, ci, NULL);
     } else {
-        syntax_error(s_ChanServ, u, "UNSET", CHAN_UNSET_SYNTAX);
+        syntax_error(chanserv_service.nick, u, "UNSET", CHAN_UNSET_SYNTAX);
     }
     put_channelinfo(ci);
 }
@@ -245,14 +245,14 @@ static void do_set_founder(User *u, ChannelInfo *ci, char *param)
     NickGroupInfo *ngi, *oldngi;
 
     if (!ni) {
-        notice_lang(s_ChanServ, u, NICK_X_NOT_REGISTERED, param);
+        notice_lang(chanserv_service.nick, u, NICK_X_NOT_REGISTERED, param);
         return;
     } else if (ni->status & NS_VERBOTEN) {
-        notice_lang(s_ChanServ, u, NICK_X_FORBIDDEN, param);
+        notice_lang(chanserv_service.nick, u, NICK_X_FORBIDDEN, param);
         put_nickinfo(ni);
         return;
     } else if (!(ngi = get_ngi(ni))) {
-        notice_lang(s_ChanServ, u, INTERNAL_ERROR);
+        notice_lang(chanserv_service.nick, u, INTERNAL_ERROR);
         put_nickinfo(ni);
         return;
     }
@@ -261,7 +261,7 @@ static void do_set_founder(User *u, ChannelInfo *ci, char *param)
     if ((!is_services_admin(u) && check_channel_limit(ngi, NULL) >= 0)
      || ngi->channels_count >= MAX_CHANNELCOUNT
     ) {
-        notice_lang(s_ChanServ, u, CHAN_SET_FOUNDER_TOO_MANY_CHANS, param);
+        notice_lang(chanserv_service.nick, u, CHAN_SET_FOUNDER_TOO_MANY_CHANS, param);
         put_nickgroupinfo(ngi);
         return;
     }
@@ -279,7 +279,7 @@ static void do_set_founder(User *u, ChannelInfo *ci, char *param)
                    ci->name);
         ci->successor = 0;
     }
-    notice_lang(s_ChanServ, u, CHAN_FOUNDER_CHANGED, ci->name, param);
+    notice_lang(chanserv_service.nick, u, CHAN_FOUNDER_CHANGED, ci->name, param);
 }
 
 /*************************************************************************/
@@ -292,20 +292,20 @@ static void do_set_successor(User *u, ChannelInfo *ci, char *param)
 
         ni = get_nickinfo(param);
         if (!ni) {
-            notice_lang(s_ChanServ, u, NICK_X_NOT_REGISTERED, param);
+            notice_lang(chanserv_service.nick, u, NICK_X_NOT_REGISTERED, param);
             return;
         } else if (ni->status & NS_VERBOTEN) {
-            notice_lang(s_ChanServ, u, NICK_X_FORBIDDEN, param);
+            notice_lang(chanserv_service.nick, u, NICK_X_FORBIDDEN, param);
             put_nickinfo(ni);
             return;
         } else if (!(ngi = get_ngi(ni))) {
-            notice_lang(s_ChanServ, u, INTERNAL_ERROR);
+            notice_lang(chanserv_service.nick, u, INTERNAL_ERROR);
             put_nickinfo(ni);
             return;
         }
         put_nickinfo(ni);
         if (ngi->id == ci->founder) {
-            notice_lang(s_ChanServ, u, CHAN_SUCCESSOR_IS_FOUNDER);
+            notice_lang(chanserv_service.nick, u, CHAN_SUCCESSOR_IS_FOUNDER);
             put_nickgroupinfo(ngi);
             return;
         }
@@ -322,12 +322,12 @@ static void do_set_successor(User *u, ChannelInfo *ci, char *param)
         }
         ci->successor = ngi->id;
         put_nickgroupinfo(ngi);
-        notice_lang(s_ChanServ, u, CHAN_SUCCESSOR_CHANGED, ci->name, param);
+        notice_lang(chanserv_service.nick, u, CHAN_SUCCESSOR_CHANGED, ci->name, param);
     } else {
         module_log("Clearing successor of %s by %s!%s@%s",
                    ci->name, u->nick, u->username, u->host);
         ci->successor = 0;
-        notice_lang(s_ChanServ, u, CHAN_SUCCESSOR_UNSET, ci->name);
+        notice_lang(chanserv_service.nick, u, CHAN_SUCCESSOR_UNSET, ci->name);
     }
 }
 
@@ -345,7 +345,7 @@ static void do_set_password(User *u, ChannelInfo *ci, char *param)
          || stricmp(param, u->nick) == 0
          || (StrictPasswords && strlen(param) < 5))
     ) {
-        notice_lang(s_ChanServ, u, MORE_OBSCURE_PASSWORD);
+        notice_lang(chanserv_service.nick, u, MORE_OBSCURE_PASSWORD);
         return;
     }
 
@@ -356,15 +356,15 @@ static void do_set_password(User *u, ChannelInfo *ci, char *param)
             return;  /* the command will be run again */
         memset(param, 0, strlen(param));
         module_log("Failed to encrypt password for %s (set)", ci->name);
-        notice_lang(s_ChanServ, u, CHAN_SET_PASSWORD_FAILED);
+        notice_lang(chanserv_service.nick, u, CHAN_SET_PASSWORD_FAILED);
         return;
     }
     copy_password(&ci->founderpass, &passbuf);
     clear_password(&passbuf);
     if (CSShowPassword)
-        notice_lang(s_ChanServ, u, CHAN_PASSWORD_CHANGED_TO, ci->name, param);
+        notice_lang(chanserv_service.nick, u, CHAN_PASSWORD_CHANGED_TO, ci->name, param);
     else
-        notice_lang(s_ChanServ, u, CHAN_PASSWORD_CHANGED, ci->name);
+        notice_lang(chanserv_service.nick, u, CHAN_PASSWORD_CHANGED, ci->name);
     memset(param, 0, strlen(param));
     if (!is_founder(u, ci)) {
         module_log("%s!%s@%s set password as Services admin for %s",
@@ -391,7 +391,7 @@ static void do_set_desc(User *u, ChannelInfo *ci, char *param)
 {
     free(ci->desc);
     ci->desc = sstrdup(param);
-    notice_lang(s_ChanServ, u, CHAN_DESC_CHANGED, ci->name, param);
+    notice_lang(chanserv_service.nick, u, CHAN_DESC_CHANGED, ci->name, param);
 }
 
 /*************************************************************************/
@@ -399,17 +399,17 @@ static void do_set_desc(User *u, ChannelInfo *ci, char *param)
 static void do_set_url(User *u, ChannelInfo *ci, char *param)
 {
     if (param && !valid_url(param)) {
-        notice_lang(s_ChanServ, u, BAD_URL);
+        notice_lang(chanserv_service.nick, u, BAD_URL);
         return;
     }
 
     free(ci->url);
     if (param) {
         ci->url = sstrdup(param);
-        notice_lang(s_ChanServ, u, CHAN_URL_CHANGED, ci->name, param);
+        notice_lang(chanserv_service.nick, u, CHAN_URL_CHANGED, ci->name, param);
     } else {
         ci->url = NULL;
-        notice_lang(s_ChanServ, u, CHAN_URL_UNSET, ci->name);
+        notice_lang(chanserv_service.nick, u, CHAN_URL_UNSET, ci->name);
     }
 }
 
@@ -418,21 +418,21 @@ static void do_set_url(User *u, ChannelInfo *ci, char *param)
 static void do_set_email(User *u, ChannelInfo *ci, char *param)
 {
     if (param && !valid_email(param)) {
-        notice_lang(s_ChanServ, u, BAD_EMAIL);
+        notice_lang(chanserv_service.nick, u, BAD_EMAIL);
         return;
     }
     if (param && rejected_email(param)) {
-        notice_lang(s_NickServ, u, REJECTED_EMAIL);
+        notice_lang(nickserv_service.nick, u, REJECTED_EMAIL);
         return;
     }
 
     free(ci->email);
     if (param) {
         ci->email = sstrdup(param);
-        notice_lang(s_ChanServ, u, CHAN_EMAIL_CHANGED, ci->name, param);
+        notice_lang(chanserv_service.nick, u, CHAN_EMAIL_CHANGED, ci->name, param);
     } else {
         ci->email = NULL;
-        notice_lang(s_ChanServ, u, CHAN_EMAIL_UNSET, ci->name);
+        notice_lang(chanserv_service.nick, u, CHAN_EMAIL_UNSET, ci->name);
     }
 }
 
@@ -443,10 +443,10 @@ static void do_set_entrymsg(User *u, ChannelInfo *ci, char *param)
     free(ci->entry_message);
     if (param) {
         ci->entry_message = sstrdup(param);
-        notice_lang(s_ChanServ, u, CHAN_ENTRY_MSG_CHANGED, ci->name);
+        notice_lang(chanserv_service.nick, u, CHAN_ENTRY_MSG_CHANGED, ci->name);
     } else {
         ci->entry_message = NULL;
-        notice_lang(s_ChanServ, u, CHAN_ENTRY_MSG_UNSET, ci->name);
+        notice_lang(chanserv_service.nick, u, CHAN_ENTRY_MSG_UNSET, ci->name);
     }
 }
 
@@ -479,28 +479,28 @@ static void do_set_mlock(User *u, ChannelInfo *ci, char *param)
             param++;
             continue;
         } else if (add < 0) {
-            notice_lang(s_ChanServ, u, CHAN_SET_MLOCK_NEED_PLUS_MINUS);
+            notice_lang(chanserv_service.nick, u, CHAN_SET_MLOCK_NEED_PLUS_MINUS);
             goto fail;
         }
         c = *param++;
         flag = mode_char_to_flag(c, MODE_CHANNEL);
         params = mode_char_to_params(c, MODE_CHANNEL);
         if (!flag) {
-            notice_lang(s_ChanServ, u, CHAN_SET_MLOCK_UNKNOWN_CHAR, c);
+            notice_lang(chanserv_service.nick, u, CHAN_SET_MLOCK_UNKNOWN_CHAR, c);
             continue;
         } else if (flag == MODE_INVALID) {
-            notice_lang(s_ChanServ, u, CHAN_SET_MLOCK_CANNOT_LOCK, c);
+            notice_lang(chanserv_service.nick, u, CHAN_SET_MLOCK_CANNOT_LOCK, c);
             continue;
         }
         /* "Off" locks never take parameters (they prevent the mode from
          * ever being set in the first place) */
         params = add ? (params>>8) & 0xFF : 0;
         if (params > ac) {
-            notice_lang(s_ChanServ, u, CHAN_SET_MLOCK_NEED_PARAM, c);
+            notice_lang(chanserv_service.nick, u, CHAN_SET_MLOCK_NEED_PARAM, c);
             goto fail;
         }
         if (flag & chanmode_reg)
-            notice_lang(s_ChanServ, u, CHAN_SET_MLOCK_MODE_REG_BAD, c);
+            notice_lang(chanserv_service.nick, u, CHAN_SET_MLOCK_MODE_REG_BAD, c);
         else if (add)
             ci->mlock.on |= flag, ci->mlock.off &= ~flag;
         else
@@ -519,7 +519,7 @@ static void do_set_mlock(User *u, ChannelInfo *ci, char *param)
             if (add) {
                 ci->mlock.limit = atol(avptr[0]);
                 if (ci->mlock.limit <= 0) {
-                    notice_lang(s_ChanServ, u, CHAN_SET_MLOCK_NEED_POSITIVE,
+                    notice_lang(chanserv_service.nick, u, CHAN_SET_MLOCK_NEED_POSITIVE,
                                 'l');
                     goto fail;
                 }
@@ -528,14 +528,14 @@ static void do_set_mlock(User *u, ChannelInfo *ci, char *param)
             }
             break;
         } /* switch */
-        if (call_callback_5(cb_set_mlock, u, ci, c, add, avptr) > 0)
+        if (event_emit(set_mlock_event, u, ci, c, add, avptr) > 0)
             goto fail;
         ac -= params;
         avptr += params;
     } /* while (*param) */
 
     /* Make sure there are no problems. */
-    if (call_callback_5(cb_set_mlock, u, ci, 0, 0, NULL) > 0)
+    if (event_emit(set_mlock_event, u, ci, 0, 0, NULL) > 0)
         goto fail;
 
     /* Tell the user about the new mode lock. */
@@ -548,9 +548,9 @@ static void do_set_mlock(User *u, ChannelInfo *ci, char *param)
         end += snprintf(end, sizeof(modebuf)-(end-modebuf), "-%s",
                         mode_flags_to_string(ci->mlock.off, MODE_CHANNEL));
     if (*modebuf) {
-        notice_lang(s_ChanServ, u, CHAN_MLOCK_CHANGED, ci->name, modebuf);
+        notice_lang(chanserv_service.nick, u, CHAN_MLOCK_CHANGED, ci->name, modebuf);
     } else {
-        notice_lang(s_ChanServ, u, CHAN_MLOCK_REMOVED, ci->name);
+        notice_lang(chanserv_service.nick, u, CHAN_MLOCK_REMOVED, ci->name);
     }
 
     /* Clean up, implement the new lock and return. */
@@ -582,7 +582,7 @@ static void do_set_hide(User *u, ChannelInfo *ci, char *param, char *extra)
     int onmsg, offmsg;
 
     if (!extra) {
-        syntax_error(s_ChanServ, u, "SET HIDE", CHAN_SET_HIDE_SYNTAX);
+        syntax_error(chanserv_service.nick, u, "SET HIDE", CHAN_SET_HIDE_SYNTAX);
         return;
     }
     if (stricmp(param, "EMAIL") == 0) {
@@ -592,17 +592,17 @@ static void do_set_hide(User *u, ChannelInfo *ci, char *param, char *extra)
     } else if (stricmp(param, "MLOCK") == 0) {
         HIDE(MLOCK);
     } else {
-        syntax_error(s_ChanServ, u, "SET HIDE", CHAN_SET_HIDE_SYNTAX);
+        syntax_error(chanserv_service.nick, u, "SET HIDE", CHAN_SET_HIDE_SYNTAX);
         return;
     }
     if (stricmp(extra, "ON") == 0) {
         ci->flags |= flag;
-        notice_lang(s_ChanServ, u, onmsg, ci->name, s_ChanServ);
+        notice_lang(chanserv_service.nick, u, onmsg, ci->name, chanserv_service.nick);
     } else if (stricmp(extra, "OFF") == 0) {
         ci->flags &= ~flag;
-        notice_lang(s_ChanServ, u, offmsg, ci->name, s_ChanServ);
+        notice_lang(chanserv_service.nick, u, offmsg, ci->name, chanserv_service.nick);
     } else {
-        syntax_error(s_ChanServ, u, "SET HIDE", CHAN_SET_HIDE_SYNTAX);
+        syntax_error(chanserv_service.nick, u, "SET HIDE", CHAN_SET_HIDE_SYNTAX);
     }
 }
 
@@ -614,14 +614,14 @@ static void do_set_boolean(User *u, ChannelInfo *ci, ChanOpt *co, char *param)
 {
     if (stricmp(param, "ON") == 0) {
         ci->flags |= co->flag;
-        notice_lang(s_ChanServ, u, co->onstr, ci->name);
+        notice_lang(chanserv_service.nick, u, co->onstr, ci->name);
     } else if (stricmp(param, "OFF") == 0) {
         ci->flags &= ~co->flag;
-        notice_lang(s_ChanServ, u, co->offstr, ci->name);
+        notice_lang(chanserv_service.nick, u, co->offstr, ci->name);
     } else {
         char buf[BUFSIZE];
         snprintf(buf, sizeof(buf), "SET %s", co->name);
-        syntax_error(s_ChanServ, u, buf, co->syntaxstr);
+        syntax_error(chanserv_service.nick, u, buf, co->syntaxstr);
         return;
     }
 }
@@ -631,24 +631,14 @@ static void do_set_boolean(User *u, ChannelInfo *ci, ChanOpt *co, char *param)
 
 int init_set(void)
 {
-    cb_set = register_callback("SET");
-    cb_set_mlock = register_callback("SET MLOCK");
-    cb_unset = register_callback("UNSET");
-    if (cb_set < 0 || cb_set_mlock < 0 || cb_unset < 0) {
-        module_log("set: Unable to register callbacks");
-        exit_set();
+    set_event = event_declare(THIS_MODULE, CHANSERV_EVENT_SET);
+    set_mlock_event = event_declare(THIS_MODULE, CHANSERV_EVENT_SET_MLOCK);
+    unset_event = event_declare(THIS_MODULE, CHANSERV_EVENT_UNSET);
+    if (!set_event || !set_mlock_event || !unset_event) {
+        module_log("set: Unable to declare events");
         return 0;
     }
     return 1;
-}
-
-/*************************************************************************/
-
-void exit_set()
-{
-    unregister_callback(cb_unset);
-    unregister_callback(cb_set_mlock);
-    unregister_callback(cb_set);
 }
 
 /*************************************************************************/
