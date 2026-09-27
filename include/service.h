@@ -38,7 +38,9 @@
 /* Flags for Service.flags. */
 #define SERVICE_OPER      0x0001 /* Needs IRC operator privileges (+o) */
 #define SERVICE_INVISIBLE 0x0002 /* Invisible (+i) */
-
+#define SERVICE_CHANSERV  0x0004 /* Service is ChanServ */
+#define SERVICE_NICKSERV  0x0008 /* Service is NickServ */
+#define SERVICE_OPERSERV  0x0010 /* Service is OperServ */
 /*************************************************************************/
 
 struct Service {
@@ -66,11 +68,14 @@ struct Service {
     Module* owner;
     char* previous_nick;
     char* previous_description;
+    char numeric[6];
     struct Service* next;
 };
 
 /*************************************************************************/
 
+/** Find service by flag */
+extern struct Service* service_find_by_flag(unsigned int flag);
 /* The pseudo-client using `nick' (case-insensitively), or NULL. */
 extern struct Service* service_find(const char* nick);
 

@@ -18,9 +18,11 @@
  */
 
 #include "p10.h"
+#include "extern.h"
 #include "language.h"
 #include "messages.h"
 #include "modules.h"
+#include "service.h"
 #include "services.h"
 #include "modules/operserv/akill.h"
 #include "modules/operserv/sline.h"
@@ -38,6 +40,8 @@ int32 ServerNumeric = -1;
 #define GLINE_FOREVER  (365 * 24 * 60 * 60)
 /* Maximum parameters of an outbound message. */
 #define MAXPARAMS      32
+
+static Event* eob_ack;
 
 /*************************************************************************/
 /***************************** 1. Numerics *******************************/
@@ -986,6 +990,8 @@ static void m_end_of_burst(char* source, int ac, char** av)
         burst_done = 1;
     }
     send_cmd(NULL, "EOB_ACK");
+    event_emit(eob_ack);
+
     log("p10: burst from %s complete", source);
 }
 
@@ -1116,7 +1122,9 @@ static int out_mode(OutMsg* m)
     const char* s;
     int add = 1, arg = 2;
 
-    m->prefix = me_numeric;
+    const char* prefix = m->prefix ? m->prefix : me_numeric;
+    strbcpy((char*)m->prefix, (char*)prefix);
+
     if (m->ac < 2 || !is_channel(m->av[0]))
         return 1; /* User mode: the target is a nick */
     for (s = m->av[1]; *s; s++) {
@@ -1394,6 +1402,9 @@ void send_nick(const char* nick, const char* user, const char* host,
              me_numeric, nick, (long)time(NULL), user, host,
              (modes && *modes) ? "+" : "", modes ? modes : "",
              (modes && *modes) ? " " : "", num, name);
+    struct Service* s = service_find(nick);
+    if (s)
+        strbcpy(s->numeric, num);
     p10_write(line);
 }
 
@@ -1617,6 +1628,8 @@ int p10_init(void)
         log("p10: unable to register messages");
         return 0;
     }
+
+    eob_ack = event_declare(NULL, EVENT_SERVER_EOB_ACK);
     /* The G-line events are operserv/akill's and operserv/sline's: the
      * handlers wait for those modules to be loaded (see events.h). */
     if (!event_attach(NULL, EVENT_CHANNEL_SET_TOPIC, do_set_topic) ||

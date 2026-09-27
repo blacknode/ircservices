@@ -7,6 +7,7 @@
  * details.
  */
 
+#include "users.h"
 #include "modules.h"
 #include "services.h"
 
@@ -86,8 +87,7 @@ void user_cleanup(void)
 /* Allocate a new User structure, fill in basic values, link it to the
  * overall list, and return it.  Always successful.
  */
-
-static User* new_user(const char* nick)
+User* new_user(const char* nick, int pseudo)
 {
     User* user;
 
@@ -96,7 +96,8 @@ static User* new_user(const char* nick)
         nick = "";
     strbcpy(user->nick, nick);
     add_user(user);
-    usercnt++;
+    if (!pseudo)
+        usercnt++;
     return user;
 }
 
@@ -251,7 +252,7 @@ int do_nick(const char* source, int ac, char** av)
             return 0;
 
         /* User was accepted; allocate User structure and fill it in. */
-        user = new_user(av[0]);
+        user = new_user(av[0], 0);
         user->my_signon = time(NULL);
         user->signon = strtotime(av[2], NULL);
         user->username = sstrdup(av[3]);

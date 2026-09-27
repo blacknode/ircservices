@@ -2927,7 +2927,7 @@ static int nickserv_fini(Module *module, int shutdown)
 /* NickServName = <nick>, <description>; in the module block. */
 struct Service nickserv_service = {
     .directive = "NickServName",
-    .flags = SERVICE_OPER,
+    .flags = SERVICE_OPER | SERVICE_NICKSERV,
     .on_message = nickserv_message,
 };
 

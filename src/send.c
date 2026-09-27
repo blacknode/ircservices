@@ -7,9 +7,15 @@
  * details.
  */
 
+#include "send.h"
+#include "extern.h"
 #include "language.h"
+#include "modules.h"
 #include "p10.h"
+#include "service.h"
 #include "services.h"
+#include "users.h"
+#include <time.h>
 
 /*************************************************************************/
 
@@ -110,8 +116,6 @@ void send_pseudo_nick(const char* nick, const char* realname, int flags)
              (flags & PSEUDO_OPER) && pseudoclient_oper ? "o" : "",
              (flags & PSEUDO_INVIS) ? "i" : "");
     send_nick(nick, ServiceUser, ServiceHost, ServerName, realname, modebuf);
-    if (ServicesChannel && *ServicesChannel)
-        send_cmd(nick, "JOIN %s", ServicesChannel);
 }
 
 /*************************************************************************/

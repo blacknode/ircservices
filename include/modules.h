@@ -24,8 +24,8 @@
 #ifndef MODULES_H
 #define MODULES_H
 
-#include "services.h"
 #include "conffile.h"
+#include "services.h"
 
 /*************************************************************************/
 
@@ -48,6 +48,7 @@ struct Service;
  * (for modules that keep Services' own data; see docs/readme.migrations).
  * Without this flag, pending migrations are only reported. */
 #define MODULE_APPLY_MIGRATIONS 0x0001
+#define MODULE_AS_SERVICE 0x0002
 
 /*************************************************************************/
 
@@ -63,7 +64,8 @@ typedef struct ModuleInfo {
     /* Modules that must be loaded before this one, NULL-terminated (build
      * it with MODULE_REQUIRES()), or NULL.  Each is held while this module
      * is loaded, so it cannot be unloaded from under it. */
-    const char* const* requires;
+    const char* const*
+        requires;
 
     /* Settings of the module's `module "<name>" { }' block, or NULL.  Read
      * before `init' and again on every REHASH. */
@@ -144,8 +146,7 @@ extern const struct MigrationSet* module_migrations(const Module* module);
  * A module listed in `requires' may simply use the other module's symbols
  * directly (they are resolved when the module is loaded). */
 extern void* module_symbol(Module* module, const char* symbol);
-extern int module_has_symbol(Module* module, const char* symbol,
-                             void** value);
+extern int module_has_symbol(Module* module, const char* symbol, void** value);
 
 /* Hold `held' on behalf of `holder': a held module cannot be unloaded.
  * For dependencies found at run time; the ones in `requires' are held by

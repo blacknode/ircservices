@@ -2149,7 +2149,7 @@ static int operserv_fini(Module *module, int shutdown)
  * <description>; in the module block.  The global noticer only sends. */
 struct Service operserv_service = {
     .directive = "OperServName",
-    .flags = SERVICE_OPER | SERVICE_INVISIBLE,
+    .flags = SERVICE_OPER | SERVICE_INVISIBLE | SERVICE_OPERSERV,
     .on_message = operserv_message,
 };
 

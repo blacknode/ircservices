@@ -72,7 +72,10 @@ struct user_ {
 };
 
 /* Status flags: */
-#define UF_SERVROOT 0x0001 /* User has Services root privileges */
+#define UF_SERVROOT      0x0001 /* User has Services root privileges */
+#define UF_PSEUDO_CLIENT 0x0002 /* User has pseudo client */
+
+extern User* new_user(const char*, int);
 
 /*************************************************************************/
 

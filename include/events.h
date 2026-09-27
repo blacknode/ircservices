@@ -215,6 +215,8 @@ extern int event_detach(Module* module, const char* name,
 #define EVENT_SERVER_CREATE "server.create"
 #define EVENT_SERVER_DELETE "server.delete"
 
+#define EVENT_SERVER_EOB_ACK   "server.eob_ack"
+
 /*************************************************************************/
 
 /* Internals of event_emit(): count the arguments after the event (up to

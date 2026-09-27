@@ -7,9 +7,12 @@
  * details.
  */
 
-#include "services.h"
+#include "config.h"
+#include "extern.h"
 #include "language.h"
+#include "memory.h"
 #include "modules.h"
+#include "users.h"
 
 /*************************************************************************/
 
@@ -17,6 +20,15 @@
 static struct Service* service_list;
 
 /*************************************************************************/
+
+struct Service* service_find_by_flag(unsigned int flag)
+{
+    struct Service* service;
+    for (service = service_list; service; service = service->next)
+        if (service->flags & flag)
+            return service;
+    return NULL;
+}
 
 struct Service* service_find(const char* nick)
 {
@@ -55,6 +67,26 @@ static void introduce_one(const struct Service* service)
     if (service->flags & SERVICE_INVISIBLE)
         flags |= PSEUDO_INVIS;
     send_pseudo_nick(service->nick, service->description, flags);
+    User* u = new_user(service->nick, 1);
+    if (u) {
+        time_t now = time(NULL);
+        u->flags |= UF_PSEUDO_CLIENT;
+        u->signon = now;
+        u->my_signon = now;
+        u->host = ServiceHost;
+        u->username = ServiceUser;
+        u->realname = service->description;
+        u->servicestamp = (uint32)u->signon;
+        strbcpy(u->numeric, service->numeric);
+    }
+    if (!*ServicesChannel)
+        return;
+    struct Service* s = service_find_by_flag(SERVICE_CHANSERV);
+    if (s) {
+        send_cmd(service->nick, "JOIN %s", ServicesChannel);
+        send_channel_cmd(s->nick, "MODE %s +o %s", ServicesChannel,
+                         service->nick);
+    }
 }
 
 /*************************************************************************/
@@ -88,8 +120,7 @@ int service_introduce(const char* nick)
 
 /*************************************************************************/
 
-int service_deliver_message(const char* source, const char* target,
-                            char* text)
+int service_deliver_message(const char* source, const char* target, char* text)
 {
     struct Service* service = service_find(target);
     User* user;
@@ -128,8 +159,8 @@ int service_answer_whois(const char* source, const char* nick)
         return 0;
     send_cmd(ServerName, "311 %s %s %s %s * :%s", source, service->nick,
              ServiceUser, ServiceHost, service->description);
-    send_cmd(ServerName, "312 %s %s %s :%s", source, service->nick,
-             ServerName, ServerDesc);
+    send_cmd(ServerName, "312 %s %s %s :%s", source, service->nick, ServerName,
+             ServerDesc);
     send_cmd(ServerName, "313 %s %s :is a network service", source,
              service->nick);
     send_cmd(ServerName, "318 %s %s End of /WHOIS response.", source,
@@ -155,8 +186,7 @@ int service_attach_module(Module* module, struct Service* const* services)
         other = service_find(service->nick);
         if (other && other != service) {
             log("%s: nick %s is already used by a pseudo-client of %s",
-                module_name(module), service->nick,
-                module_name(other->owner));
+                module_name(module), service->nick, module_name(other->owner));
             return 0;
         }
     }

@@ -9,6 +9,8 @@
 
 #include <jansson.h>
 
+#include "extern.h"
+#include "send.h"
 #include "services.h"
 #include "modules.h"
 #include "conffile.h"
@@ -1041,7 +1043,7 @@ static const char *getstring_cmdacc(NickGroupInfo *ngi, int16 level)
             return getstring(ngi, str_xop);
     } else {
         return getstring(ngi, str_lev);
-    } 
+    }
 }
 
 
@@ -1985,7 +1987,7 @@ static void do_opvoice(User *u, const char *cmd)
                 /* Allow deops if !ENFORCE */
                     && !(!add && !(ci->flags & CF_ENFORCE))
                 /* Disallow if user is at/above disallow level... */
-                    && target_acc >= 0 
+                    && target_acc >= 0
                     && check_access(target_user, ci, target_acc)
                 /* ... and below level-above-disallow-level (if any) */
                     && (target_nextacc < 0
@@ -2753,6 +2755,13 @@ static void chanserv_rehash(Module *module)
     }
 }
 
+static int do_uplink_established(void) {
+    module_log("Uplink established");
+    if (ServicesChannel && *ServicesChannel)
+        send_cmode_cmd(chanserv_service.nick, ServicesChannel, "+ntisp");
+    return 0;
+}
+
 /*************************************************************************/
 
 static int chanserv_init(Module *module)
@@ -2829,6 +2838,7 @@ static int chanserv_init(Module *module)
      || !event_attach(module, NICKSERV_EVENT_IDENTIFIED, do_nick_identified)
      || !event_attach(module, NICKSERV_EVENT_NICKGROUP_DELETE,
                       do_nickgroup_delete)
+     || !event_attach(module, EVENT_SERVER_EOB_ACK, do_uplink_established)
     ) {
         module_log("Unable to attach event handlers");
         return 0;
@@ -2917,7 +2927,7 @@ static int chanserv_fini(Module *module, int shutdown)
 /* ChanServName = <nick>, <description>; in the module block. */
 struct Service chanserv_service = {
     .directive = "ChanServName",
-    .flags = SERVICE_OPER,
+    .flags = SERVICE_OPER | SERVICE_CHANSERV,
     .on_message = chanserv_message,
 };
 
@@ -2927,7 +2937,7 @@ ModuleInfo module_info = {
     .requires = MODULE_REQUIRES("operserv/main", "nickserv/main"),
     .config = chanserv_config,
     .services = MODULE_SERVICES(&chanserv_service),
-    .flags = MODULE_APPLY_MIGRATIONS,
+    .flags = MODULE_APPLY_MIGRATIONS | MODULE_AS_SERVICE,
     .init = chanserv_init,
     .fini = chanserv_fini,
     .rehash = chanserv_rehash,
