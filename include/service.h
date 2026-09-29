@@ -24,10 +24,11 @@
  *
  * The core does the rest, for every pseudo-client alike: it introduces it
  * when Services link (and the module is loaded, if they are linked
- * already), brings it back after a KILL, joins it to the serverinfo
- * channel, changes its nick when a REHASH changes the directive, answers
- * WHOIS for it, hands it the PRIVMSGs sent to it (answering CTCP PING
- * itself), and makes it quit when the module is unloaded.
+ * already), brings it back after a KILL, changes its nick when a REHASH
+ * changes the directive, answers WHOIS for it, hands it the PRIVMSGs sent
+ * to it (answering CTCP PING itself), and makes it quit when the module is
+ * unloaded.  Joining it to the serverinfo channel and opping it there is
+ * ChanServ's (see CHANSERV_EVENT_SERVICES_JOINED).
  */
 
 #ifndef SERVICE_H

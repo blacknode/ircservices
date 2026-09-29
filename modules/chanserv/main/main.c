@@ -2755,10 +2755,110 @@ static void chanserv_rehash(Module *module)
     }
 }
 
-static int do_uplink_established(void) {
-    module_log("Uplink established");
-    if (ServicesChannel && *ServicesChannel)
-        send_cmode_cmd(chanserv_service.nick, ServicesChannel, "+ntisp");
+/*************************************************************************/
+
+/* The serverinfo channel.  Once the uplink has finished its burst (so it
+ * is known whether the channel exists) every pseudo-client joins it,
+ * ChanServ first: ircu makes whoever creates a channel its operator, and
+ * ChanServ is the one that gives the others their status.  Then
+ * CHANSERV_EVENT_SERVICES_JOINED is announced and ChanServ, as its
+ * source, ops them all -- itself included -- and sets the channel's
+ * modes.  A pseudo-client introduced later (after a KILL, or when its
+ * module is loaded) goes through the same two steps on its own.
+ *
+ * If the channel already existed, ChanServ joins it without status; the
+ * protocol layer then sends its MODE from our server instead, which ircu
+ * accepts, and that MODE ops ChanServ as well. */
+
+/* Modes ChanServ sets on the serverinfo channel once everybody is in. */
+#define SERVICES_CHANNEL_MODES "+ntisp"
+
+/* Most +o per MODE line (ircu's MAXMODEPARAMS). */
+#define OPS_PER_MODE 6
+
+static Event *services_joined_event;
+static int uplink_burst_done;
+
+static void join_services_channel(struct Service *only)
+{
+    struct Service *service;
+
+    if (only) {
+        send_cmd(only->nick, "JOIN %s", ServicesChannel);
+    } else {
+        send_cmd(chanserv_service.nick, "JOIN %s", ServicesChannel);
+        for (service = service_first(); service;
+             service = service_next(service)) {
+            if (service != &chanserv_service)
+                send_cmd(service->nick, "JOIN %s", ServicesChannel);
+        }
+    }
+    event_emit(services_joined_event, ServicesChannel, only);
+}
+
+/* EVENT_SERVER_EOB_ACK */
+static int do_uplink_established(void)
+{
+    uplink_burst_done = 1;
+    if (!ServicesChannel || !*ServicesChannel)
+        return 0;
+    module_log("Uplink burst complete, joining %s", ServicesChannel);
+    join_services_channel(NULL);
+    return 0;
+}
+
+/* EVENT_SERVICE_INTRODUCED: before the uplink's burst is over, the
+ * pseudo-clients wait for EVENT_SERVER_EOB_ACK to join together. */
+static int do_service_introduced(struct Service *service)
+{
+    if (!uplink_burst_done || !ServicesChannel || !*ServicesChannel)
+        return 0;
+    join_services_channel(service);
+    return 0;
+}
+
+/* Send one MODE +o...o for the `count' nicks in `nicks'. */
+static void op_services(const char *chan, const char **nicks, int count)
+{
+    char buf[BUFSIZE];
+    int i, len;
+
+    if (!count)
+        return;
+    buf[0] = '+';
+    for (i = 0; i < count; i++)
+        buf[i+1] = 'o';
+    len = count + 1;
+    for (i = 0; i < count && len < (int)sizeof(buf); i++)
+        len += snprintf(buf+len, sizeof(buf)-len, " %s", nicks[i]);
+    send_cmode_cmd(chanserv_service.nick, chan, "%s", buf);
+}
+
+/* CHANSERV_EVENT_SERVICES_JOINED */
+static int do_services_joined(const char *chan, struct Service *only)
+{
+    const char *nicks[OPS_PER_MODE];
+    struct Service *service;
+    int count = 0;
+
+    if (only) {
+        nicks[0] = only->nick;
+        op_services(chan, nicks, 1);
+        return 0;
+    }
+    nicks[count++] = chanserv_service.nick;
+    for (service = service_first(); service;
+         service = service_next(service)) {
+        if (service == &chanserv_service)
+            continue;
+        if (count == OPS_PER_MODE) {
+            op_services(chan, nicks, count);
+            count = 0;
+        }
+        nicks[count++] = service->nick;
+    }
+    op_services(chan, nicks, count);
+    send_cmode_cmd(chanserv_service.nick, chan, SERVICES_CHANNEL_MODES);
     return 0;
 }
 
@@ -2787,8 +2887,10 @@ static int chanserv_init(Module *module)
     help_cmds_event = event_declare(module, CHANSERV_EVENT_HELP_COMMANDS);
     invite_event = event_declare(module, CHANSERV_EVENT_INVITE);
     unban_event = event_declare(module, CHANSERV_EVENT_UNBAN);
+    services_joined_event =
+        event_declare(module, CHANSERV_EVENT_SERVICES_JOINED);
     if (!command_event || !clear_event || !help_event || !help_cmds_event
-     || !invite_event || !unban_event
+     || !invite_event || !unban_event || !services_joined_event
     ) {
         module_log("Unable to declare events");
         return 0;
@@ -2839,6 +2941,9 @@ static int chanserv_init(Module *module)
      || !event_attach(module, NICKSERV_EVENT_NICKGROUP_DELETE,
                       do_nickgroup_delete)
      || !event_attach(module, EVENT_SERVER_EOB_ACK, do_uplink_established)
+     || !event_attach(module, EVENT_SERVICE_INTRODUCED, do_service_introduced)
+     || !event_attach(module, CHANSERV_EVENT_SERVICES_JOINED,
+                      do_services_joined)
     ) {
         module_log("Unable to attach event handlers");
         return 0;

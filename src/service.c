@@ -53,21 +53,32 @@ struct Service* service_next(const struct Service* service)
     return service ? service->next : NULL;
 }
 
+/* Services' own event, declared by init.c. */
+Event* service_introduced_event;
+
 /*************************************************************************/
 /*************************************************************************/
 
-/* Put one pseudo-client on the network. */
+/* Put one pseudo-client on the network.  Joining it to the serverinfo
+ * channel is ChanServ's (EVENT_SERVICE_INTRODUCED, EVENT_SERVER_EOB_ACK):
+ * a channel can only be joined safely once the uplink's burst has said
+ * whether it exists, and only ChanServ may give its members their
+ * status. */
 
-static void introduce_one(const struct Service* service)
+static void introduce_one(struct Service* service)
 {
     int flags = 0;
+    User* u;
 
     if (service->flags & SERVICE_OPER)
         flags |= PSEUDO_OPER;
     if (service->flags & SERVICE_INVISIBLE)
         flags |= PSEUDO_INVIS;
     send_pseudo_nick(service->nick, service->description, flags);
-    User* u = new_user(service->nick, 1);
+    /* A pseudo-client brought back after a KILL still has its User. */
+    u = get_user(service->nick);
+    if (!u || !(u->flags & UF_PSEUDO_CLIENT))
+        u = new_user(service->nick, 1);
     if (u) {
         time_t now = time(NULL);
         u->flags |= UF_PSEUDO_CLIENT;
@@ -79,14 +90,7 @@ static void introduce_one(const struct Service* service)
         u->servicestamp = (uint32)u->signon;
         strbcpy(u->numeric, service->numeric);
     }
-    if (!*ServicesChannel)
-        return;
-    struct Service* s = service_find_by_flag(SERVICE_CHANSERV);
-    if (s) {
-        send_cmd(service->nick, "JOIN %s", ServicesChannel);
-        send_channel_cmd(s->nick, "MODE %s +o %s", ServicesChannel,
-                         service->nick);
-    }
+    event_emit(service_introduced_event, service);
 }
 
 /*************************************************************************/

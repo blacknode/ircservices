@@ -215,7 +215,14 @@ extern int event_detach(Module* module, const char* name,
 #define EVENT_SERVER_CREATE "server.create"
 #define EVENT_SERVER_DELETE "server.delete"
 
+/* Our uplink finished its burst (END_OF_BURST) and we acknowledged it:
+ * from here on the network's state is known.  () */
 #define EVENT_SERVER_EOB_ACK   "server.eob_ack"
+
+/* A pseudo-client was put on the network: when Services link, when its
+ * module is loaded while linked, and when it is brought back after a
+ * KILL.  (struct Service* service) */
+#define EVENT_SERVICE_INTRODUCED "service.introduced"
 
 /*************************************************************************/
 

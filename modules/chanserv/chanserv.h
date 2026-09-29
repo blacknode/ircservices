@@ -227,6 +227,11 @@ struct channelinfo_ {
  * chanserv.unban:         (User *u, Channel *c, ChannelInfo *ci)  stop: handled
  * chanserv.clear:         (User *u, Channel *c, const char *what)
  *                         stop: the CLEAR was handled
+ * chanserv.services_joined: (const char *channel, struct Service *only)
+ *                         the pseudo-clients have joined the serverinfo
+ *                         channel: all of them once the uplink's burst is
+ *                         over (only NULL), or just `only' when it is
+ *                         introduced again later
  */
 #define CHANSERV_EVENT_COMMAND               "chanserv.command"
 #define CHANSERV_EVENT_HELP                  "chanserv.help"
@@ -240,6 +245,7 @@ struct channelinfo_ {
 #define CHANSERV_EVENT_INVITE                "chanserv.invite"
 #define CHANSERV_EVENT_UNBAN                 "chanserv.unban"
 #define CHANSERV_EVENT_CLEAR                 "chanserv.clear"
+#define CHANSERV_EVENT_SERVICES_JOINED       "chanserv.services_joined"
 
 /*************************************************************************/
 
