@@ -20,10 +20,30 @@ static struct Service devnull_service = {
 
 /*************************************************************************/
 
+/* EVENT_SERVER_EOB_ACK: the uplink's burst is over, so join the
+ * serverinfo channel (see service.h). */
+static int do_eob_ack(void)
+{
+    service_join_channel(&devnull_service);
+    return 0;
+}
+
+static int devnull_init(Module *module)
+{
+    if (!event_attach(module, EVENT_SERVER_EOB_ACK, do_eob_ack)) {
+        module_log("Unable to attach to " EVENT_SERVER_EOB_ACK);
+        return 0;
+    }
+    return 1;
+}
+
+/*************************************************************************/
+
 ModuleInfo module_info = {
     .abi = MODULE_ABI,
     .description = "DevNull: a pseudo-client that ignores what it is sent",
     .services = MODULE_SERVICES(&devnull_service),
+    .init = devnull_init,
 };
 
 /*************************************************************************/

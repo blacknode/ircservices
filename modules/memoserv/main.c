@@ -1383,6 +1383,14 @@ static void memoserv_rehash(Module *module)
 
 /*************************************************************************/
 
+/* EVENT_SERVER_EOB_ACK: the uplink's burst is over, so join the
+ * serverinfo channel (see service.h). */
+static int do_eob_ack(void)
+{
+    service_join_channel(&memoserv_service);
+    return 0;
+}
+
 static int memoserv_init(Module *module)
 {
     Command *cmd;
@@ -1414,6 +1422,7 @@ static int memoserv_init(Module *module)
 
     if (!event_attach(module, EVENT_MODULE_LOADED, do_module_loaded)
      || !event_attach(module, EVENT_MODULE_UNLOADED, do_module_unloaded)
+     || !event_attach(module, EVENT_SERVER_EOB_ACK, do_eob_ack)
      || !event_attach(module, EVENT_MESSAGE_RECEIVE, do_receive_message)
      || !event_attach(module, NICKSERV_EVENT_IDENTIFIED, do_nick_identified)
      || !event_attach(module, NICKSERV_EVENT_USER_VALIDATED,

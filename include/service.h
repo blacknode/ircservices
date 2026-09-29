@@ -27,8 +27,14 @@
  * already), brings it back after a KILL, changes its nick when a REHASH
  * changes the directive, answers WHOIS for it, hands it the PRIVMSGs sent
  * to it (answering CTCP PING itself), and makes it quit when the module is
- * unloaded.  Joining it to the serverinfo channel and opping it there is
- * ChanServ's (see CHANSERV_EVENT_SERVICES_JOINED).
+ * unloaded.
+ *
+ * Joining the serverinfo channel is the module's: it attaches to
+ * EVENT_SERVER_EOB_ACK and calls service_join_channel() for each of its
+ * pseudo-clients, since only once the uplink's burst is over is it known
+ * whether the channel exists.  One introduced later (its module loaded
+ * while linked, or brought back after a KILL) is joined by the core.
+ * ChanServ ops every one that joins (EVENT_PSEUDO_CLIENT_JOINED).
  */
 
 #ifndef SERVICE_H
@@ -77,6 +83,10 @@ struct Service {
 
 /** Find service by flag */
 extern struct Service* service_find_by_flag(unsigned int flag);
+/* Join `service' to the serverinfo channel, if one is configured, and
+ * announce EVENT_PSEUDO_CLIENT_JOINED. */
+extern void service_join_channel(struct Service* service);
+
 /* The pseudo-client using `nick' (case-insensitively), or NULL. */
 extern struct Service* service_find(const char* nick);
 

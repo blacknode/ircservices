@@ -101,6 +101,14 @@ static void echoserv_rehash(Module *module)
         echo_max_length = 100;
 }
 
+/* EVENT_SERVER_EOB_ACK: the uplink's burst is over, so join the
+ * serverinfo channel (see service.h). */
+static int do_eob_ack(void)
+{
+    service_join_channel(&echoserv_service);
+    return 0;
+}
+
 static int echoserv_init(Module *module)
 {
     echoserv_rehash(module);
@@ -115,8 +123,9 @@ static int echoserv_init(Module *module)
         module_log("Unable to declare " ECHOSERV_EVENT_ECHOED);
         return 0;
     }
-    if (!event_attach(module, EVENT_USER_CREATE, on_user_create)) {
-        module_log("Unable to attach to " EVENT_USER_CREATE);
+    if (!event_attach(module, EVENT_USER_CREATE, on_user_create)
+     || !event_attach(module, EVENT_SERVER_EOB_ACK, do_eob_ack)) {
+        module_log("Unable to attach event handlers");
         return 0;
     }
     return 1;

@@ -2033,6 +2033,15 @@ static void operserv_rehash(Module *module)
 
 /*************************************************************************/
 
+/* EVENT_SERVER_EOB_ACK: the uplink's burst is over, so join the
+ * serverinfo channel (see service.h). */
+static int do_eob_ack(void)
+{
+    service_join_channel(&operserv_service);
+    service_join_channel(&global_noticer_service);
+    return 0;
+}
+
 static int operserv_init(Module *module)
 {
     Command *cmd;
@@ -2058,6 +2067,7 @@ static int operserv_init(Module *module)
 
     if (!event_attach(module, EVENT_MODULE_LOADED, do_module_loaded)
      || !event_attach(module, EVENT_MODULE_UNLOADED, do_module_unloaded)
+     || !event_attach(module, EVENT_SERVER_EOB_ACK, do_eob_ack)
      || !event_attach(module, EVENT_USER_CREATE, do_user_create)
      || (WallOper && !event_attach(module, EVENT_USER_MODE,
                                    wall_oper_callback))

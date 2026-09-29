@@ -67,6 +67,10 @@ extern User* p10_find_user(const char* numeric);
 extern const char* p10_user_numeric(const char* nick);
 extern const char* p10_server_numeric(void);
 
+/* Nonzero once our uplink's burst has ended (EVENT_SERVER_EOB_ACK was
+ * announced), until the link is lost. */
+extern int p10_uplink_synced(void);
+
 /*************************************************************************/
 
 #endif /* P10_H */

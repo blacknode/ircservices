@@ -550,6 +550,14 @@ static ConfigDirective statserv_config[] = {
 
 /*************************************************************************/
 
+/* EVENT_SERVER_EOB_ACK: the uplink's burst is over, so join the
+ * serverinfo channel (see service.h). */
+static int do_eob_ack(void)
+{
+    service_join_channel(&statserv_service);
+    return 0;
+}
+
 static int statserv_init(Module *module)
 {
     if (!new_commandlist(module) || !register_commands(module, cmds)) {
@@ -565,7 +573,8 @@ static int statserv_init(Module *module)
         return 0;
     }
 
-    if (!event_attach(module, EVENT_SERVER_CREATE, stats_do_server)
+    if (!event_attach(module, EVENT_SERVER_EOB_ACK, do_eob_ack)
+     || !event_attach(module, EVENT_SERVER_CREATE, stats_do_server)
      || !event_attach(module, EVENT_SERVER_DELETE, stats_do_squit)
      || !event_attach(module, EVENT_USER_CREATE, stats_do_newuser)
      || !event_attach(module, EVENT_USER_DELETE, stats_do_quit)

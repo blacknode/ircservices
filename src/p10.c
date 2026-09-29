@@ -153,6 +153,7 @@ static NumServer* numservers[4096];
 static char me_numeric[3];     /* Our server numeric */
 static char uplink_numeric[3]; /* Our uplink's numeric */
 static int burst_done;         /* Our END_OF_BURST was sent */
+static int uplink_synced;      /* Our uplink's END_OF_BURST was received */
 
 /* Our own clients (pseudo-clients and enforcers), by client index. */
 static char local_nicks[LOCAL_CAPACITY][NICKMAX];
@@ -279,70 +280,6 @@ static void unregister_user(User* u)
 
 /*************************************************************************/
 
-/* The channels on which each of our clients is a channel operator.  A
- * MODE one of our clients sends goes out with that client as its source
- * only where it is one: ircu bounces a channel MODE from a user who is
- * not, and deops them for it.  Everywhere else it comes from our server.
- * Our clients are not Users on Channels here, so this is kept apart. */
-
-typedef struct LocalOp_ {
-    struct LocalOp_* next;
-    int slot;
-    char chan[CHANMAX];
-} LocalOp;
-
-static LocalOp* local_ops;
-
-static int local_is_op(int slot, const char* chan)
-{
-    LocalOp* op;
-
-    for (op = local_ops; op; op = op->next) {
-        if (op->slot == slot && irc_stricmp(op->chan, chan) == 0)
-            return 1;
-    }
-    return 0;
-}
-
-/* Forget `slot's status on `chan', or on every channel if `chan' is NULL;
- * or everybody's on `chan' if `slot' is negative. */
-static void local_forget_ops(int slot, const char* chan)
-{
-    LocalOp **link = &local_ops, *op;
-
-    while ((op = *link) != NULL) {
-        if ((slot < 0 || op->slot == slot) &&
-            (!chan || irc_stricmp(op->chan, chan) == 0)) {
-            *link = op->next;
-            free(op);
-        }
-        else {
-            link = &op->next;
-        }
-    }
-}
-
-static void local_set_op(int slot, const char* chan, int add)
-{
-    LocalOp* op;
-
-    if (slot < 0)
-        return;
-    if (!add) {
-        local_forget_ops(slot, chan);
-        return;
-    }
-    if (local_is_op(slot, chan))
-        return;
-    op = scalloc(sizeof(*op), 1);
-    op->slot = slot;
-    strbcpy(op->chan, chan);
-    op->next = local_ops;
-    local_ops = op;
-}
-
-/*************************************************************************/
-
 /* Our own clients. */
 
 static int local_find(const char* nick)
@@ -377,10 +314,8 @@ static int local_alloc(const char* nick)
 static void local_free(const char* nick)
 {
     int slot = local_find(nick);
-    if (slot >= 0) {
+    if (slot >= 0)
         *local_nicks[slot] = 0;
-        local_forget_ops(slot, NULL);
-    }
 }
 
 static const char* local_numeric(int slot)
@@ -408,6 +343,11 @@ static const char* local_nick_by_numeric(const char* num)
 const char* p10_server_numeric(void)
 {
     return me_numeric;
+}
+
+int p10_uplink_synced(void)
+{
+    return uplink_synced;
 }
 
 const char* p10_user_numeric(const char* nick)
@@ -574,35 +514,6 @@ static int translate_chanmode_args(int ac, char** av)
     if (arg == ac - 1 && isdigit((uint8)*av[ac - 1]))
         ac--; /* trailing channel timestamp */
     return ac;
-}
-
-/* Note the +o and -o a channel MODE gives our clients or takes from them.
- * av[0] is the channel, av[1] the mode string, and the arguments are
- * nicks (not numerics). */
-static void track_local_ops(int ac, char** av)
-{
-    const char* s;
-    int add = 1, arg = 2;
-
-    if (ac < 2)
-        return;
-    for (s = av[1]; *s; s++) {
-        int params;
-
-        if (*s == '+' || *s == '-') {
-            add = (*s == '+');
-            continue;
-        }
-        if (mode_char_to_flag(*s, MODE_CHANUSER)) {
-            if (*s == 'o' && arg < ac)
-                local_set_op(local_find(av[arg]), av[0], add);
-            arg++;
-            continue;
-        }
-        params = mode_char_to_params(*s, MODE_CHANNEL);
-        if (params > 0)
-            arg += (params >> (add ? 8 : 0)) & 0xFF;
-    }
 }
 
 /* Normalize the parameters of generic messages whose meaning does not
@@ -984,7 +895,6 @@ static void m_opmode(char* source, int ac, char** av)
         return;
     if (*av[0] == '#' || *av[0] == '&') {
         ac = translate_chanmode_args(ac, av);
-        track_local_ops(ac, av);
         do_cmode(source, ac, av);
     }
     else {
@@ -1000,7 +910,6 @@ static void m_mode(char* source, int ac, char** av)
     if (ac < 2)
         return;
     if (*av[0] == '#' || *av[0] == '&') {
-        track_local_ops(ac, av);
         do_cmode(source, ac, av);
     }
     else {
@@ -1020,11 +929,7 @@ static void m_clearmode(char* source, int ac, char** av)
     char* mav[3];
     int i;
 
-    if (ac < 2)
-        return;
-    if (strchr(av[1], 'o'))
-        local_forget_ops(-1, av[0]);
-    if (!(c = get_channel(av[0])))
+    if (ac < 2 || !(c = get_channel(av[0])))
         return;
     mav[0] = c->name;
     mav[1] = modebuf;
@@ -1056,17 +961,6 @@ static void m_clearmode(char* source, int ac, char** av)
             do_cmode(source, 2, mav);
         }
     }
-}
-
-/* KICK: av[0]=channel av[1]=target (a nick by now) av[2]=reason.  One of
- * our clients kicked is no longer a channel operator there. */
-static void m_kick(char* source, int ac, char** av)
-{
-    if (ac >= 2)
-        local_set_op(local_find(av[1]), av[0], 0);
-    if (!*source || ac != 3)
-        return;
-    do_kick(source, ac, av);
 }
 
 /* ACCOUNT: av[0]=user numeric av[1]=account [av[2]=id [av[3]=flags]] */
@@ -1102,7 +996,10 @@ static void m_end_of_burst(char* source, int ac, char** av)
         burst_done = 1;
     }
     send_cmd(NULL, "EOB_ACK");
-    event_emit(eob_ack);
+    if (!uplink_synced) {
+        uplink_synced = 1;
+        event_emit(eob_ack);
+    }
 
     log("p10: burst from %s complete", source);
 }
@@ -1132,7 +1029,6 @@ static Message p10_messages[] = {{"ACCOUNT", m_account},
                                  {"CREATE", m_create},
                                  {"END_OF_BURST", m_end_of_burst},
                                  {"ERROR", m_error},
-                                 {"KICK", m_kick},
                                  {"KILL", m_kill},
                                  {"MODE", m_mode},
                                  {"MODULE", m_module},
@@ -1184,7 +1080,6 @@ static Message p10_messages[] = {{"ACCOUNT", m_account},
 /* An outbound message being rewritten. */
 typedef struct {
     const char* prefix; /* Numeric of the source */
-    int slot;           /* Client index of the source, if ours; else -1 */
     const char* token;  /* P10 token */
     int ac;
     char* av[MAXPARAMS];
@@ -1223,29 +1118,49 @@ static int out_message(OutMsg* m)
     return param_to_numeric(m, 0);
 }
 
-/* KICK for a channel comes from our server: ircu bounces one from a
- * user who is not a channel operator. */
+/* Whoever sent it, an action on a channel goes out as ChanServ and one on
+ * a user as NickServ.  ircu2 takes either from one of the network's
+ * services -- a +S client of a U:lined server -- with its server's
+ * authority: on a channel it is not on or has no status on, and on any
+ * user.  From our server if that pseudo-client is not on the network. */
+static void act_as(OutMsg* m, unsigned int flag)
+{
+    struct Service* service = service_find_by_flag(flag);
+    int slot;
+
+    if (!service || !service->nick ||
+        (slot = local_find(service->nick)) < 0) {
+        m->prefix = me_numeric;
+        return;
+    }
+    /* local_numeric() is static, and param_to_numeric() calls it again. */
+    strbcpy(m->prefixbuf, local_numeric(slot));
+    m->prefix = m->prefixbuf;
+}
+
 static int out_kick(OutMsg* m)
 {
-    m->prefix = me_numeric;
+    act_as(m, SERVICE_CHANSERV);
     return param_to_numeric(m, 1);
 }
 
-/* MODE for a channel comes from the client of ours that sent it only if
- * that client is a channel operator there (see local_ops), and otherwise
- * from our server, like KICK. */
+/* TOPIC <channel> ... and INVITE <nick> <channel>. */
+static int out_topic(OutMsg* m)
+{
+    act_as(m, SERVICE_CHANSERV);
+    return 1;
+}
+
 static int out_mode(OutMsg* m)
 {
     const char* s;
     int add = 1, arg = 2;
 
-    if (m->ac < 2 || !is_channel(m->av[0]))
+    if (m->ac < 2 || !is_channel(m->av[0])) {
+        act_as(m, SERVICE_NICKSERV);
         return 1; /* User mode: the target is a nick */
-    if (m->slot < 0 || !local_is_op(m->slot, m->av[0]))
-        m->prefix = me_numeric;
-    /* Decided on the status before this MODE: a client of ours opping
-     * itself is not a channel operator until ircu has applied it. */
-    track_local_ops(m->ac, m->av);
+    }
+    act_as(m, SERVICE_CHANSERV);
     for (s = m->av[1]; *s; s++) {
         int params;
         if (*s == '+' || *s == '-') {
@@ -1269,6 +1184,7 @@ static int out_kill(OutMsg* m)
     static char path[BUFSIZE];
     const char* reason = m->ac > 1 ? m->av[1] : "";
 
+    act_as(m, SERVICE_NICKSERV);
     if (!param_to_numeric(m, 0))
         return 0;
     if (strchr(reason, '!') && strchr(reason, '!') < strchr(reason, ' '))
@@ -1305,12 +1221,10 @@ static int out_join(OutMsg* m)
         snprintf(tsbuf, sizeof(tsbuf), "%ld", (long)created_ts);
     }
     else {
-        /* ircu makes whoever creates a channel its operator. */
         m->token = "C";
         strbcpy(created_chan, m->av[0]);
         created_ts = time(NULL);
         snprintf(tsbuf, sizeof(tsbuf), "%ld", (long)created_ts);
-        local_set_op(m->slot, m->av[0], 1);
     }
     m->av[1] = tsbuf;
     m->ac = 2;
@@ -1373,7 +1287,7 @@ static int out_svsmode(OutMsg* m)
     u->account = sstrdup(u->nick);
     snprintf(idbuf, sizeof(idbuf), "%lu", (unsigned long)u->servicestamp);
     param_to_numeric(m, 0);
-    m->prefix = me_numeric;
+    act_as(m, SERVICE_NICKSERV);
     m->token = "AC";
     m->av[1] = u->account;
     m->av[2] = idbuf;
@@ -1390,6 +1304,8 @@ typedef struct {
 static const OutRule out_rules[] = {{"PRIVMSG", out_message},
                                     {"NOTICE", out_message},
                                     {"KICK", out_kick},
+                                    {"TOPIC", out_topic},
+                                    {"INVITE", out_topic},
                                     {"MODE", out_mode},
                                     {"OPMODE", out_mode},
                                     {"KILL", out_kill},
@@ -1453,7 +1369,6 @@ void p10_send(const char* source, const char* line)
     }
 
     memset(&m, 0, sizeof(m));
-    m.slot = -1;
     m.ac = split_params(rest, m.av, MAXPARAMS, &m.trailing);
     if (!source || !*source || irc_stricmp(source, ServerName) == 0 ||
         strchr(source, '.')) {
@@ -1462,7 +1377,6 @@ void p10_send(const char* source, const char* line)
     else if ((m.prefix = p10_user_numeric(source)) != NULL) {
         strbcpy(m.prefixbuf, m.prefix); /* p10_user_numeric() is static */
         m.prefix = m.prefixbuf;
-        m.slot = local_find(source);
     }
     else {
         log_debug(1, "p10: sending as unknown source %s", source);
@@ -1501,16 +1415,9 @@ void p10_send(const char* source, const char* line)
     }
     p10_write(out);
 
-    /* A client of ours that quits frees its numeric; one that parts a
-     * channel is no longer a channel operator there. */
+    /* A client of ours that quits frees its numeric. */
     if (!stricmp(cmd, "QUIT") && source)
         local_free(source);
-    else if (!stricmp(cmd, "PART") && m.slot >= 0 && m.ac > 0) {
-        char *chan, *save = NULL;
-        for (chan = strtok_r(m.av[0], ",", &save); chan;
-             chan = strtok_r(NULL, ",", &save))
-            local_forget_ops(m.slot, chan);
-    }
     else if (!stricmp(cmd, "NICK") && source && m.ac > 0) {
         int slot = local_find(source);
         if (slot >= 0)
@@ -1561,6 +1468,7 @@ void send_server(void)
     char capacity[4];
 
     burst_done = 0;
+    uplink_synced = 0;
     *uplink_numeric = 0;
     b64_encode(LOCAL_CAPACITY - 1, capacity, 3);
     snprintf(line, sizeof(line), "PASS :%s", RemotePassword);

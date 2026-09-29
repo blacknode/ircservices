@@ -96,11 +96,31 @@ static ConfigDirective helpserv_config[] = {
     { NULL }
 };
 
+/* EVENT_SERVER_EOB_ACK: the uplink's burst is over, so join the
+ * serverinfo channel (see service.h). */
+static int do_eob_ack(void)
+{
+    service_join_channel(&helpserv_service);
+    return 0;
+}
+
+static int helpserv_init(Module *module)
+{
+    if (!event_attach(module, EVENT_SERVER_EOB_ACK, do_eob_ack)) {
+        module_log("Unable to attach to " EVENT_SERVER_EOB_ACK);
+        return 0;
+    }
+    return 1;
+}
+
+/*************************************************************************/
+
 ModuleInfo module_info = {
     .abi = MODULE_ABI,
     .description = "HelpServ: help topics read from files",
     .config = helpserv_config,
     .services = MODULE_SERVICES(&helpserv_service),
+    .init = helpserv_init,
 };
 
 /*************************************************************************/

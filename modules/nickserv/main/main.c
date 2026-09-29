@@ -2751,6 +2751,14 @@ static void nickserv_rehash(Module *module)
 
 /*************************************************************************/
 
+/* EVENT_SERVER_EOB_ACK: the uplink's burst is over, so join the
+ * serverinfo channel (see service.h). */
+static int do_eob_ack(void)
+{
+    service_join_channel(&nickserv_service);
+    return 0;
+}
+
 static int nickserv_init(Module *module)
 {
     handle_config();
@@ -2817,6 +2825,7 @@ static int nickserv_init(Module *module)
      || !event_attach(module, EVENT_USER_DELETE, do_user_delete)
      || !event_attach(module, OPERSERV_EVENT_STATS_ALL, do_stats_all)
      || !event_attach(module, NICKSERV_EVENT_REGISTER_CHECK, do_reglink_check)
+     || !event_attach(module, EVENT_SERVER_EOB_ACK, do_eob_ack)
     ) {
         module_log("Unable to attach event handlers");
         return 0;

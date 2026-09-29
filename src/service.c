@@ -12,6 +12,7 @@
 #include "language.h"
 #include "memory.h"
 #include "modules.h"
+#include "p10.h"
 #include "users.h"
 
 /*************************************************************************/
@@ -54,16 +55,24 @@ struct Service* service_next(const struct Service* service)
 }
 
 /* Services' own event, declared by init.c. */
-Event* service_introduced_event;
+Event* pseudo_client_joined_event;
 
 /*************************************************************************/
 /*************************************************************************/
 
-/* Put one pseudo-client on the network.  Joining it to the serverinfo
- * channel is ChanServ's (EVENT_SERVICE_INTRODUCED, EVENT_SERVER_EOB_ACK):
- * a channel can only be joined safely once the uplink's burst has said
- * whether it exists, and only ChanServ may give its members their
- * status. */
+void service_join_channel(struct Service* service)
+{
+    if (!service || !service->nick || !ServicesChannel || !*ServicesChannel)
+        return;
+    send_cmd(service->nick, "JOIN %s", ServicesChannel);
+    event_emit(pseudo_client_joined_event, ServicesChannel, service);
+}
+
+/*************************************************************************/
+
+/* Put one pseudo-client on the network.  Until the uplink's burst is over
+ * its module joins it to the serverinfo channel (see service.h); after
+ * that, it is joined here. */
 
 static void introduce_one(struct Service* service)
 {
@@ -90,7 +99,8 @@ static void introduce_one(struct Service* service)
         u->servicestamp = (uint32)u->signon;
         strbcpy(u->numeric, service->numeric);
     }
-    event_emit(service_introduced_event, service);
+    if (p10_uplink_synced())
+        service_join_channel(service);
 }
 
 /*************************************************************************/

@@ -219,10 +219,12 @@ extern int event_detach(Module* module, const char* name,
  * from here on the network's state is known.  () */
 #define EVENT_SERVER_EOB_ACK   "server.eob_ack"
 
-/* A pseudo-client was put on the network: when Services link, when its
- * module is loaded while linked, and when it is brought back after a
- * KILL.  (struct Service* service) */
-#define EVENT_SERVICE_INTRODUCED "service.introduced"
+/* A pseudo-client joined the serverinfo channel (service_join_channel()):
+ * each module joins its own on EVENT_SERVER_EOB_ACK, and the core joins
+ * one introduced after that (its module loaded later, or brought back
+ * after a KILL).  ChanServ ops it.
+ *     (const char* channel, struct Service* service) */
+#define EVENT_PSEUDO_CLIENT_JOINED "server.pseudo_client_joined"
 
 /*************************************************************************/
 

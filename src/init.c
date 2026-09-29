@@ -1205,9 +1205,10 @@ int init(int ac, char** av)
     command_line_event = event_declare(NULL, EVENT_COMMAND_LINE);
     uplink_linked_event = event_declare(NULL, EVENT_UPLINK_LINKED);
     save_complete_event = event_declare(NULL, EVENT_SAVE_COMPLETE);
-    service_introduced_event = event_declare(NULL, EVENT_SERVICE_INTRODUCED);
+    pseudo_client_joined_event =
+        event_declare(NULL, EVENT_PSEUDO_CLIENT_JOINED);
     if (!command_line_event || !uplink_linked_event || !save_complete_event
-        || !service_introduced_event) {
+        || !pseudo_client_joined_event) {
         log("init(): Unable to declare events");
         return -1;
     }
@@ -1583,11 +1584,11 @@ void cleanup(void)
     server_cleanup();
     channel_cleanup();
     user_cleanup();
-    event_retract(service_introduced_event);
+    event_retract(pseudo_client_joined_event);
     event_retract(save_complete_event);
     event_retract(uplink_linked_event);
     event_retract(command_line_event);
-    service_introduced_event = NULL;
+    pseudo_client_joined_event = NULL;
     save_complete_event = uplink_linked_event = command_line_event = NULL;
     module_system_cleanup();
     event_system_cleanup();

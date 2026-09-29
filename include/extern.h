@@ -130,7 +130,7 @@ E time_t start_time;
 E int openlog_failed, openlog_errno;
 E struct Event_* uplink_linked_event; /* EVENT_UPLINK_LINKED */
 E struct Event_* save_complete_event; /* EVENT_SAVE_COMPLETE */
-E struct Event_* service_introduced_event; /* EVENT_SERVICE_INTRODUCED */
+E struct Event_* pseudo_client_joined_event; /* EVENT_PSEUDO_CLIENT_JOINED */
 
 E void connect_callback(Socket* s, void* param_unused);
 E void disconnect_callback(Socket* s, void* param);
